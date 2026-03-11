@@ -27,6 +27,20 @@ export default defineConfig({
     video: "retain-on-failure",
     actionTimeout: 10_000,
     navigationTimeout: 30_000,
+    storageState: {
+      cookies: [],
+      origins: [
+        {
+          origin: "http://localhost:1420",
+          localStorage: [
+            {
+              name: "contextuai-solo-wizard",
+              value: JSON.stringify({ completed: true, name: "Test User" }),
+            },
+          ],
+        },
+      ],
+    },
   },
 
   projects: [
