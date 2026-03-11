@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { DesktopAuthProvider } from "@/lib/desktop-auth";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import { DesktopLayout } from "@/components/navigation/desktop-layout";
@@ -13,6 +13,23 @@ import ConnectionsPage from "@/routes/connections";
 import SettingsPage from "@/routes/settings";
 import WizardPage from "@/routes/wizard";
 
+function isWizardComplete(): boolean {
+  try {
+    const data = localStorage.getItem("contextuai-solo-wizard");
+    if (!data) return false;
+    return JSON.parse(data).completed === true;
+  } catch {
+    return false;
+  }
+}
+
+function RequireWizard({ children }: { children: React.ReactNode }) {
+  if (!isWizardComplete()) {
+    return <Navigate to="/wizard" replace />;
+  }
+  return <>{children}</>;
+}
+
 export default function App() {
   return (
     <DesktopAuthProvider>
@@ -20,7 +37,7 @@ export default function App() {
         <BrowserRouter>
           <Routes>
             <Route path="/wizard" element={<WizardPage />} />
-            <Route element={<DesktopLayout />}>
+            <Route element={<RequireWizard><DesktopLayout /></RequireWizard>}>
               <Route path="/" element={<ChatPage />} />
               <Route path="/personas" element={<PersonasPage />} />
               <Route path="/agents" element={<AgentsPage />} />
