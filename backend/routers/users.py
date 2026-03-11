@@ -17,7 +17,10 @@ from datetime import datetime
 from database import get_database
 from repositories import UserRepository
 
-from services.cognito_service import CognitoService
+try:
+    from services.cognito_service import CognitoService
+except ImportError:
+    CognitoService = None
 from services.auth_service import get_current_user, require_admin, require_power_user
 from services.password_service import PasswordService
 import logging
@@ -27,7 +30,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/users", tags=["users"])
 
 # Initialize services
-cognito_service = CognitoService()
+cognito_service = CognitoService() if CognitoService else None
 password_service = PasswordService()
 
 
