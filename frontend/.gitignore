@@ -1,0 +1,10 @@
+node_modules/
+dist/
+src-tauri/target/
+*.db
+*.sqlite
+.env
+.env.local
+*.local
+playwright-report/
+test-results/

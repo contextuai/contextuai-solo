@@ -1,0 +1,166 @@
+import { type Page, type Locator, expect } from "@playwright/test";
+
+/**
+ * Page object for the Desktop Connections route ("/connections").
+ *
+ * The page contains 3 connection cards:
+ * - Telegram Bot (token-paste flow)
+ * - Discord Bot (token-paste flow)
+ * - LinkedIn (OAuth flow)
+ *
+ * Each card has a Connect/Edit button that expands a form with:
+ * - Token/credential fields
+ * - Direction toggles (Inbound/Outbound) for Telegram & Discord
+ * - Save & Test / Cancel buttons (or Sign in with LinkedIn for OAuth)
+ * - Disconnect (trash) button when connected
+ */
+export class ConnectionsPage {
+  readonly page: Page;
+
+  constructor(page: Page) {
+    this.page = page;
+  }
+
+  // ── Locators ────────────────────────────────────────────────────
+
+  /** All connection cards. */
+  get connectionCards(): Locator {
+    return this.page.locator("[class*='rounded-2xl'][class*='border']").filter({
+      has: this.page.locator("h3"),
+    });
+  }
+
+  /** Connect buttons (shown on disconnected cards). */
+  get connectButtons(): Locator {
+    return this.page.locator("button").filter({ hasText: /connect/i });
+  }
+
+  /** Disconnect (trash) buttons on connected cards. */
+  get disconnectButtons(): Locator {
+    return this.page.locator('button[title="Disconnect"]');
+  }
+
+  /** All visible token/credential input fields in expanded forms. */
+  get tokenInputs(): Locator {
+    return this.page.locator(
+      'input[class*="rounded-xl"]'
+    );
+  }
+
+  /** Save & Test button. */
+  get saveTestButton(): Locator {
+    return this.page.locator("button").filter({ hasText: /save & test/i });
+  }
+
+  /** Cancel button in the expanded form. */
+  get cancelButton(): Locator {
+    return this.page.locator("button").filter({ hasText: /^cancel$/i });
+  }
+
+  /** The "Connected" badge. */
+  get connectedBadges(): Locator {
+    return this.page.locator("span").filter({ hasText: /connected/i });
+  }
+
+  // ── Helpers ─────────────────────────────────────────────────────
+
+  /** Get a specific connection card by name. */
+  private getCard(name: string): Locator {
+    return this.connectionCards
+      .filter({ hasText: new RegExp(name, "i") })
+      .first();
+  }
+
+  /** Get the connect/edit button for a specific connection. */
+  private getConnectEditButton(name: string): Locator {
+    const card = this.getCard(name);
+    return card.locator("button").filter({
+      hasText: /connect|edit/i,
+    });
+  }
+
+  // ── Actions ─────────────────────────────────────────────────────
+
+  /** Navigate to the connections page. */
+  async goto(): Promise<void> {
+    await this.page.goto("/connections");
+    await this.page.waitForLoadState("networkidle");
+  }
+
+  /**
+   * Connect Telegram by entering a bot token.
+   */
+  async connectTelegram(token: string): Promise<void> {
+    await this.getConnectEditButton("Telegram").click();
+    await this.page.waitForTimeout(300);
+
+    // Fill the bot token field
+    const tokenField = this.getCard("Telegram").locator(
+      'input[placeholder*="bot token" i], input[placeholder*="123456"]'
+    );
+    await tokenField.fill(token);
+
+    await this.saveTestButton.click();
+
+    // Wait for testing to complete
+    await expect(this.saveTestButton).toBeHidden({ timeout: 10_000 });
+  }
+
+  /**
+   * Connect Discord by entering bot token, public key, and application ID.
+   */
+  async connectDiscord(
+    token: string,
+    publicKey: string,
+    appId: string
+  ): Promise<void> {
+    await this.getConnectEditButton("Discord").click();
+    await this.page.waitForTimeout(300);
+
+    const card = this.getCard("Discord");
+
+    // Fill bot token
+    const tokenField = card.locator(
+      'input[placeholder*="Discord bot token" i]'
+    );
+    await tokenField.fill(token);
+
+    // Fill public key
+    const publicKeyField = card.locator(
+      'input[placeholder*="public key" i]'
+    );
+    await publicKeyField.fill(publicKey);
+
+    // Fill application ID
+    const appIdField = card.locator(
+      'input[placeholder*="application ID" i]'
+    );
+    await appIdField.fill(appId);
+
+    await this.saveTestButton.click();
+    await expect(this.saveTestButton).toBeHidden({ timeout: 10_000 });
+  }
+
+  /**
+   * Disconnect a connection by clicking the trash/disconnect button.
+   */
+  async disconnectConnection(name: string): Promise<void> {
+    const card = this.getCard(name);
+    const disconnectBtn = card.locator('button[title="Disconnect"]');
+    await disconnectBtn.click();
+    await this.page.waitForTimeout(500);
+  }
+
+  /**
+   * Get the connection status for a named connection.
+   * Returns "connected" if the Connected badge is visible, "disconnected" otherwise.
+   */
+  async getConnectionStatus(
+    name: string
+  ): Promise<"connected" | "disconnected"> {
+    const card = this.getCard(name);
+    const badge = card.locator("span").filter({ hasText: /connected/i });
+    const isConnected = await badge.isVisible().catch(() => false);
+    return isConnected ? "connected" : "disconnected";
+  }
+}

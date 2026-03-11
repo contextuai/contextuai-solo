@@ -1,0 +1,57 @@
+# ContextuAI Solo — Desktop Backend Dependencies
+
+# Core framework
+fastapi==0.115.7
+uvicorn[standard]==0.34.0
+
+# Validation
+pydantic[email]==2.9.2
+email-validator==2.1.1
+
+# Async support
+aiofiles==24.1.0
+
+# HTTP clients
+requests==2.32.3
+httpx==0.28.1
+
+# AI frameworks
+strands-agents==1.7.0
+strands-agents-tools==0.2.6
+claude-agent-sdk>=0.1.0
+
+# Web search
+tavily-python==0.5.0
+
+# JWT (used internally even if desktop skips auth)
+PyJWT[crypto]==2.10.1
+
+# Database connectors (for persona DB tools)
+asyncpg==0.29.0
+psycopg2-binary==2.9.9
+aiomysql==0.2.0
+sqlparse==0.5.0
+
+# SQLite adapter needs aiosqlite
+aiosqlite>=0.19.0
+
+# Scheduling (replaces Celery)
+APScheduler>=3.10.0
+
+# Document processing
+PyMuPDF==1.24.10
+python-docx==1.1.2
+weasyprint>=61.0
+python-pptx>=0.6.23
+markdown2>=2.4.0
+Jinja2>=3.1.0
+
+# Ollama for local models
+ollama>=0.4.0
+
+# Slack integration (for Slack persona)
+slack-bolt>=1.20.0
+
+# AWS SDK (for Bedrock model access)
+boto3==1.40.41
+botocore==1.40.41

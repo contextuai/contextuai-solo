@@ -1,0 +1,420 @@
+/* ==========================================================================
+   ContextuAI PDF Report Stylesheet
+   Brand Color: #FF4700 (orange)
+   ========================================================================== */
+
+/* --- Page & Base Typography --- */
+
+@page {
+    size: A4;
+    margin: 2cm 2.5cm;
+
+    @bottom-center {
+        content: "ContextuAI AI Workspace";
+        font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+        font-size: 8pt;
+        color: #999999;
+    }
+
+    @bottom-right {
+        content: "Page " counter(page) " of " counter(pages);
+        font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+        font-size: 8pt;
+        color: #999999;
+    }
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-size: 11pt;
+    line-height: 1.6;
+    color: #2D2D2D;
+    margin: 0;
+    padding: 0;
+}
+
+/* --- Brand Bar & Header --- */
+
+.brand-bar {
+    height: 6px;
+    background-color: #FF4700;
+    margin-bottom: 2em;
+    border-radius: 3px;
+}
+
+.report-header {
+    margin-bottom: 2em;
+    page-break-after: avoid;
+}
+
+.header-content {
+    padding: 0 0.5em;
+}
+
+.logo-area {
+    margin-bottom: 1em;
+}
+
+.logo-text {
+    font-size: 14pt;
+    font-weight: 700;
+    color: #2D2D2D;
+    letter-spacing: 0.5px;
+}
+
+.logo-accent {
+    color: #FF4700;
+}
+
+.report-title {
+    font-size: 28pt;
+    font-weight: 700;
+    color: #1A1A1A;
+    margin: 0 0 0.4em 0;
+    line-height: 1.2;
+    border-bottom: 2px solid #FF4700;
+    padding-bottom: 0.3em;
+}
+
+.report-meta {
+    font-size: 11pt;
+    color: #666666;
+}
+
+.meta-separator {
+    margin: 0 0.5em;
+    color: #CCCCCC;
+}
+
+.meta-agents {
+    color: #FF4700;
+    font-weight: 600;
+}
+
+/* --- Table of Contents --- */
+
+.table-of-contents {
+    margin: 2em 0;
+    padding: 1.5em 2em;
+    background-color: #F9F9F9;
+    border-left: 4px solid #FF4700;
+    border-radius: 0 4px 4px 0;
+}
+
+.toc-heading {
+    font-size: 16pt;
+    font-weight: 700;
+    color: #FF4700;
+    margin: 0 0 0.5em 0;
+}
+
+.toc-note {
+    font-size: 10pt;
+    color: #888888;
+}
+
+/* --- Page Break Utility --- */
+
+.page-break {
+    page-break-after: always;
+    break-after: page;
+    height: 0;
+    margin: 0;
+    padding: 0;
+}
+
+/* --- Main Report Body --- */
+
+.report-body {
+    margin: 0;
+    padding: 0;
+}
+
+/* --- Headings --- */
+
+.report-body h1 {
+    font-size: 24pt;
+    font-weight: 700;
+    color: #FF4700;
+    margin: 1.5em 0 0.5em 0;
+    border-bottom: 2px solid #FF4700;
+    padding-bottom: 0.2em;
+    page-break-after: avoid;
+}
+
+.report-body h2 {
+    font-size: 18pt;
+    font-weight: 700;
+    color: #FF4700;
+    margin: 1.3em 0 0.4em 0;
+    page-break-after: avoid;
+}
+
+.report-body h3 {
+    font-size: 14pt;
+    font-weight: 600;
+    color: #333333;
+    margin: 1em 0 0.3em 0;
+    page-break-after: avoid;
+}
+
+.report-body h4 {
+    font-size: 12pt;
+    font-weight: 600;
+    color: #555555;
+    margin: 0.8em 0 0.3em 0;
+    page-break-after: avoid;
+}
+
+.report-body h5,
+.report-body h6 {
+    font-size: 11pt;
+    font-weight: 600;
+    color: #666666;
+    margin: 0.6em 0 0.2em 0;
+    page-break-after: avoid;
+}
+
+/* --- Paragraphs & Text --- */
+
+.report-body p {
+    margin: 0 0 0.8em 0;
+    orphans: 3;
+    widows: 3;
+}
+
+.report-body strong {
+    font-weight: 700;
+    color: #1A1A1A;
+}
+
+.report-body em {
+    font-style: italic;
+}
+
+.report-body a {
+    color: #FF4700;
+    text-decoration: underline;
+}
+
+/* --- Lists --- */
+
+.report-body ul,
+.report-body ol {
+    margin: 0 0 1em 1.5em;
+    padding: 0;
+}
+
+.report-body li {
+    margin-bottom: 0.3em;
+    line-height: 1.5;
+}
+
+.report-body ul li {
+    list-style-type: disc;
+}
+
+.report-body ul ul li {
+    list-style-type: circle;
+}
+
+.report-body ol li {
+    list-style-type: decimal;
+}
+
+/* --- Tables --- */
+
+.report-body table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1em 0 1.5em 0;
+    font-size: 10pt;
+    page-break-inside: avoid;
+}
+
+.report-body thead {
+    background-color: #FF4700;
+}
+
+.report-body thead th {
+    color: #FFFFFF;
+    font-weight: 700;
+    text-align: left;
+    padding: 10px 12px;
+    border: 1px solid #E04000;
+}
+
+.report-body tbody tr:nth-child(even) {
+    background-color: #FFF5F0;
+}
+
+.report-body tbody tr:nth-child(odd) {
+    background-color: #FFFFFF;
+}
+
+.report-body tbody td {
+    padding: 8px 12px;
+    border: 1px solid #E0E0E0;
+    vertical-align: top;
+}
+
+.report-body tbody tr:hover {
+    background-color: #FFEDE5;
+}
+
+/* --- Code Blocks --- */
+
+.report-body code {
+    font-family: "Courier New", Courier, monospace;
+    font-size: 9.5pt;
+    background-color: #F2F2F2;
+    padding: 2px 5px;
+    border-radius: 3px;
+    color: #D14;
+}
+
+.report-body pre {
+    background-color: #F5F5F5;
+    border: 1px solid #E0E0E0;
+    border-left: 4px solid #FF4700;
+    border-radius: 0 4px 4px 0;
+    padding: 1em 1.2em;
+    margin: 1em 0 1.5em 0;
+    overflow-x: auto;
+    font-size: 9pt;
+    line-height: 1.5;
+    page-break-inside: avoid;
+}
+
+.report-body pre code {
+    background: none;
+    padding: 0;
+    border-radius: 0;
+    color: #2D2D2D;
+}
+
+/* --- Blockquotes (Executive Summary style) --- */
+
+.report-body blockquote {
+    background-color: #2D2D2D;
+    color: #F0F0F0;
+    border-left: 5px solid #FF4700;
+    margin: 1.5em 0;
+    padding: 1.2em 1.5em;
+    border-radius: 0 4px 4px 0;
+    font-size: 11pt;
+    line-height: 1.7;
+    page-break-inside: avoid;
+}
+
+.report-body blockquote p {
+    margin: 0 0 0.5em 0;
+    color: #F0F0F0;
+}
+
+.report-body blockquote p:last-child {
+    margin-bottom: 0;
+}
+
+.report-body blockquote strong {
+    color: #FF4700;
+}
+
+.report-body blockquote code {
+    background-color: #444444;
+    color: #FFB380;
+}
+
+/* --- Horizontal Rule --- */
+
+.report-body hr {
+    border: none;
+    border-top: 2px solid #FF4700;
+    margin: 2em 0;
+    opacity: 0.4;
+}
+
+/* --- Agent Contribution Sections --- */
+
+.report-body h2[id*="agent"],
+.report-body h2[id*="Agent"] {
+    background-color: #FFF5F0;
+    border: 1px solid #FFD6C2;
+    border-left: 5px solid #FF4700;
+    padding: 0.6em 1em;
+    border-radius: 0 6px 6px 0;
+    margin-top: 2em;
+}
+
+/* --- Images --- */
+
+.report-body img {
+    max-width: 100%;
+    height: auto;
+    margin: 1em 0;
+    border-radius: 4px;
+}
+
+/* --- Footer --- */
+
+.report-footer {
+    margin-top: 3em;
+    page-break-before: avoid;
+}
+
+.footer-bar {
+    height: 3px;
+    background-color: #FF4700;
+    margin-bottom: 1em;
+    border-radius: 2px;
+}
+
+.footer-content {
+    text-align: center;
+    padding: 0.5em 0;
+}
+
+.footer-text {
+    font-size: 9pt;
+    color: #888888;
+    margin: 0 0 0.2em 0;
+}
+
+.footer-text strong {
+    color: #FF4700;
+}
+
+.footer-date {
+    font-size: 8pt;
+    color: #AAAAAA;
+    margin: 0;
+}
+
+/* --- Print-Friendly Adjustments --- */
+
+@media print {
+    body {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    .page-break {
+        page-break-after: always;
+    }
+
+    .report-body h1,
+    .report-body h2,
+    .report-body h3 {
+        page-break-after: avoid;
+    }
+
+    .report-body table,
+    .report-body pre,
+    .report-body blockquote {
+        page-break-inside: avoid;
+    }
+}

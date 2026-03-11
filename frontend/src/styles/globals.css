@@ -1,0 +1,19 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --radius: 0.5rem;
+  }
+
+  body {
+    @apply antialiased;
+  }
+
+  /* Prevent text selection on drag regions */
+  [data-tauri-drag-region] {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+}
