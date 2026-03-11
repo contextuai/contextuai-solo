@@ -13,6 +13,7 @@
   "dependencies": {
     "@rollup/rollup-win32-x64-msvc": "^4.59.0",
     "@tauri-apps/api": "^2.2.0",
+    "@tauri-apps/cli-win32-x64-msvc": "^2.10.1",
     "@tauri-apps/plugin-notification": "^2.2.0",
     "@tauri-apps/plugin-os": "^2.2.0",
     "@tauri-apps/plugin-shell": "^2.2.0",
@@ -27,6 +28,7 @@
   "devDependencies": {
     "@playwright/test": "^1.58.2",
     "@tailwindcss/typography": "^0.5.15",
+    "@tauri-apps/cli": "^2.10.1",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.3.4",

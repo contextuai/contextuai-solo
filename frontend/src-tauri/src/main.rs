@@ -27,6 +27,11 @@ fn main() {
 
             Ok(())
         })
+        .on_window_event(|_window, event| {
+            if let tauri::WindowEvent::Destroyed = event {
+                sidecar::stop_sidecar();
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             commands::api_request,
             commands::get_sidecar_port,

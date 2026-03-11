@@ -128,6 +128,7 @@ export default function PersonasPage() {
       const payload: CreatePersonaRequest = {
         name: form.name,
         description: form.description,
+        persona_type_id: form.type,
         type: form.type,
         system_prompt: form.system_prompt || undefined,
         category: form.category,
