@@ -1,6 +1,7 @@
 import { api, streamRequest } from "@/lib/transport";
 import type {
   ChatSession,
+  ChatMessage,
   StreamChunk,
   SessionListResponse,
   MessagesListResponse,
@@ -26,6 +27,7 @@ export async function createSession(opts?: {
   const { data } = await api.post<ChatSession>(
     `/chat-sessions/?user_id=${encodeURIComponent(USER_ID)}`,
     {
+      userId: USER_ID,
       title: opts?.title,
       personaId: opts?.personaId,
       modelId: opts?.modelId,
@@ -76,6 +78,29 @@ export async function archiveSession(sessionId: string): Promise<void> {
 
 // ── Message helpers ──────────────────────────────────────────────
 
+/** Normalize a message from the API (camelCase) to our internal format (snake_case). */
+function normalizeMessage(raw: Record<string, unknown>): ChatMessage {
+  return {
+    message_id:
+      (raw.message_id as string) ||
+      (raw.messageId as string) ||
+      String(raw.id || Date.now()),
+    session_id:
+      (raw.session_id as string) || (raw.sessionId as string) || "",
+    content: (raw.content as string) || "",
+    message_type:
+      ((raw.message_type as string) ||
+        (raw.messageType as string) ||
+        (raw.role as string) ||
+        "user") as ChatMessage["message_type"],
+    timestamp:
+      (raw.timestamp as string) ||
+      (raw.createdAt as string) ||
+      new Date().toISOString(),
+    metadata: raw.metadata as Record<string, unknown> | undefined,
+  };
+}
+
 export async function listMessages(
   sessionId: string,
   options?: {
@@ -91,6 +116,12 @@ export async function listMessages(
   const { data } = await api.get<MessagesListResponse>(
     `/chat-messages/${sessionId}/messages${qs ? `?${qs}` : ""}`
   );
+  // Normalize messages from API camelCase to our snake_case format
+  if (data.messages) {
+    data.messages = data.messages.map((m) =>
+      normalizeMessage(m as unknown as Record<string, unknown>)
+    );
+  }
   return data;
 }
 

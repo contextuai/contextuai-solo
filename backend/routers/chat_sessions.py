@@ -172,11 +172,17 @@ async def create_session(
         print(f"Extracted userId: {user_id}")
 
         if not user_id:
-            print(f"ERROR: userId is missing from request")
-            raise HTTPException(status_code=400, detail="userId is required")
+            # Also check query param
+            user_id = request.query_params.get("user_id")
+        if not user_id:
+            user_id = "desktop-user"
 
-        # Create empty SessionCreate for now since frontend doesn't send session data
-        session = SessionCreate()
+        # Parse session fields from the request body
+        session = SessionCreate(
+            title=request_data.get("title"),
+            persona_id=request_data.get("personaId") or request_data.get("persona_id"),
+            model_id=request_data.get("modelId") or request_data.get("model_id"),
+        )
         session_id = str(uuid.uuid4())
         print(f"Generated session_id: {session_id}")
 
