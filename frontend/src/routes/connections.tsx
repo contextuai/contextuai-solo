@@ -46,6 +46,8 @@ interface ConnectionConfig {
   oauthProvider: string | null;
   /** Fields required before starting OAuth (client_id, client_secret). */
   oauthSetupFields?: { key: string; label: string; placeholder: string; secret?: boolean }[];
+  /** OAuth setup instructions (provider-specific). */
+  oauthHelp?: { title: string; devUrl: string; devLabel: string; callbackPath: string; steps?: string[] };
   supportsInbound: boolean;
   supportsOutbound: boolean;
   defaultInbound: boolean;
@@ -141,6 +143,12 @@ const CONNECTIONS: ConnectionConfig[] = [
         secret: true,
       },
     ],
+    oauthHelp: {
+      title: "How to connect LinkedIn:",
+      devUrl: "https://www.linkedin.com/developers/apps",
+      devLabel: "LinkedIn Developers",
+      callbackPath: "/api/v1/oauth/linkedin/callback",
+    },
     fields: [], // No manual token fields — OAuth handles it
     supportsInbound: false,
     supportsOutbound: true,
@@ -180,6 +188,17 @@ const CONNECTIONS: ConnectionConfig[] = [
       { key: "client_id", label: "App ID", placeholder: "Your Facebook/Instagram App ID" },
       { key: "client_secret", label: "App Secret", placeholder: "Your Facebook/Instagram App Secret", secret: true },
     ],
+    oauthHelp: {
+      title: "How to connect Instagram:",
+      devUrl: "https://developers.facebook.com/apps/",
+      devLabel: "Meta for Developers",
+      callbackPath: "/api/v1/oauth/instagram/callback",
+      steps: [
+        "Create a Facebook App with Instagram Basic Display product",
+        "Add the redirect URL below to your app's Valid OAuth Redirect URIs",
+        "Copy your App ID and App Secret below",
+      ],
+    },
     fields: [],
     supportsInbound: false,
     supportsOutbound: true,
@@ -199,6 +218,17 @@ const CONNECTIONS: ConnectionConfig[] = [
       { key: "client_id", label: "App ID", placeholder: "Your Facebook App ID" },
       { key: "client_secret", label: "App Secret", placeholder: "Your Facebook App Secret", secret: true },
     ],
+    oauthHelp: {
+      title: "How to connect Facebook:",
+      devUrl: "https://developers.facebook.com/apps/",
+      devLabel: "Meta for Developers",
+      callbackPath: "/api/v1/oauth/facebook/callback",
+      steps: [
+        "Create a Facebook App with Facebook Login product",
+        "Add the redirect URL below to your app's Valid OAuth Redirect URIs",
+        "Copy your App ID and App Secret below",
+      ],
+    },
     fields: [],
     supportsInbound: false,
     supportsOutbound: true,
@@ -500,38 +530,44 @@ export default function ConnectionsPage() {
                   <div className="px-5 pb-5 pt-0 border-t border-neutral-100 dark:border-neutral-800 mt-0">
                     <div className="pt-4 space-y-3">
 
-                      {/* OAuth flow (LinkedIn) */}
+                      {/* OAuth flow */}
                       {isOAuth && (
                         <>
-                          {/* Step 1: Enter LinkedIn App credentials */}
+                          {/* Provider-specific setup instructions */}
+                          {conn.oauthHelp && (
                           <div className="flex items-start gap-3 p-3 bg-blue-50 dark:bg-blue-500/5 border border-blue-200 dark:border-blue-800/50 rounded-xl mb-1">
                             <Info className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
                             <div className="text-xs text-neutral-600 dark:text-neutral-400 leading-relaxed">
                               <p className="font-medium text-neutral-700 dark:text-neutral-300 mb-1">
-                                How to connect LinkedIn:
+                                {conn.oauthHelp.title}
                               </p>
                               <ol className="list-decimal list-inside space-y-0.5">
-                                <li>
-                                  Create a LinkedIn App at{" "}
-                                  <a
-                                    href="https://www.linkedin.com/developers/apps"
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-blue-500 underline"
-                                  >
-                                    LinkedIn Developers
-                                  </a>
-                                </li>
+                                {conn.oauthHelp.steps ? (
+                                  conn.oauthHelp.steps.map((step, i) => <li key={i}>{step}</li>)
+                                ) : (
+                                  <li>
+                                    Create an app at{" "}
+                                    <a
+                                      href={conn.oauthHelp.devUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-blue-500 underline"
+                                    >
+                                      {conn.oauthHelp.devLabel}
+                                    </a>
+                                  </li>
+                                )}
                                 <li>
                                   Add <code className="bg-neutral-200 dark:bg-neutral-700 px-1 rounded text-[11px]">
-                                    http://localhost:18741/api/v1/oauth/linkedin/callback
+                                    http://localhost:18741{conn.oauthHelp.callbackPath}
                                   </code> as an authorized redirect URL
                                 </li>
-                                <li>Copy your Client ID and Client Secret below</li>
-                                <li>Click &quot;Sign in with LinkedIn&quot; to authorize</li>
+                                <li>Copy your credentials below</li>
+                                <li>Click &quot;Sign in with {conn.name}&quot; to authorize</li>
                               </ol>
                             </div>
                           </div>
+                          )}
 
                           {conn.oauthSetupFields?.map((field) => (
                             <div key={field.key}>
