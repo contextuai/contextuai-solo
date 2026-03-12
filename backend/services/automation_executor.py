@@ -21,7 +21,7 @@ class AutomationExecutor:
         # In production, this would be the internal service URL
         self.ai_chat_base_url = os.getenv(
             "AI_CHAT_URL",
-            "http://localhost:8000"  # Default for local development
+            "http://localhost:18741"  # Default for desktop sidecar
         )
         self.ai_chat_endpoint = f"{self.ai_chat_base_url}/api/v1/ai-chat"
 

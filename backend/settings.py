@@ -57,7 +57,7 @@ class Settings:
     ))
     port: int = field(default_factory=lambda: int(os.getenv(
         "PORT",
-        "8000"
+        "18741"
     )))
 
     # API Configuration
@@ -69,7 +69,7 @@ class Settings:
     # CORS Configuration
     cors_origins: str = field(default_factory=lambda: os.getenv(
         "CORS_ORIGINS",
-        "http://localhost:3000,http://localhost:8000"
+        "http://localhost:3000,http://localhost:1420,http://127.0.0.1:18741"
     ))
 
     # JWT/Auth Configuration (if needed)
