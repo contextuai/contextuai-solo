@@ -21,6 +21,7 @@ import {
   startDownload,
   loadModel,
   streamDownloadProgress,
+  syncLocalModels,
   type DownloadProgress,
 } from "@/lib/api/local-models-client";
 
@@ -438,7 +439,8 @@ export default function WizardPage() {
             setDownloadProgress(progress);
             if (progress.status === "complete") {
               setDownloading(false);
-              // Auto-load the model
+              // Sync to DB so it appears in chat dropdown, then auto-load
+              syncLocalModels().catch(() => {});
               loadModel(data.model).catch(() => {});
               setTestResult("success");
               downloadCancelRef.current = null;

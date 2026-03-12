@@ -59,6 +59,12 @@ export async function deleteModel(modelId: string): Promise<void> {
   await api.delete(`/local-models/${modelId}`);
 }
 
+/** Sync downloaded models into the DB so they appear in the chat dropdown. */
+export async function syncLocalModels(): Promise<{ synced: number }> {
+  const { data } = await api.post<{ synced: number }>("/local-models/sync");
+  return data;
+}
+
 /**
  * Poll download progress via SSE.
  * Returns an EventSource-like interface using fetch (works in Tauri).

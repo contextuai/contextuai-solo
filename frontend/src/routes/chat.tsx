@@ -43,7 +43,11 @@ export default function ChatPage() {
 
   // ── Load initial data ──────────────────────────────────────────
   useEffect(() => {
-    loadModels();
+    // Sync any downloaded local models into DB first, then load models
+    import("@/lib/api/local-models-client")
+      .then((m) => m.syncLocalModels())
+      .catch(() => {})
+      .finally(() => loadModels());
     loadPersonas();
     loadSessions();
   }, []);

@@ -472,7 +472,68 @@ async def delete_model(model_id: str):
     try:
         file_path.unlink()
         logger.info(f"Deleted model file: {file_path}")
+
+        # Also remove the DB config so it disappears from chat dropdown
+        try:
+            import database
+            db = await database.get_database()
+            await db["models"].delete_one({"_id": f"local-{model_id}"})
+            logger.info(f"Removed model config for local-{model_id}")
+        except Exception as db_exc:
+            logger.warning(f"Could not remove model config: {db_exc}")
+
         return {"message": f"Model {model['name']} deleted", "model_id": model_id}
     except Exception as exc:
         logger.error(f"Failed to delete {file_path}: {exc}")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.post("/sync")
+async def sync_local_models():
+    """Sync downloaded models into the DB so they appear in the chat dropdown.
+
+    Scans disk for downloaded GGUF files and ensures each has a
+    corresponding model config in the 'models' collection.
+    """
+    try:
+        import database
+        db = await database.get_database()
+        collection = db["models"]
+        synced = 0
+
+        for model in AVAILABLE_MODELS:
+            if not _is_downloaded(model):
+                continue
+            model_id = f"local-{model['id']}"
+            existing = await collection.find_one({"_id": model_id})
+            if existing:
+                continue
+            doc = {
+                "_id": model_id,
+                "name": model["name"],
+                "provider": "local",
+                "model": model_id,
+                "max_tokens": "4096",
+                "enabled": True,
+                "description": f"Local {model['name']} model (GGUF, runs on CPU)",
+                "capabilities": ["chat"],
+                "input_cost": 0,
+                "output_cost": 0,
+                "context_window": 4096,
+                "supports_vision": False,
+                "supports_function_calling": model.get("supports_tools", False),
+                "model_metadata": {
+                    "runtime": "local",
+                    "local_model_file": model["file"],
+                    "ram_gb": model.get("ram_gb"),
+                    "tier": model.get("tier"),
+                },
+            }
+            await collection.insert_one(doc)
+            synced += 1
+            logger.info(f"Synced model config: {model['name']}")
+
+        return {"synced": synced, "message": f"Synced {synced} model config(s)"}
+    except Exception as exc:
+        logger.error(f"Failed to sync local models: {exc}")
         raise HTTPException(status_code=500, detail=str(exc))

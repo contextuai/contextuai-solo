@@ -167,6 +167,8 @@ function LocalAIConfig() {
               clearInterval(poll);
               setDownloading(null);
               setModels(data);
+              // Sync to DB so model appears in chat dropdown
+              fetch(`${baseUrl}/local-models/sync`, { method: "POST" }).catch(() => {});
             }
           }
         } catch { /* ignore */ }
