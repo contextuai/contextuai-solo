@@ -4,6 +4,9 @@ import {
   Send,
   MessageCircle,
   Linkedin,
+  AtSign,
+  Camera,
+  Globe,
   Check,
   Eye,
   EyeOff,
@@ -27,7 +30,7 @@ import {
 
 // ─── Types ──────────────────────────────────────────────────────
 
-type ConnectionId = "telegram" | "discord" | "linkedin";
+type ConnectionId = "telegram" | "discord" | "linkedin" | "twitter" | "instagram" | "facebook";
 
 interface ConnectionConfig {
   id: ConnectionId;
@@ -139,6 +142,64 @@ const CONNECTIONS: ConnectionConfig[] = [
       },
     ],
     fields: [], // No manual token fields — OAuth handles it
+    supportsInbound: false,
+    supportsOutbound: true,
+    defaultInbound: false,
+    defaultOutbound: true,
+  },
+  {
+    id: "twitter",
+    name: "Twitter / X",
+    description: "Post daily content, updates, and engage with your audience on X.",
+    icon: AtSign,
+    iconBg: "bg-neutral-100 dark:bg-neutral-500/20",
+    iconColor: "text-neutral-900 dark:text-neutral-200",
+    docsUrl: "https://developer.x.com/en/portal/dashboard",
+    oauthProvider: null,
+    supportsInbound: false,
+    supportsOutbound: true,
+    defaultInbound: false,
+    defaultOutbound: true,
+    fields: [
+      { key: "api_key", label: "API Key", placeholder: "Your Twitter API Key", secret: true },
+      { key: "api_secret", label: "API Secret", placeholder: "Your Twitter API Secret", secret: true },
+      { key: "access_token", label: "Access Token", placeholder: "Your Access Token", secret: true },
+      { key: "access_token_secret", label: "Access Token Secret", placeholder: "Your Access Token Secret", secret: true },
+    ],
+  },
+  {
+    id: "instagram",
+    name: "Instagram",
+    description: "Post photos, stories, and reels to your Instagram business account.",
+    icon: Camera,
+    iconBg: "bg-pink-100 dark:bg-pink-500/20",
+    iconColor: "text-pink-600 dark:text-pink-400",
+    docsUrl: "https://developers.facebook.com/docs/instagram-api/",
+    oauthProvider: "instagram",
+    oauthSetupFields: [
+      { key: "client_id", label: "App ID", placeholder: "Your Facebook/Instagram App ID" },
+      { key: "client_secret", label: "App Secret", placeholder: "Your Facebook/Instagram App Secret", secret: true },
+    ],
+    fields: [],
+    supportsInbound: false,
+    supportsOutbound: true,
+    defaultInbound: false,
+    defaultOutbound: true,
+  },
+  {
+    id: "facebook",
+    name: "Facebook",
+    description: "Publish posts and manage your Facebook business page.",
+    icon: Globe,
+    iconBg: "bg-blue-100 dark:bg-blue-500/20",
+    iconColor: "text-blue-700 dark:text-blue-400",
+    docsUrl: "https://developers.facebook.com/docs/pages-api/",
+    oauthProvider: "facebook",
+    oauthSetupFields: [
+      { key: "client_id", label: "App ID", placeholder: "Your Facebook App ID" },
+      { key: "client_secret", label: "App Secret", placeholder: "Your Facebook App Secret", secret: true },
+    ],
+    fields: [],
     supportsInbound: false,
     supportsOutbound: true,
     defaultInbound: false,
@@ -635,7 +696,7 @@ export default function ConnectionsPage() {
                           <button
                             onClick={() => handleOAuthConnect(conn)}
                             disabled={isOAuthLoading || !formData.client_id?.trim() || !formData.client_secret?.trim()}
-                            className="flex items-center gap-2 px-5 py-2 rounded-xl text-xs font-semibold bg-[#0077B5] hover:bg-[#006097] text-white transition-all disabled:opacity-40"
+                            className="flex items-center gap-2 px-5 py-2 rounded-xl text-xs font-semibold bg-primary-500 hover:bg-primary-600 text-white transition-all disabled:opacity-40"
                           >
                             {isOAuthLoading ? (
                               <>
@@ -645,7 +706,7 @@ export default function ConnectionsPage() {
                             ) : (
                               <>
                                 <LogIn className="w-3.5 h-3.5" />
-                                Sign in with LinkedIn
+                                Sign in with {conn.name}
                               </>
                             )}
                           </button>
@@ -681,9 +742,9 @@ export default function ConnectionsPage() {
         <div className="flex items-start gap-3 p-4 mt-6 bg-primary-50 dark:bg-primary-500/5 border border-primary-200 dark:border-primary-800/50 rounded-xl">
           <Info className="w-4 h-4 text-primary-500 flex-shrink-0 mt-0.5" />
           <p className="text-xs text-neutral-600 dark:text-neutral-400 leading-relaxed">
-            Telegram and Discord use bot tokens stored locally. LinkedIn connects via OAuth2 — your browser
-            opens to authorize, and tokens are stored securely in the local database. You can disconnect
-            any time.
+            Telegram and Discord use bot tokens stored locally. Twitter/X uses API keys stored locally.
+            LinkedIn, Instagram, and Facebook connect via OAuth2 — your browser opens to authorize, and
+            tokens are stored securely in the local database. You can disconnect any time.
           </p>
         </div>
       </div>

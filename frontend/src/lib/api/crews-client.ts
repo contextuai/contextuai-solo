@@ -76,6 +76,16 @@ export interface CrewRunStep {
   duration_seconds?: number;
 }
 
+export interface LibraryAgent {
+  agent_id: string;
+  name: string;
+  description: string;
+  category: string;
+  capabilities: string[];
+  suggested_role: string;
+  icon: string;
+}
+
 // ---------------------------------------------------------------------------
 // API client (uses desktop transport)
 // ---------------------------------------------------------------------------
@@ -131,5 +141,36 @@ export const crewsApi = {
 
   cancelRun: async (crewId: string, runId: string): Promise<void> => {
     await api.post(`/crews/${crewId}/runs/${runId}/cancel`);
+  },
+
+  // Library agents
+  listLibraryAgents: async (
+    params: { page?: number; page_size?: number; category?: string; search?: string } = {}
+  ): Promise<{
+    agents: LibraryAgent[];
+    total_count: number;
+    page: number;
+    page_size: number;
+  }> => {
+    const query = new URLSearchParams();
+    if (params.page) query.set("page", String(params.page));
+    if (params.page_size) query.set("page_size", String(params.page_size));
+    if (params.category) query.set("category", params.category);
+    if (params.search) query.set("search", params.search);
+    const qs = query.toString();
+    const path = `/crews/library-agents${qs ? `?${qs}` : ""}`;
+    const { data } = await api.get<{
+      data?: LibraryAgent[];
+      total_count?: number;
+      page?: number;
+      page_size?: number;
+    }>(path);
+    const raw = data as Record<string, unknown>;
+    return {
+      agents: (raw.data ?? []) as LibraryAgent[],
+      total_count: (raw.total_count ?? 0) as number,
+      page: (raw.page ?? 1) as number,
+      page_size: (raw.page_size ?? 20) as number,
+    };
   },
 };
