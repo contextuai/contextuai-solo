@@ -37,6 +37,8 @@ from routers.analytics import router as analytics_router
 from routers.channels import router as channels_router
 from routers.distribution import router as distribution_router
 from routers.desktop_oauth import router as desktop_oauth_router
+from routers.models import router as models_router
+from routers.local_models import router as local_models_router
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -80,6 +82,8 @@ app.include_router(analytics_router)
 app.include_router(channels_router)
 app.include_router(distribution_router)
 app.include_router(desktop_oauth_router)
+app.include_router(models_router)
+app.include_router(local_models_router)
 
 
 # ---------------------------------------------------------------------------
@@ -233,6 +237,52 @@ async def _seed_agent_library(db):
 
 
 # ---------------------------------------------------------------------------
+# Local model seeding — register downloaded GGUFs in the models collection
+# ---------------------------------------------------------------------------
+async def _seed_local_models(db):
+    """Check for downloaded GGUF models and ensure they have DB entries."""
+    try:
+        from routers.local_models import AVAILABLE_MODELS, CHAT_DIR
+        collection = db["models"]
+        seeded = 0
+        for model in AVAILABLE_MODELS:
+            file_path = CHAT_DIR / model["file"]
+            if not file_path.is_file():
+                continue
+            model_id = f"local-{model['id']}"
+            existing = await collection.find_one({"_id": model_id})
+            if existing:
+                continue
+            doc = {
+                "_id": model_id,
+                "name": model["name"],
+                "provider": "local",
+                "model": model_id,
+                "max_tokens": "4096",
+                "enabled": True,
+                "description": f"Local {model['name']} model (GGUF, runs on CPU)",
+                "capabilities": ["chat"],
+                "input_cost": 0,
+                "output_cost": 0,
+                "context_window": 4096,
+                "supports_vision": False,
+                "supports_function_calling": model.get("supports_tools", False),
+                "model_metadata": {
+                    "runtime": "local",
+                    "local_model_file": model["file"],
+                    "ram_gb": model.get("ram_gb"),
+                    "tier": model.get("tier"),
+                },
+            }
+            await collection.insert_one(doc)
+            seeded += 1
+        if seeded:
+            logger.info("Seeded %d local model config(s)", seeded)
+    except Exception:
+        logger.exception("Failed to seed local model configs")
+
+
+# ---------------------------------------------------------------------------
 # Lifecycle events
 # ---------------------------------------------------------------------------
 @app.on_event("startup")
@@ -271,6 +321,9 @@ async def startup_event():
 
         # Seed agent library (business agents, exclude engineering)
         await _seed_agent_library(proxy)
+
+        # Seed model configs for any already-downloaded local GGUF models
+        await _seed_local_models(proxy)
 
         logger.info("ContextuAI Solo backend ready")
 

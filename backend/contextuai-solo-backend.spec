@@ -1,18 +1,30 @@
 # -*- mode: python ; coding: utf-8 -*-
-from PyInstaller.utils.hooks import collect_submodules
+from PyInstaller.utils.hooks import collect_submodules, collect_dynamic_libs
 
 hiddenimports = ['uvicorn.logging', 'uvicorn.loops', 'uvicorn.loops.auto', 'uvicorn.protocols', 'uvicorn.protocols.http', 'uvicorn.protocols.http.auto', 'uvicorn.protocols.websockets', 'uvicorn.protocols.websockets.auto', 'uvicorn.lifespan', 'uvicorn.lifespan.on', 'sqlite3', 'aiosqlite', 'apscheduler', 'apscheduler.schedulers.background', 'apscheduler.jobstores.sqlalchemy', 'sqlalchemy', 'pydantic', 'pydantic_settings', 'anyio', 'anyio._backends', 'anyio._backends._asyncio', 'starlette', 'sse_starlette', 'httpx', 'httpx_sse', 'multipart', 'motor', 'asyncpg', 'asyncpg.pgproto.pgproto', 'asyncpg.pgproto', 'asyncpg.protocol', 'asyncpg.protocol.protocol']
 hiddenimports += collect_submodules('strands')
 hiddenimports += collect_submodules('strands_tools')
 hiddenimports += collect_submodules('pydantic')
 hiddenimports += collect_submodules('asyncpg')
+hiddenimports += ['llama_cpp', 'onnxruntime', 'huggingface_hub', 'tokenizers']
+
+# Native libraries for llama-cpp-python and onnxruntime
+extra_binaries = []
+try:
+    extra_binaries += collect_dynamic_libs('llama_cpp')
+except Exception:
+    pass
+try:
+    extra_binaries += collect_dynamic_libs('onnxruntime')
+except Exception:
+    pass
 
 
 a = Analysis(
     ['__main__.py'],
     pathex=['.'],
-    binaries=[],
-    datas=[('../agent-library', 'agent-library')],
+    binaries=extra_binaries,
+    datas=[('../agent-library', 'agent-library'), ('../models/embedding/all-MiniLM-L6-v2', 'models/embedding/all-MiniLM-L6-v2')],
     hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},

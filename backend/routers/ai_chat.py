@@ -253,10 +253,7 @@ async def ai_chat(request: ChatRequest, http_request: Request = None):
             )
 
         if not user_id:
-            raise HTTPException(
-                status_code=400,
-                detail="userId is required"
-            )
+            user_id = "desktop-user"  # Default for desktop app (single user)
 
         # Get or create session
         session = await get_or_create_session(
@@ -375,6 +372,124 @@ async def ai_chat(request: ChatRequest, http_request: Request = None):
                 logger.warning(f"⚠️ Model config not found for {model_id}, using as-is")
         except Exception as e:
             logger.warning(f"⚠️ Error resolving model config: {e}, using model_id as-is")
+
+        # ── Local GGUF model intercept ─────────────────────────────────
+        # If the resolved model config is a local GGUF model, use
+        # LocalModelService (llama-cpp-python) directly.
+        from services.local_model_service import LocalModelService, local_model_service
+        if model_config and LocalModelService.is_local_model(model_config):
+            logger.info(f"🖥️ ROUTING: Local model detected ({model_config.get('name')}), using LocalModelService")
+
+            # Store user message
+            user_message_id = await store_message(session_id, "user", request.prompt)
+
+            # Build persona context
+            persona_context = None
+            if request.persona_id:
+                try:
+                    persona_service = PersonaService()
+                    persona_context = await persona_service.build_persona_context(request.persona_id)
+                except Exception as e:
+                    logger.warning(f"⚠️ Failed to build persona context: {e}")
+
+            # Convert history_messages from Strands format to simple format
+            simple_history = []
+            for msg in history_messages:
+                role = msg.get("role", "user")
+                content_parts = msg.get("content", [])
+                text = content_parts[0].get("text", "") if content_parts else ""
+                if text:
+                    simple_history.append({"role": role, "content": text})
+
+            if request.stream:
+                logger.info("🚀 Starting Local model streaming response...")
+
+                async def local_event_generator() -> AsyncGenerator[str, None]:
+                    collected_response = []
+                    try:
+                        gen = await local_model_service.call_model(
+                            prompt=request.prompt,
+                            model_id=model_id,
+                            persona_context=persona_context,
+                            conversation_history=simple_history,
+                            max_tokens=request.max_tokens,
+                            temperature=request.temperature,
+                            stream=True,
+                            model_config=model_config,
+                        )
+                        async for chunk in gen:
+                            text = chunk.get("chunk", "")
+                            if text:
+                                collected_response.append(text)
+                                yield f"data: {json.dumps({'chunk': text})}\n\n"
+                    except Exception as e:
+                        logger.error(f"❌ Local model streaming error: {e}")
+                        yield f"data: {json.dumps({'chunk': f'Error: {e}', 'error': True})}\n\n"
+
+                    yield "data: [DONE]\n\n"
+
+                    full_response = "".join(collected_response)
+                    await store_message(session_id, "assistant", full_response)
+                    await update_session_stats(session_id)
+                    if is_first_message and full_response:
+                        try:
+                            await update_session_title_from_first_message(session_id, request.prompt, max_length=20)
+                        except Exception:
+                            pass
+
+                    response_time_ms = int((time.time() - request_start_time) * 1000)
+                    await capture_chat_analytics(
+                        user_id=user_id, session_id=session_id, model_id=model_id,
+                        persona_id=request.persona_id,
+                        input_tokens=len(request.prompt.split()) * 2,
+                        output_tokens=len(full_response.split()) * 2,
+                        response_time_ms=response_time_ms, is_streaming=True,
+                        status=EventStatus.SUCCESS,
+                    )
+
+                return StreamingResponse(local_event_generator(), media_type="text/plain")
+            else:
+                result = await local_model_service.call_model(
+                    prompt=request.prompt,
+                    model_id=model_id,
+                    persona_context=persona_context,
+                    conversation_history=simple_history,
+                    max_tokens=request.max_tokens,
+                    temperature=request.temperature,
+                    stream=False,
+                    model_config=model_config,
+                )
+                response_str = result.get("content", "")
+                await store_message(session_id, "assistant", response_str)
+                await update_session_stats(session_id)
+                if is_first_message and response_str:
+                    try:
+                        await update_session_title_from_first_message(session_id, request.prompt, max_length=20)
+                    except Exception:
+                        pass
+
+                response_time_ms = int((time.time() - request_start_time) * 1000)
+                tokens_used = result.get("tokens_used", {})
+                await capture_chat_analytics(
+                    user_id=user_id, session_id=session_id, model_id=model_id,
+                    persona_id=request.persona_id,
+                    input_tokens=tokens_used.get("input_tokens", 0),
+                    output_tokens=tokens_used.get("output_tokens", 0),
+                    response_time_ms=response_time_ms, is_streaming=False,
+                    status=EventStatus.SUCCESS,
+                )
+
+                return JSONResponse(content={
+                    "result": response_str,
+                    "session": session_id,
+                    "status": "success",
+                    "user_message_id": user_message_id,
+                    "metadata": {
+                        "model_id": model_id,
+                        "response_time_ms": response_time_ms,
+                        "tokens_used": tokens_used,
+                    },
+                })
 
         # ── Ollama local model intercept ──────────────────────────────
         # If the resolved model config is an Ollama model, bypass Strands

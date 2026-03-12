@@ -12,8 +12,17 @@ import {
   Loader2,
   X,
   Info,
+  Monitor,
+  Download,
+  ExternalLink,
 } from "lucide-react";
 import logoImg from "@/assets/logo.png";
+import {
+  startDownload,
+  loadModel,
+  streamDownloadProgress,
+  type DownloadProgress,
+} from "@/lib/api/local-models-client";
 
 type WizardStep = 1 | 2 | 3;
 
@@ -29,7 +38,24 @@ interface WizardData {
   contentTopics: string[];
 }
 
+const LOCAL_MODELS = [
+  { id: "gemma-3-1b", name: "Gemma 3 1B", maker: "Google", size: "756 MB", tag: "Basic", url: "https://huggingface.co/bartowski/google_gemma-3-1b-it-GGUF" },
+  { id: "qwen2.5-1.5b", name: "Qwen 2.5 1.5B", maker: "Alibaba", size: "1 GB", tag: "Recommended", url: "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF" },
+  { id: "qwen2.5-3b", name: "Qwen 2.5 3B", maker: "Alibaba", size: "2 GB", tag: "Best quality", url: "https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF" },
+];
+
 const PROVIDERS = [
+  {
+    id: "local",
+    name: "Local AI",
+    subtitle: "Free & private. Runs on\nyour computer.",
+    icon: Monitor,
+    iconBg: "bg-emerald-100 dark:bg-emerald-500/20",
+    iconColor: "text-emerald-600 dark:text-emerald-400",
+    badge: "Free",
+    badgeColor: "bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400",
+    models: LOCAL_MODELS.map((m) => ({ id: m.id, name: `${m.name} by ${m.maker} (${m.size})`, tag: m.tag })),
+  },
   {
     id: "anthropic",
     name: "Anthropic",
@@ -94,7 +120,7 @@ const PROVIDERS = [
   {
     id: "bedrock",
     name: "AWS Bedrock",
-    subtitle: "For users with AWS accounts.",
+    subtitle: "For users with existing\nAWS accounts.",
     icon: Cloud,
     iconBg: "bg-orange-100 dark:bg-orange-500/20",
     iconColor: "text-orange-600 dark:text-orange-400",
@@ -250,6 +276,10 @@ export default function WizardPage() {
   const [step, setStep] = useState<WizardStep>(1);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<"success" | "error" | null>(null);
+  const [downloading, setDownloading] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState<DownloadProgress | null>(null);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+  const downloadCancelRef = useRef<{ cancel: () => void } | null>(null);
   const [data, setData] = useState<WizardData>({
     name: "",
     provider: "",
@@ -391,7 +421,45 @@ export default function WizardPage() {
   // ── Step 2: AI Provider ───────────────────────────────────────
 
   if (step === 2) {
-    const needsKey = data.provider && data.provider !== "ollama";
+    const needsKey = data.provider && data.provider !== "ollama" && data.provider !== "local";
+    const isLocal = data.provider === "local";
+
+    const handleLocalDownload = async () => {
+      if (!data.model) return;
+      setDownloading(true);
+      setDownloadError(null);
+      setDownloadProgress(null);
+
+      try {
+        await startDownload(data.model);
+        // Start polling progress via SSE
+        const stream = streamDownloadProgress(
+          (progress) => {
+            setDownloadProgress(progress);
+            if (progress.status === "complete") {
+              setDownloading(false);
+              // Auto-load the model
+              loadModel(data.model).catch(() => {});
+              setTestResult("success");
+              downloadCancelRef.current = null;
+            } else if (progress.status === "error") {
+              setDownloading(false);
+              setDownloadError(progress.error || "Download failed");
+              downloadCancelRef.current = null;
+            }
+          },
+          (err) => {
+            setDownloading(false);
+            setDownloadError(err);
+            downloadCancelRef.current = null;
+          }
+        );
+        downloadCancelRef.current = stream;
+      } catch (err) {
+        setDownloading(false);
+        setDownloadError(String(err));
+      }
+    };
 
     return (
       <div className="min-h-screen bg-neutral-50 dark:bg-[#242523] flex flex-col">
@@ -409,8 +477,8 @@ export default function WizardPage() {
             </h1>
 
             {/* Provider grid */}
-            <div className="grid grid-cols-2 gap-3 mb-3">
-              {PROVIDERS.slice(0, 4).map((provider) => {
+            <div className="grid grid-cols-2 gap-3 mb-6">
+              {PROVIDERS.map((provider) => {
                 const Icon = provider.icon;
                 const selected = data.provider === provider.id;
                 return (
@@ -451,40 +519,6 @@ export default function WizardPage() {
                 );
               })}
             </div>
-
-            {/* Bedrock - full width */}
-            {(() => {
-              const bedrock = PROVIDERS[4];
-              const Icon = bedrock.icon;
-              const selected = data.provider === bedrock.id;
-              return (
-                <button
-                  onClick={() => {
-                    update("provider", bedrock.id);
-                    update("model", bedrock.models[0].id);
-                    setTestResult(null);
-                  }}
-                  className={cn(
-                    "w-full flex items-center gap-3 p-4 rounded-xl border-2 text-left transition-all mb-6",
-                    selected
-                      ? "border-primary-500 bg-primary-50/50 dark:bg-primary-500/5"
-                      : "border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 hover:border-neutral-300 dark:hover:border-neutral-700"
-                  )}
-                >
-                  <div className={cn("p-2 rounded-lg", bedrock.iconBg)}>
-                    <Icon className={cn("w-4 h-4", bedrock.iconColor)} />
-                  </div>
-                  <div>
-                    <span className="text-sm font-semibold text-neutral-900 dark:text-white">
-                      {bedrock.name}
-                    </span>
-                    <span className="text-[11px] text-neutral-500 dark:text-neutral-400 ml-2">
-                      {bedrock.subtitle}
-                    </span>
-                  </div>
-                </button>
-              );
-            })()}
 
             {/* API Key section */}
             {needsKey && (
@@ -567,19 +601,37 @@ export default function WizardPage() {
                         )}>
                           {m.name}
                         </span>
+                        {/* HuggingFace link for local models */}
+                        {isLocal && (() => {
+                          const lm = LOCAL_MODELS.find((l) => l.id === m.id);
+                          return lm?.url ? (
+                            <a
+                              href={lm.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              className="text-neutral-400 hover:text-primary-500 transition-colors"
+                              title={`View on HuggingFace (by ${lm.maker})`}
+                            >
+                              <ExternalLink className="w-3 h-3" />
+                            </a>
+                          ) : null;
+                        })()}
                       </div>
-                      {m.tag && (
-                        <span className={cn(
-                          "text-[10px] font-medium px-2 py-0.5 rounded-full",
-                          m.tag === "Recommended"
-                            ? "bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400"
-                            : m.tag === "Budget"
-                              ? "bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400"
-                              : "bg-neutral-100 text-neutral-600 dark:bg-neutral-700 dark:text-neutral-300"
-                        )}>
-                          {m.tag}
-                        </span>
-                      )}
+                      <div className="flex items-center gap-2">
+                        {m.tag && (
+                          <span className={cn(
+                            "text-[10px] font-medium px-2 py-0.5 rounded-full",
+                            m.tag === "Recommended"
+                              ? "bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400"
+                              : m.tag === "Budget"
+                                ? "bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400"
+                                : "bg-neutral-100 text-neutral-600 dark:bg-neutral-700 dark:text-neutral-300"
+                          )}>
+                            {m.tag}
+                          </span>
+                        )}
+                      </div>
                     </button>
                   ))}
                 </div>
@@ -594,6 +646,71 @@ export default function WizardPage() {
                     >
                       Check {selectedProvider.name} pricing
                     </a>
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Local AI download section — after model selector */}
+            {isLocal && (
+              <div className="space-y-3 mb-4">
+                {!downloading && testResult !== "success" && (
+                  <button
+                    onClick={handleLocalDownload}
+                    disabled={!data.model}
+                    className={cn(
+                      "w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold transition-all",
+                      data.model
+                        ? "bg-emerald-500 hover:bg-emerald-600 text-white shadow-lg shadow-emerald-500/25"
+                        : "bg-neutral-200 dark:bg-neutral-700 text-neutral-400 cursor-not-allowed"
+                    )}
+                  >
+                    <Download className="w-4 h-4" />
+                    Download & Continue
+                  </button>
+                )}
+
+                {downloading && downloadProgress && (
+                  <div className="p-4 bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-800 rounded-xl">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-medium text-emerald-700 dark:text-emerald-400">
+                        Downloading model...
+                      </span>
+                      <span className="text-xs text-emerald-600 dark:text-emerald-400">
+                        {downloadProgress.percent}%
+                      </span>
+                    </div>
+                    <div className="w-full h-2 bg-emerald-200 dark:bg-emerald-900 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-emerald-500 rounded-full transition-all duration-300"
+                        style={{ width: `${downloadProgress.percent}%` }}
+                      />
+                    </div>
+                    <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1.5">
+                      {(downloadProgress.bytes_downloaded / 1024 / 1024).toFixed(0)} MB
+                      {downloadProgress.bytes_total > 0 && ` / ${(downloadProgress.bytes_total / 1024 / 1024).toFixed(0)} MB`}
+                    </p>
+                  </div>
+                )}
+
+                {downloading && !downloadProgress && (
+                  <div className="flex items-center justify-center gap-2 py-4">
+                    <Loader2 className="w-4 h-4 animate-spin text-emerald-500" />
+                    <span className="text-sm text-neutral-500">Starting download...</span>
+                  </div>
+                )}
+
+                {testResult === "success" && isLocal && (
+                  <div className="p-4 bg-green-50 dark:bg-green-500/10 border border-green-200 dark:border-green-800 rounded-xl">
+                    <p className="text-sm text-green-700 dark:text-green-400 flex items-center gap-1.5">
+                      <Check className="w-4 h-4" /> Model downloaded and loaded! Ready to chat.
+                    </p>
+                  </div>
+                )}
+
+                {downloadError && (
+                  <p className="text-sm text-red-500">
+                    Download failed: {downloadError}
                   </p>
                 )}
               </div>

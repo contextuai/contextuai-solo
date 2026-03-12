@@ -42,6 +42,11 @@ test-results/
 playwright-report/
 coverage/
 
+# Local AI models
+models/embedding/
+models/chat/
+*.gguf
+
 # Misc
 *.log
 *.bak

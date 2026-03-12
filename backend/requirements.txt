@@ -54,6 +54,12 @@ Jinja2>=3.1.0
 # Ollama for local models
 ollama>=0.4.0
 
+# Local GGUF model inference (bundled local AI)
+llama-cpp-python>=0.3.0
+onnxruntime>=1.17.0
+huggingface-hub>=0.20.0
+tokenizers>=0.15.0
+
 # Slack integration (for Slack persona)
 slack-bolt>=1.20.0
 

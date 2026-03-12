@@ -64,10 +64,22 @@ export default function ChatPage() {
     try {
       const data = await getModels();
       setModels(data);
-      // Select first enabled model as default
-      const first = data.find((m) => m.enabled);
-      if (first && !selectedModelId) {
-        setSelectedModelId(first.id);
+      if (!selectedModelId) {
+        // If user chose "local" in wizard, prefer the local model
+        const savedProvider = localStorage.getItem("contextuai-solo-provider");
+        const savedModel = localStorage.getItem("contextuai-solo-model");
+        if (savedProvider === "local" && savedModel) {
+          const localMatch = data.find((m) => m.id === `local-${savedModel}` && m.enabled);
+          if (localMatch) {
+            setSelectedModelId(localMatch.id);
+            return;
+          }
+        }
+        // Otherwise select first enabled model
+        const first = data.find((m) => m.enabled);
+        if (first) {
+          setSelectedModelId(first.id);
+        }
       }
     } catch (err) {
       console.warn("Failed to load models:", err);
