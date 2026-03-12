@@ -97,11 +97,11 @@ _DEFAULT_PERSONA_TYPES = [
     {"id": "mssql", "name": "Microsoft SQL Server", "description": "Microsoft SQL Server database", "category": "data_analytics", "icon": "🗄️", "enabled": True, "status": "active"},
     {"id": "snowflake", "name": "Snowflake", "description": "Snowflake cloud data warehouse", "category": "data_analytics", "icon": "❄️", "enabled": True, "status": "active"},
     {"id": "mongodb", "name": "MongoDB", "description": "MongoDB NoSQL database", "category": "data_analytics", "icon": "🍃", "enabled": True, "status": "active"},
-    {"id": "github", "name": "GitHub", "description": "GitHub code repository", "category": "development", "icon": "🐙", "enabled": True, "status": "active"},
-    {"id": "gitlab", "name": "GitLab", "description": "GitLab code repository and CI/CD", "category": "development", "icon": "🦊", "enabled": True, "status": "active"},
+    {"id": "mcp", "name": "MCP Server", "description": "Connect to Model Context Protocol servers for tools and resources", "category": "integration", "icon": "🔗", "enabled": True, "status": "active"},
     {"id": "api_integration", "name": "API Connector", "description": "Connect to REST APIs, GraphQL, and webhooks", "category": "integration", "icon": "🔌", "enabled": True, "status": "active"},
     {"id": "file_operations", "name": "File Operations", "description": "Read, write, and manage files", "category": "utilities", "icon": "📁", "enabled": True, "status": "active"},
     {"id": "slack", "name": "Slack", "description": "Slack messaging platform", "category": "communication", "icon": "💬", "enabled": True, "status": "active"},
+    {"id": "twitter", "name": "Twitter / X", "description": "Post and manage content on Twitter/X", "category": "communication", "icon": "🐦", "enabled": True, "status": "active"},
 ]
 
 
@@ -161,8 +161,9 @@ async def _seed_agent_library(db):
         from services.workspace.agent_library_service import AgentLibraryService
         library = AgentLibraryService()
 
+        # Use the env var directly (class attr may have been resolved before we set it)
         from pathlib import Path
-        library_path = Path(library.LIBRARY_PATH)
+        library_path = Path(os.environ.get("AGENT_LIBRARY_PATH", library.LIBRARY_PATH))
         if not library_path.exists():
             logger.warning("Agent library not found at %s — skipping seed", library_path)
             return

@@ -326,12 +326,6 @@ export default function ChatPage() {
 
       <div className="flex-1 flex flex-col min-w-0">
         <ChatHeader
-          models={models}
-          personas={personas}
-          selectedModelId={selectedModelId}
-          selectedPersonaId={selectedPersonaId}
-          onSelectModel={setSelectedModelId}
-          onSelectPersona={setSelectedPersonaId}
           sessionTitle={sessionTitle}
           onRenameSession={handleRenameSession}
         />
@@ -348,6 +342,12 @@ export default function ChatPage() {
           onSend={handleSend}
           onStop={handleStop}
           isStreaming={isStreaming}
+          models={models}
+          personas={personas}
+          selectedModelId={selectedModelId}
+          selectedPersonaId={selectedPersonaId}
+          onSelectModel={setSelectedModelId}
+          onSelectPersona={setSelectedPersonaId}
         />
       </div>
     </div>
