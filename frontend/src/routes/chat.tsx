@@ -171,7 +171,7 @@ export default function ChatPage() {
       // Create backend session
       try {
         const created = await createSession({
-          title: prompt.slice(0, 60),
+          title: prompt.slice(0, 30),
           modelId: selectedModelId || undefined,
           personaId: selectedPersonaId || undefined,
         });
@@ -179,7 +179,7 @@ export default function ChatPage() {
           created.id || created.sessionId || created.session_id || newId;
         sessionId = realId;
         setActiveSessionId(realId);
-        setSessionTitle(prompt.slice(0, 60));
+        setSessionTitle(prompt.slice(0, 30));
 
         // Add to sessions list
         setSessions((prev) => [created, ...prev]);

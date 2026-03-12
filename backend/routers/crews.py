@@ -27,7 +27,7 @@ from pydantic import BaseModel, Field
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from database import get_database
-from services.auth_service import get_current_user
+from services.auth_service import get_current_user, get_current_user_optional
 from models.crew_models import (
     CreateCrewRequest,
     UpdateCrewRequest,
@@ -132,11 +132,11 @@ async def list_library_agents(
     search: Optional[str] = Query(None, description="Text search on name/description"),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(get_current_user_optional),
     agent_repo: WorkspaceAgentRepository = Depends(get_agent_repo),
 ):
     """List workspace agents available for crew assignment, with suggested role mapping."""
-    query_filter: dict = {"is_active": True}
+    query_filter: dict = {"is_active": {"$ne": False}}
     if category:
         query_filter["category"] = category
     if search:
@@ -179,7 +179,7 @@ async def list_library_agents(
 @router.get("/library-agents/{agent_id}")
 async def get_library_agent_detail(
     agent_id: str,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(get_current_user_optional),
     agent_repo: WorkspaceAgentRepository = Depends(get_agent_repo),
 ):
     """Get full workspace agent detail including system_prompt for snapshotting into a crew."""

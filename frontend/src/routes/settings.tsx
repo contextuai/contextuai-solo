@@ -267,6 +267,31 @@ const CONNECTION_DEFS = [
     helpUrl: "https://api.slack.com/messaging/webhooks",
     helpLabel: "Create an incoming webhook",
   },
+  {
+    id: "instagram",
+    name: "Instagram",
+    description: "Post photos, stories, and reels to your Instagram business account",
+    icon: Share2,
+    color: "from-pink-500 to-rose-600",
+    fields: [
+      { key: "access_token", label: "Access Token", type: "password" as const, placeholder: "Enter your Instagram API Access Token" },
+    ],
+    helpUrl: "https://developers.facebook.com/docs/instagram-api/",
+    helpLabel: "Get API access at developers.facebook.com",
+  },
+  {
+    id: "facebook",
+    name: "Facebook",
+    description: "Publish posts and manage your Facebook business page",
+    icon: Globe,
+    color: "from-blue-600 to-indigo-600",
+    fields: [
+      { key: "page_access_token", label: "Page Access Token", type: "password" as const, placeholder: "Enter your Facebook Page Access Token" },
+      { key: "page_id", label: "Page ID", type: "text" as const, placeholder: "Enter your Facebook Page ID" },
+    ],
+    helpUrl: "https://developers.facebook.com/docs/pages-api/",
+    helpLabel: "Get API access at developers.facebook.com",
+  },
 ];
 
 function ConnectionsTab() {
