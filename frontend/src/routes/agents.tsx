@@ -61,7 +61,7 @@ export default function AgentsPage() {
   // Create dialog
   const [createOpen, setCreateOpen] = useState(false);
 
-  const loadAgents = async () => {
+  const loadAgents = async (retries = 3) => {
     try {
       setLoading(true);
       setError(null);
@@ -69,6 +69,11 @@ export default function AgentsPage() {
       setAgents(data);
     } catch (err) {
       console.error("Failed to load agents:", err);
+      if (retries > 0) {
+        // Backend may still be starting — retry after a short delay
+        setTimeout(() => loadAgents(retries - 1), 2000);
+        return;
+      }
       setError(err instanceof Error ? err.message : "Failed to load agents");
     } finally {
       setLoading(false);
@@ -152,7 +157,7 @@ export default function AgentsPage() {
               {agents.length} agent{agents.length !== 1 ? "s" : ""}
             </span>
             <button
-              onClick={loadAgents}
+              onClick={() => loadAgents()}
               disabled={loading}
               className="p-2 rounded-lg text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
               title="Refresh"

@@ -66,10 +66,19 @@ pub async fn start_sidecar(app_handle: &AppHandle) -> Result<(), String> {
 
         log::info!("Spawning sidecar from: {}", sidecar_exe.display());
 
-        let child = std::process::Command::new(&sidecar_exe)
-            .args(["--port", &port.to_string(), "--host", "127.0.0.1"])
-            .current_dir(&sidecar_dir)
-            .spawn()
+        let mut cmd = std::process::Command::new(&sidecar_exe);
+        cmd.args(["--port", &port.to_string(), "--host", "127.0.0.1"])
+            .current_dir(&sidecar_dir);
+
+        // Hide the console window on Windows
+        #[cfg(target_os = "windows")]
+        {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x08000000;
+            cmd.creation_flags(CREATE_NO_WINDOW);
+        }
+
+        let child = cmd.spawn()
             .map_err(|e| format!("Failed to start sidecar: {}", e))?;
 
         if let Ok(mut guard) = SIDECAR_CHILD.lock() {

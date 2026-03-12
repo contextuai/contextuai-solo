@@ -11,7 +11,7 @@ fn main() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
-        .plugin(tauri_plugin_notification::init())
+        // .plugin(tauri_plugin_notification::init()) // disabled — config deserialization issue
         .plugin(tauri_plugin_os::init())
         .setup(|app| {
             // Start the FastAPI sidecar
@@ -22,8 +22,16 @@ fn main() {
                 }
             });
 
-            // Setup system tray
-            tray::setup_tray(app)?;
+            // Setup system tray (non-fatal — don't block the window)
+            if let Err(e) = tray::setup_tray(app) {
+                log::error!("Failed to setup tray: {}", e);
+            }
+
+            // Ensure the main window is visible
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
 
             Ok(())
         })

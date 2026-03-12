@@ -102,18 +102,21 @@ _DEFAULT_PERSONA_TYPES = [
 
 
 async def _seed_persona_types(db):
-    """Seed default persona types if the collection is empty."""
+    """Seed default persona types, inserting any that are missing."""
     try:
         collection = db["persona_types"]
-        count = await collection.count_documents({})
-        if count > 0:
-            return
-
+        seeded = 0
         for pt in _DEFAULT_PERSONA_TYPES:
-            doc = {**pt, "_id": pt["id"]}
-            await collection.insert_one(doc)
+            existing = await collection.find_one({"_id": pt["id"]})
+            if existing is None:
+                doc = {**pt, "_id": pt["id"]}
+                await collection.insert_one(doc)
+                seeded += 1
 
-        logger.info("Seeded %d default persona types", len(_DEFAULT_PERSONA_TYPES))
+        if seeded:
+            logger.info("Seeded %d missing persona types (total: %d)", seeded, len(_DEFAULT_PERSONA_TYPES))
+        else:
+            logger.info("All %d persona types already present", len(_DEFAULT_PERSONA_TYPES))
     except Exception:
         logger.exception("Failed to seed persona types")
 
@@ -144,14 +147,12 @@ async def _seed_agent_library(db):
     Seed workspace agents from the on-disk markdown library.
 
     Reads each .md file via AgentLibraryService, skips the 'engineering'
-    category, and inserts lightweight catalog entries into the
-    ``workspace_agents`` collection.  Only runs when the collection is empty.
+    category, and upserts lightweight catalog entries into the
+    ``workspace_agents`` collection.  Missing agents are inserted; existing
+    ones are left untouched.
     """
     try:
         collection = db["workspace_agents"]
-        count = await collection.count_documents({})
-        if count > 0:
-            return
 
         from services.workspace.agent_library_service import AgentLibraryService
         library = AgentLibraryService()
@@ -163,6 +164,7 @@ async def _seed_agent_library(db):
             return
 
         seeded = 0
+        skipped = 0
         for category_dir in sorted(library_path.iterdir()):
             if not category_dir.is_dir():
                 continue
@@ -180,6 +182,12 @@ async def _seed_agent_library(db):
                     parsed = library.parse_agent_md(str(md_file))
 
                     agent_id = f"{category}-{parsed['slug']}"
+
+                    # Skip if already present
+                    existing = await collection.find_one({"_id": agent_id})
+                    if existing is not None:
+                        skipped += 1
+                        continue
 
                     # Use Role Definition / Identity section as description
                     # if the parser couldn't extract a standalone paragraph
@@ -219,7 +227,7 @@ async def _seed_agent_library(db):
                 except Exception:
                     logger.warning("Failed to parse agent: %s", md_file.name, exc_info=True)
 
-        logger.info("Seeded %d agents from library (excluded: %s)", seeded, _EXCLUDED_AGENT_CATEGORIES)
+        logger.info("Agent library: seeded %d new, %d existing (excluded: %s)", seeded, skipped, _EXCLUDED_AGENT_CATEGORIES)
     except Exception:
         logger.exception("Failed to seed agent library")
 

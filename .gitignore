@@ -19,6 +19,8 @@ frontend/.vite/
 
 # Tauri
 frontend/src-tauri/target/
+frontend/src-tauri/sidecar/
+frontend/src-tauri/gen/schemas/
 
 # IDE
 .vscode/

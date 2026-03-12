@@ -12,13 +12,16 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "ContextuAI Solo",
         "width": 1280,
         "height": 800,
         "minWidth": 800,
         "minHeight": 600,
         "resizable": true,
-        "fullscreen": false
+        "fullscreen": false,
+        "visible": true,
+        "center": true
       }
     ],
     "security": {
@@ -50,7 +53,6 @@
     }
   },
   "plugins": {
-    "shell": { "open": true },
-    "notification": { "all": true }
+    "shell": { "open": true }
   }
 }

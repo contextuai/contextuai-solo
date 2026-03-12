@@ -8,7 +8,7 @@ interface ApiResponse<T = unknown> {
   ok: boolean;
 }
 
-export async function apiRequest<T = unknown>(
+async function _singleApiRequest<T = unknown>(
   method: string,
   path: string,
   body?: unknown,
@@ -37,6 +37,37 @@ export async function apiRequest<T = unknown>(
     const data = await response.json() as T;
     return { data, status: response.status, ok: response.ok };
   }
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+export async function apiRequest<T = unknown>(
+  method: string,
+  path: string,
+  body?: unknown,
+  options?: { stream?: boolean; headers?: Record<string, string> }
+): Promise<ApiResponse<T>> {
+  // In Tauri mode, the sidecar backend may still be starting.
+  // Retry connection failures a few times with backoff.
+  if (!isTauri) {
+    return _singleApiRequest<T>(method, path, body, options);
+  }
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      return await _singleApiRequest<T>(method, path, body, options);
+    } catch (err) {
+      lastError = err;
+      // Only retry on connection-level errors (sidecar not ready)
+      const msg = String(err);
+      if (msg.includes("connection") || msg.includes("Connection") || msg.includes("os error") || msg.includes("Failed to fetch")) {
+        await sleep(1500 * (attempt + 1));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastError;
 }
 
 // Convenience methods
