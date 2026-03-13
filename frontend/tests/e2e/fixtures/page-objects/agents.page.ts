@@ -41,9 +41,9 @@ export class AgentsPage {
     ).filter({ has: this.page.locator("h3") });
   }
 
-  /** The "Create Agent" button. */
+  /** The "Create Agent" button (header — always visible). */
   get createButton(): Locator {
-    return this.page.getByRole("button", { name: /create agent/i });
+    return this.page.getByRole("button", { name: /create agent/i }).first();
   }
 
   /** The refresh button. */
@@ -60,12 +60,12 @@ export class AgentsPage {
 
   /** Agent count text in the header. */
   get agentCountText(): Locator {
-    return this.page.locator("span").filter({ hasText: /\d+ agents?/ });
+    return this.page.locator("span").filter({ hasText: /\d+ agents?/ }).first();
   }
 
   /** Empty state when no agents match. */
   get emptyState(): Locator {
-    return this.page.getByText(/no agents/i);
+    return this.page.locator("h3").filter({ hasText: /no agents/i });
   }
 
   // ── Actions ─────────────────────────────────────────────────────

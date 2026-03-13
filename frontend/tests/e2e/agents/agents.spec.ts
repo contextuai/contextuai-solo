@@ -39,7 +39,8 @@ test.describe("CRUD via UI", () => {
     }
 
     const names = await agents.getAgentNames();
-    const searchTerm = names[0].slice(0, 8);
+    // Use a unique enough substring from the first agent name
+    const searchTerm = names[0];
 
     await agents.searchAgents(searchTerm);
 
@@ -47,10 +48,9 @@ test.describe("CRUD via UI", () => {
     expect(filteredCount).toBeGreaterThanOrEqual(1);
     expect(filteredCount).toBeLessThanOrEqual(cardCount);
 
+    // The searched agent should be in the results
     const filteredNames = await agents.getAgentNames();
-    for (const name of filteredNames) {
-      expect(name.toLowerCase()).toContain(searchTerm.toLowerCase());
-    }
+    expect(filteredNames).toContain(searchTerm);
   });
 
   // DC-AGENT-03: Filter agents by role

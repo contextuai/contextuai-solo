@@ -27,6 +27,15 @@ export interface CreatePersonaRequest {
   system_prompt?: string;
 }
 
+export interface CredentialField {
+  name: string;
+  label: string;
+  placeholder?: string;
+  type: "text" | "email" | "password" | "number" | "boolean" | "textarea" | "select" | "url";
+  required: boolean;
+  options?: string[];
+}
+
 export interface PersonaType {
   id: string;
   name: string;
@@ -34,6 +43,7 @@ export interface PersonaType {
   category: string;
   icon?: string;
   enabled: boolean;
+  credentialFields?: CredentialField[];
 }
 
 export async function getPersonaTypes(): Promise<PersonaType[]> {
@@ -75,4 +85,22 @@ export async function updatePersona(id: string, persona: Partial<CreatePersonaRe
 
 export async function deletePersona(id: string): Promise<void> {
   await api.delete(`/personas/${id}`);
+}
+
+export interface TestConnectionResult {
+  success: boolean;
+  message?: string;
+  error?: string;
+  response_time_ms?: number;
+}
+
+export async function testConnection(
+  personaTypeId: string,
+  credentials: Record<string, unknown>,
+): Promise<TestConnectionResult> {
+  const { data } = await api.post<TestConnectionResult>("/personas/test-connection", {
+    persona_type_id: personaTypeId,
+    credentials,
+  });
+  return data;
 }

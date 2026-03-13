@@ -81,7 +81,7 @@ test.describe("Positive Workflows", () => {
       await expect(workspace.emptyState).toBeVisible();
 
       // Empty state should also have a "New Brainstorm" button
-      const emptyStateBtn = page.locator("button", { hasText: "New Brainstorm" });
+      const emptyStateBtn = page.locator("button").filter({ hasText: "New Brainstorm" }).first();
       await expect(emptyStateBtn).toBeVisible();
     } else {
       expect(projectCount).toBeGreaterThan(0);

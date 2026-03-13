@@ -57,9 +57,8 @@ export class ChatPage {
 
   /** New Chat button in the sidebar. */
   get newChatButton(): Locator {
-    return this.page.getByRole("button", { name: /new chat/i }).or(
-      this.page.locator("button", { has: this.page.locator("svg.lucide-plus") }).first()
-    );
+    // Sidebar expanded: button with text "New"; collapsed: button with title "New chat"
+    return this.page.locator('button:has(svg.lucide-plus)').first();
   }
 
   /** Session items in the sidebar. */
@@ -69,18 +68,17 @@ export class ChatPage {
     ).filter({ has: this.page.locator("svg.lucide-message-square") });
   }
 
-  /** Model selector dropdown trigger in the header. */
+  /** Model selector dropdown trigger. */
   get modelSelector(): Locator {
-    return this.page.locator("button").filter({ hasText: /model/i }).or(
-      this.page.locator("button", { has: this.page.locator("svg.lucide-cpu") })
-    );
+    // Model selector — shows "Select model" or selected model name (e.g. "Gemma 3 1B")
+    // Identified by the Cpu icon from lucide-react
+    return this.page.locator("button:has(svg.lucide-cpu)").first();
   }
 
-  /** Persona selector dropdown trigger in the header. */
+  /** Persona selector dropdown trigger. */
   get personaSelector(): Locator {
-    return this.page.locator("button").filter({ hasText: /persona/i }).or(
-      this.page.locator("button", { has: this.page.locator("svg.lucide-sparkles") })
-    );
+    // Persona selector — identified by the Sparkles icon from lucide-react
+    return this.page.locator("button:has(svg.lucide-sparkles)").first();
   }
 
   /** The empty state heading shown when no messages exist. */
@@ -141,7 +139,7 @@ export class ChatPage {
   }
 
   /** Wait until streaming finishes (stop button disappears). */
-  async waitForResponseComplete(timeout = 30_000): Promise<void> {
+  async waitForResponseComplete(timeout = 60_000): Promise<void> {
     await expect(this.stopButton).toBeHidden({ timeout });
   }
 

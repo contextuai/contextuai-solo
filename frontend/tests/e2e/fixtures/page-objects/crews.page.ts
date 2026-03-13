@@ -33,7 +33,7 @@ export class CrewsPage {
 
   /** The "Create Crew" button. */
   get createButton(): Locator {
-    return this.page.getByRole("button", { name: /create crew/i });
+    return this.page.getByRole("button", { name: /create crew/i }).first();
   }
 
   /** Search input. */

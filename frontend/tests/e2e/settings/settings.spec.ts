@@ -69,7 +69,7 @@ test.describe("CRUD via UI", () => {
     await settings.switchTab("Brand Voice");
 
     await expect(page.locator("text=Business Name")).toBeVisible();
-    await expect(page.locator("text=Industry")).toBeVisible();
+    await expect(page.getByText("Industry", { exact: true })).toBeVisible();
     await expect(page.locator("text=Brand Description")).toBeVisible();
     await expect(page.locator("text=Target Audience")).toBeVisible();
     await expect(page.locator("text=Content Topics")).toBeVisible();
@@ -148,8 +148,7 @@ test.describe("Positive Workflows", () => {
   test("DC-SETTINGS-10: about tab shows version info", async ({ page }) => {
     await settings.switchTab("About");
 
-    await expect(page.locator("text=ContextuAI")).toBeVisible();
-    await expect(page.locator("text=Solo")).toBeVisible();
+    await expect(page.getByRole("heading", { name: /ContextuAI Solo/i })).toBeVisible();
     await expect(settings.versionText).toBeVisible();
 
     await expect(page.locator("text=Built with")).toBeVisible();

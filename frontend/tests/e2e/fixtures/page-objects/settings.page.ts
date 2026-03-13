@@ -46,14 +46,14 @@ export class SettingsPage {
   /** Theme selection buttons (Light, Dark, System). */
   get themeButtons(): Locator {
     return this.page.locator("button").filter({
-      hasText: /^(Light|Dark|System)$/,
+      has: this.page.locator("span", { hasText: /^(Light|Dark|System)$/ }),
     });
   }
 
   /** Font size selection buttons. */
   get fontSizeButtons(): Locator {
     return this.page.locator("button").filter({
-      hasText: /^(Small|Medium|Large)$/,
+      has: this.page.locator("span", { hasText: /^(Small|Medium|Large)$/ }),
     });
   }
 

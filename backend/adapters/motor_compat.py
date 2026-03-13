@@ -275,6 +275,17 @@ class CollectionProxy:
             return_document=return_document,
         )
 
+    async def update_one(
+        self,
+        filter: Dict[str, Any],
+        update: Dict[str, Any],
+        upsert: bool = False,
+        **kwargs: Any,
+    ) -> UpdateResult:
+        normalized = _normalize_filter(filter)
+        modified = await self._adapter.update_one(self._collection, normalized, update, upsert=upsert)
+        return UpdateResult(modified_count=modified, matched_count=modified)
+
     async def update_many(
         self,
         filter: Dict[str, Any],

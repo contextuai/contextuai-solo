@@ -15,6 +15,9 @@ import {
   Bot,
   Plug,
   RefreshCw,
+  Loader2,
+  Check,
+  AlertCircle,
 } from "lucide-react";
 import {
   getPersonas,
@@ -22,8 +25,10 @@ import {
   createPersona,
   updatePersona,
   deletePersona,
+  testConnection,
   type Persona,
   type PersonaType,
+  type CredentialField,
   type CreatePersonaRequest,
 } from "@/lib/api/personas-client";
 
@@ -49,6 +54,7 @@ interface PersonaFormData {
   type: string;
   system_prompt: string;
   category: string;
+  credentials: Record<string, string>;
 }
 
 const emptyForm: PersonaFormData = {
@@ -57,6 +63,7 @@ const emptyForm: PersonaFormData = {
   type: "generic",
   system_prompt: "",
   category: "General",
+  credentials: {},
 };
 
 export default function PersonasPage() {
@@ -70,6 +77,8 @@ export default function PersonasPage() {
   const [saving, setSaving] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [personaTypes, setPersonaTypes] = useState<PersonaType[]>([]);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
 
   const loadPersonas = useCallback(async () => {
     setLoading(true);
@@ -113,9 +122,10 @@ export default function PersonasPage() {
     setForm({
       name: persona.name,
       description: persona.description || "",
-      type: persona.type || "chat",
+      type: persona.type || "generic",
       system_prompt: persona.system_prompt || "",
       category: persona.category || "General",
+      credentials: ((persona as unknown as Record<string, unknown>).credentials as Record<string, string>) || {},
     });
     setEditingId(persona.id);
     setShowForm(true);
@@ -132,6 +142,7 @@ export default function PersonasPage() {
         type: form.type,
         system_prompt: form.system_prompt || undefined,
         category: form.category,
+        credentials: form.credentials,
       };
 
       if (editingId) {
@@ -335,10 +346,79 @@ export default function PersonasPage() {
       )}
 
       {/* Create/Edit modal */}
-      {showForm && (
+      {showForm && (() => {
+        const selectedType = personaTypes.find((pt) => pt.id === form.type);
+        const credFields = selectedType?.credentialFields ?? [];
+
+        function updateCredential(fieldName: string, value: string) {
+          setForm((prev) => ({
+            ...prev,
+            credentials: { ...prev.credentials, [fieldName]: value },
+          }));
+        }
+
+        function renderCredentialField(field: CredentialField) {
+          const inputClass = "w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-sm text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-primary-500/50";
+          const val = form.credentials[field.name] ?? "";
+
+          if (field.type === "textarea") {
+            return (
+              <textarea
+                value={val}
+                onChange={(e) => updateCredential(field.name, e.target.value)}
+                rows={4}
+                placeholder={field.placeholder}
+                className={cn(inputClass, "resize-none font-mono")}
+              />
+            );
+          }
+
+          if (field.type === "select" && field.options) {
+            return (
+              <select
+                value={val}
+                onChange={(e) => updateCredential(field.name, e.target.value)}
+                className={inputClass}
+              >
+                <option value="">Select...</option>
+                {field.options.map((opt) => (
+                  <option key={opt} value={opt}>{opt}</option>
+                ))}
+              </select>
+            );
+          }
+
+          if (field.type === "boolean") {
+            return (
+              <label className="flex items-center gap-2 text-sm text-neutral-700 dark:text-neutral-300">
+                <input
+                  type="checkbox"
+                  checked={val === "true"}
+                  onChange={(e) => updateCredential(field.name, e.target.checked ? "true" : "false")}
+                  className="rounded border-neutral-300 dark:border-neutral-600 text-primary-500 focus:ring-primary-500/50"
+                />
+                {field.label}
+              </label>
+            );
+          }
+
+          const inputType = field.type === "number" ? "number" : field.type === "password" ? "password" : field.type === "email" ? "email" : field.type === "url" ? "url" : "text";
+
+          return (
+            <input
+              type={inputType}
+              value={val}
+              onChange={(e) => updateCredential(field.name, e.target.value)}
+              placeholder={field.placeholder}
+              className={inputClass}
+            />
+          );
+        }
+
+        return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-white dark:bg-neutral-800 rounded-xl w-full max-w-lg mx-4 shadow-xl">
-            <div className="flex items-center justify-between p-5 border-b border-neutral-200 dark:border-neutral-700">
+          <div className="bg-white dark:bg-neutral-800 rounded-xl w-full max-w-lg mx-4 shadow-xl max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between p-5 border-b border-neutral-200 dark:border-neutral-700 shrink-0">
               <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
                 {editingId ? "Edit Persona" : "Create Persona"}
               </h3>
@@ -349,7 +429,7 @@ export default function PersonasPage() {
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="p-5 space-y-4">
+            <div className="p-5 space-y-4 overflow-y-auto">
               <div>
                 <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
                   Name
@@ -358,7 +438,7 @@ export default function PersonasPage() {
                   type="text"
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  placeholder="e.g., Code Reviewer"
+                  placeholder="e.g., My Production DB"
                   className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-sm text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-primary-500/50"
                 />
               </div>
@@ -381,7 +461,7 @@ export default function PersonasPage() {
                   </label>
                   <select
                     value={form.type}
-                    onChange={(e) => setForm({ ...form, type: e.target.value })}
+                    onChange={(e) => { setForm({ ...form, type: e.target.value, credentials: {} }); setTestResult(null); }}
                     className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-sm text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-primary-500/50"
                   >
                     {personaTypes.length > 0 ? (
@@ -396,7 +476,6 @@ export default function PersonasPage() {
                         <option value="web_search">Web Researcher</option>
                         <option value="postgresql">PostgreSQL</option>
                         <option value="mysql">MySQL</option>
-                        <option value="github">GitHub</option>
                         <option value="api_integration">API Connector</option>
                       </>
                     )}
@@ -419,6 +498,71 @@ export default function PersonasPage() {
                   </select>
                 </div>
               </div>
+
+              {/* Type-specific credential fields */}
+              {credFields.length > 0 && (() => {
+                const testableTypes = ["postgresql", "mysql", "mssql", "snowflake", "mongodb", "mcp", "slack"];
+                const canTest = testableTypes.includes(form.type);
+
+                async function handleTestConnection() {
+                  setTesting(true);
+                  setTestResult(null);
+                  try {
+                    const result = await testConnection(form.type, form.credentials);
+                    setTestResult({
+                      success: result.success,
+                      message: result.success
+                        ? result.message || "Connection successful"
+                        : result.error || "Connection failed",
+                    });
+                  } catch {
+                    setTestResult({ success: false, message: "Connection test failed" });
+                  } finally {
+                    setTesting(false);
+                  }
+                }
+
+                return (
+                <div className="space-y-3 pt-2 border-t border-neutral-200 dark:border-neutral-700">
+                  <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wider">
+                    {selectedType?.name} Configuration
+                  </p>
+                  {credFields.map((field) => (
+                    <div key={field.name}>
+                      {field.type !== "boolean" && (
+                        <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
+                          {field.label}
+                          {field.required && <span className="text-red-500 ml-0.5">*</span>}
+                        </label>
+                      )}
+                      {renderCredentialField(field)}
+                    </div>
+                  ))}
+
+                  {canTest && (
+                    <div className="flex items-center gap-3 pt-1">
+                      <button
+                        type="button"
+                        onClick={handleTestConnection}
+                        disabled={testing}
+                        className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 disabled:opacity-50 transition-colors"
+                      >
+                        {testing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plug className="w-3.5 h-3.5" />}
+                        {testing ? "Testing..." : "Test Connection"}
+                      </button>
+                      {testResult && (
+                        <span className={cn("flex items-center gap-1 text-xs font-medium", testResult.success ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400")}>
+                          {testResult.success ? <Check className="w-3.5 h-3.5" /> : <AlertCircle className="w-3.5 h-3.5" />}
+                          {testResult.message}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+                );
+              })()}
+
+              {/* System prompt — always shown */}
               <div>
                 <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
                   System Prompt
@@ -426,13 +570,13 @@ export default function PersonasPage() {
                 <textarea
                   value={form.system_prompt}
                   onChange={(e) => setForm({ ...form, system_prompt: e.target.value })}
-                  rows={5}
-                  placeholder="Instructions that define how this persona behaves. E.g., 'You are an expert code reviewer. Focus on security, performance, and readability...'"
+                  rows={4}
+                  placeholder="Optional instructions that define how this persona behaves..."
                   className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-sm text-neutral-900 dark:text-neutral-100 font-mono focus:outline-none focus:ring-2 focus:ring-primary-500/50 resize-none"
                 />
               </div>
             </div>
-            <div className="flex justify-end gap-2 p-5 border-t border-neutral-200 dark:border-neutral-700">
+            <div className="flex justify-end gap-2 p-5 border-t border-neutral-200 dark:border-neutral-700 shrink-0">
               <button
                 onClick={() => setShowForm(false)}
                 className="px-4 py-2 rounded-lg text-sm font-medium bg-neutral-100 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-600 transition-colors"
@@ -449,7 +593,8 @@ export default function PersonasPage() {
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

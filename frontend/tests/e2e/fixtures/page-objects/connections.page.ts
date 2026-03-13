@@ -184,9 +184,15 @@ export class ConnectionsPage {
   async getConnectionStatus(
     name: string
   ): Promise<"connected" | "disconnected"> {
+    // Wait for React to re-render after save
+    await this.page.waitForTimeout(500);
     const card = this.getCard(name);
-    const badge = card.locator("span").filter({ hasText: /connected/i });
-    const isConnected = await badge.isVisible().catch(() => false);
-    return isConnected ? "connected" : "disconnected";
+    const badge = card.locator("span").filter({ hasText: /^\s*Connected\s*$/i });
+    try {
+      await badge.waitFor({ state: "visible", timeout: 5000 });
+      return "connected";
+    } catch {
+      return "disconnected";
+    }
   }
 }

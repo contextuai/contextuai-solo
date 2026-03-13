@@ -19,9 +19,9 @@ export class WorkspacePage {
 
   // ── Locators ────────────────────────────────────────────────────
 
-  /** The "New Brainstorm" button. */
+  /** The "New Brainstorm" button (header — always visible). */
   get newProjectButton(): Locator {
-    return this.page.getByRole("button", { name: /new brainstorm/i });
+    return this.page.getByRole("button", { name: /new brainstorm/i }).first();
   }
 
   /** All status filter pill buttons. */

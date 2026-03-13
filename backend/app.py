@@ -90,37 +90,160 @@ app.include_router(local_models_router)
 # Default persona types for desktop mode
 # ---------------------------------------------------------------------------
 _DEFAULT_PERSONA_TYPES = [
-    {"id": "generic", "name": "Nexus Agent", "description": "General-purpose AI assistant", "category": "general", "icon": "🤖", "enabled": True, "status": "active"},
-    {"id": "web_search", "name": "Web Researcher", "description": "Search the web and extract information", "category": "utilities", "icon": "🔍", "enabled": True, "status": "active"},
-    {"id": "postgresql", "name": "PostgreSQL", "description": "PostgreSQL relational database", "category": "data_analytics", "icon": "🐘", "enabled": True, "status": "active"},
-    {"id": "mysql", "name": "MySQL", "description": "MySQL relational database", "category": "data_analytics", "icon": "🐬", "enabled": True, "status": "active"},
-    {"id": "mssql", "name": "Microsoft SQL Server", "description": "Microsoft SQL Server database", "category": "data_analytics", "icon": "🗄️", "enabled": True, "status": "active"},
-    {"id": "snowflake", "name": "Snowflake", "description": "Snowflake cloud data warehouse", "category": "data_analytics", "icon": "❄️", "enabled": True, "status": "active"},
-    {"id": "mongodb", "name": "MongoDB", "description": "MongoDB NoSQL database", "category": "data_analytics", "icon": "🍃", "enabled": True, "status": "active"},
-    {"id": "mcp", "name": "MCP Server", "description": "Connect to Model Context Protocol servers for tools and resources", "category": "integration", "icon": "🔗", "enabled": True, "status": "active"},
-    {"id": "api_integration", "name": "API Connector", "description": "Connect to REST APIs, GraphQL, and webhooks", "category": "integration", "icon": "🔌", "enabled": True, "status": "active"},
-    {"id": "file_operations", "name": "File Operations", "description": "Read, write, and manage files", "category": "utilities", "icon": "📁", "enabled": True, "status": "active"},
-    {"id": "slack", "name": "Slack", "description": "Slack messaging platform", "category": "communication", "icon": "💬", "enabled": True, "status": "active"},
-    {"id": "twitter", "name": "Twitter / X", "description": "Post and manage content on Twitter/X", "category": "communication", "icon": "🐦", "enabled": True, "status": "active"},
+    {
+        "id": "generic", "name": "Nexus Agent", "description": "Craft a custom AI persona with unique expertise, personality, and capabilities",
+        "category": "general", "icon": "🤖", "enabled": True, "status": "active",
+        "credentialFields": [
+            {"name": "system_instructions", "label": "System Instructions", "placeholder": "You are an expert auditor specializing in financial compliance...", "type": "textarea", "required": True},
+            {"name": "expertise_area", "label": "Expertise Area", "placeholder": "e.g., Financial auditing, UX design, Legal compliance", "type": "text", "required": False},
+            {"name": "tone", "label": "Response Tone", "type": "select", "required": False, "options": ["Professional", "Casual", "Friendly", "Formal", "Technical"]},
+            {"name": "response_style", "label": "Response Style", "type": "select", "required": False, "options": ["Concise", "Detailed", "Balanced"]},
+            {"name": "language", "label": "Response Language", "placeholder": "e.g., English, Spanish, French (default: English)", "type": "text", "required": False},
+        ],
+    },
+    {
+        "id": "web_search", "name": "Web Researcher", "description": "Search the web, fetch URLs, and extract information",
+        "category": "utilities", "icon": "🔍", "enabled": True, "status": "active",
+        "credentialFields": [
+            {"name": "maxResults", "label": "Max Search Results", "placeholder": "10", "type": "number", "required": False},
+        ],
+    },
+    {
+        "id": "postgresql", "name": "PostgreSQL", "description": "PostgreSQL relational database",
+        "category": "data_analytics", "icon": "🐘", "enabled": True, "status": "active",
+        "credentialFields": [
+            {"name": "host", "label": "Host", "placeholder": "localhost", "type": "text", "required": True},
+            {"name": "port", "label": "Port", "placeholder": "5432", "type": "number", "required": True},
+            {"name": "database", "label": "Database", "placeholder": "mydb", "type": "text", "required": True},
+            {"name": "username", "label": "Username", "type": "text", "required": True},
+            {"name": "password", "label": "Password", "type": "password", "required": True},
+        ],
+    },
+    {
+        "id": "mysql", "name": "MySQL", "description": "MySQL relational database",
+        "category": "data_analytics", "icon": "🐬", "enabled": True, "status": "active",
+        "credentialFields": [
+            {"name": "host", "label": "Host", "placeholder": "localhost", "type": "text", "required": True},
+            {"name": "port", "label": "Port", "placeholder": "3306", "type": "number", "required": True},
+            {"name": "database", "label": "Database", "placeholder": "mydb", "type": "text", "required": True},
+            {"name": "username", "label": "Username", "type": "text", "required": True},
+            {"name": "password", "label": "Password", "type": "password", "required": True},
+        ],
+    },
+    {
+        "id": "mssql", "name": "Microsoft SQL Server", "description": "Microsoft SQL Server database",
+        "category": "data_analytics", "icon": "🗄️", "enabled": True, "status": "active",
+        "credentialFields": [
+            {"name": "server", "label": "Server", "placeholder": "localhost", "type": "text", "required": True},
+            {"name": "port", "label": "Port", "placeholder": "1433", "type": "number", "required": False},
+            {"name": "database", "label": "Database", "type": "text", "required": True},
+            {"name": "username", "label": "Username", "type": "text", "required": True},
+            {"name": "password", "label": "Password", "type": "password", "required": True},
+            {"name": "encrypt", "label": "Encrypt Connection", "type": "boolean", "required": False},
+        ],
+    },
+    {
+        "id": "snowflake", "name": "Snowflake", "description": "Snowflake cloud data warehouse",
+        "category": "data_analytics", "icon": "❄️", "enabled": True, "status": "active",
+        "credentialFields": [
+            {"name": "account", "label": "Account", "placeholder": "xy12345.us-east-1", "type": "text", "required": True},
+            {"name": "username", "label": "Username", "type": "text", "required": True},
+            {"name": "password", "label": "Password", "type": "password", "required": True},
+            {"name": "warehouse", "label": "Warehouse", "placeholder": "COMPUTE_WH", "type": "text", "required": True},
+            {"name": "database", "label": "Database", "type": "text", "required": True},
+            {"name": "schema", "label": "Schema", "placeholder": "PUBLIC", "type": "text", "required": False},
+            {"name": "role", "label": "Role", "placeholder": "ACCOUNTADMIN", "type": "text", "required": False},
+        ],
+    },
+    {
+        "id": "mongodb", "name": "MongoDB", "description": "MongoDB NoSQL database",
+        "category": "data_analytics", "icon": "🍃", "enabled": True, "status": "active",
+        "credentialFields": [
+            {"name": "connectionString", "label": "Connection String", "placeholder": "mongodb://localhost:27017", "type": "text", "required": False},
+            {"name": "host", "label": "Host", "placeholder": "localhost", "type": "text", "required": False},
+            {"name": "port", "label": "Port", "placeholder": "27017", "type": "number", "required": False},
+            {"name": "database", "label": "Database", "type": "text", "required": True},
+            {"name": "username", "label": "Username", "type": "text", "required": False},
+            {"name": "password", "label": "Password", "type": "password", "required": False},
+        ],
+    },
+    {
+        "id": "mcp", "name": "MCP Server", "description": "Connect to Model Context Protocol servers for tools and resources",
+        "category": "integration", "icon": "🔗", "enabled": True, "status": "active",
+        "credentialFields": [
+            {"name": "endpoint_url", "label": "Endpoint URL", "placeholder": "http://localhost:3000/sse", "type": "text", "required": True},
+            {"name": "transport", "label": "Transport", "type": "select", "required": False, "options": ["sse", "streamable-http"]},
+            {"name": "headers", "label": "Headers (JSON)", "placeholder": '{"Authorization": "Bearer ..."}', "type": "textarea", "required": False},
+        ],
+    },
+    {
+        "id": "api_integration", "name": "API Connector", "description": "Connect to REST APIs, GraphQL, and webhooks",
+        "category": "integration", "icon": "🔌", "enabled": True, "status": "active",
+        "credentialFields": [
+            {"name": "baseUrl", "label": "API Base URL", "placeholder": "https://api.example.com", "type": "text", "required": False},
+            {"name": "apiKey", "label": "API Key", "placeholder": "Optional API key", "type": "password", "required": False},
+        ],
+    },
+    {
+        "id": "file_operations", "name": "File Operations", "description": "Read, write, and manage files",
+        "category": "utilities", "icon": "📁", "enabled": True, "status": "active",
+        "credentialFields": [
+            {"name": "basePath", "label": "Base Directory Path", "placeholder": "/path/to/files", "type": "text", "required": False},
+        ],
+    },
+    {
+        "id": "slack", "name": "Slack", "description": "Slack messaging platform",
+        "category": "communication", "icon": "💬", "enabled": True, "status": "active",
+        "credentialFields": [
+            {"name": "botToken", "label": "Bot User OAuth Token", "placeholder": "xoxb-...", "type": "password", "required": True},
+            {"name": "channel", "label": "Default Channel", "placeholder": "#general", "type": "text", "required": False},
+            {"name": "workspace", "label": "Workspace", "type": "text", "required": False},
+        ],
+    },
+    {
+        "id": "twitter", "name": "Twitter / X", "description": "Post and manage content on Twitter/X",
+        "category": "communication", "icon": "🐦", "enabled": True, "status": "active",
+        "credentialFields": [
+            {"name": "apiKey", "label": "API Key", "type": "password", "required": True},
+            {"name": "apiSecret", "label": "API Secret", "type": "password", "required": True},
+            {"name": "accessToken", "label": "Access Token", "type": "password", "required": True},
+            {"name": "accessTokenSecret", "label": "Access Token Secret", "type": "password", "required": True},
+        ],
+    },
 ]
 
 
 async def _seed_persona_types(db):
-    """Seed default persona types, inserting any that are missing."""
+    """Seed default persona types — insert missing, update existing, remove stale."""
     try:
         collection = db["persona_types"]
+        valid_ids = {pt["id"] for pt in _DEFAULT_PERSONA_TYPES}
         seeded = 0
+        updated = 0
+
         for pt in _DEFAULT_PERSONA_TYPES:
             existing = await collection.find_one({"_id": pt["id"]})
             if existing is None:
                 doc = {**pt, "_id": pt["id"]}
                 await collection.insert_one(doc)
                 seeded += 1
+            else:
+                # Update existing types to add credentialFields and other changes
+                await collection.update_one({"_id": pt["id"]}, {"$set": pt})
+                updated += 1
 
-        if seeded:
-            logger.info("Seeded %d missing persona types (total: %d)", seeded, len(_DEFAULT_PERSONA_TYPES))
-        else:
-            logger.info("All %d persona types already present", len(_DEFAULT_PERSONA_TYPES))
+        # Remove stale types (e.g. github, gitlab) that are no longer in the default set
+        all_docs = await collection.find({}).to_list(length=100)
+        removed = 0
+        for doc in all_docs:
+            if doc.get("_id") not in valid_ids and doc.get("id") not in valid_ids:
+                await collection.delete_one({"_id": doc["_id"]})
+                removed += 1
+
+        logger.info(
+            "Persona types: %d seeded, %d updated, %d removed (total: %d)",
+            seeded, updated, removed, len(_DEFAULT_PERSONA_TYPES),
+        )
     except Exception:
         logger.exception("Failed to seed persona types")
 

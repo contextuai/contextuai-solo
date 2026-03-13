@@ -27,8 +27,6 @@ import {
   Trash2,
   HardDrive,
   RefreshCw,
-  Twitter,
-  Share2,
 } from "lucide-react";
 
 // ─── Provider definitions ───────────────────────────────────────────────────
@@ -108,7 +106,6 @@ const INDUSTRIES = [
 
 const SETTINGS_TABS = [
   { id: "providers", label: "AI Providers", icon: <Cpu className="w-4 h-4" /> },
-  { id: "connections", label: "Connections", icon: <Share2 className="w-4 h-4" /> },
   { id: "brand", label: "Brand Voice", icon: <MessageSquareText className="w-4 h-4" /> },
   { id: "appearance", label: "Appearance", icon: <Palette className="w-4 h-4" /> },
   { id: "data", label: "Data & Export", icon: <Database className="w-4 h-4" /> },
@@ -236,207 +233,6 @@ function LocalAIConfig() {
           )}
         </div>
       ))}
-    </div>
-  );
-}
-
-// ─── Connections Tab ─────────────────────────────────────────────────────────
-
-const CONNECTION_DEFS = [
-  {
-    id: "twitter",
-    name: "Twitter / X",
-    description: "Post daily content, updates, and engage with your audience",
-    icon: Twitter,
-    color: "from-sky-400 to-blue-500",
-    fields: [
-      { key: "bearer_token", label: "Bearer Token", type: "password" as const, placeholder: "Enter your Twitter API Bearer Token" },
-    ],
-    helpUrl: "https://developer.twitter.com/en/portal/dashboard",
-    helpLabel: "Get API access at developer.twitter.com",
-  },
-  {
-    id: "slack",
-    name: "Slack",
-    description: "Send notifications and content to Slack channels",
-    icon: MessageSquareText,
-    color: "from-purple-500 to-fuchsia-600",
-    fields: [
-      { key: "webhook_url", label: "Webhook URL", type: "text" as const, placeholder: "https://hooks.slack.com/services/..." },
-    ],
-    helpUrl: "https://api.slack.com/messaging/webhooks",
-    helpLabel: "Create an incoming webhook",
-  },
-  {
-    id: "instagram",
-    name: "Instagram",
-    description: "Post photos, stories, and reels to your Instagram business account",
-    icon: Share2,
-    color: "from-pink-500 to-rose-600",
-    fields: [
-      { key: "access_token", label: "Access Token", type: "password" as const, placeholder: "Enter your Instagram API Access Token" },
-    ],
-    helpUrl: "https://developers.facebook.com/docs/instagram-api/",
-    helpLabel: "Get API access at developers.facebook.com",
-  },
-  {
-    id: "facebook",
-    name: "Facebook",
-    description: "Publish posts and manage your Facebook business page",
-    icon: Globe,
-    color: "from-blue-600 to-indigo-600",
-    fields: [
-      { key: "page_access_token", label: "Page Access Token", type: "password" as const, placeholder: "Enter your Facebook Page Access Token" },
-      { key: "page_id", label: "Page ID", type: "text" as const, placeholder: "Enter your Facebook Page ID" },
-    ],
-    helpUrl: "https://developers.facebook.com/docs/pages-api/",
-    helpLabel: "Get API access at developers.facebook.com",
-  },
-];
-
-function ConnectionsTab() {
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [testing, setTesting] = useState<string | null>(null);
-  const [testResults, setTestResults] = useState<Record<string, "success" | "error">>({});
-  const [configs, setConfigs] = useState<Record<string, Record<string, string>>>(() => {
-    const saved: Record<string, Record<string, string>> = {};
-    CONNECTION_DEFS.forEach((c) => {
-      const stored = localStorage.getItem(`contextuai-solo-connection-${c.id}`);
-      if (stored) saved[c.id] = JSON.parse(stored);
-    });
-    return saved;
-  });
-
-  const updateField = (connId: string, key: string, value: string) => {
-    setConfigs((prev) => ({
-      ...prev,
-      [connId]: { ...(prev[connId] || {}), [key]: value },
-    }));
-  };
-
-  const handleSave = (connId: string) => {
-    localStorage.setItem(`contextuai-solo-connection-${connId}`, JSON.stringify(configs[connId] || {}));
-  };
-
-  const handleTest = async (connId: string) => {
-    setTesting(connId);
-    setTestResults((prev) => { const n = { ...prev }; delete n[connId]; return n; });
-
-    // Simulate connection test
-    await new Promise((r) => setTimeout(r, 1500));
-    const fields = configs[connId] || {};
-    const hasValues = Object.values(fields).some((v) => v && v.length > 5);
-    if (hasValues) {
-      setTestResults((prev) => ({ ...prev, [connId]: "success" }));
-      handleSave(connId);
-    } else {
-      setTestResults((prev) => ({ ...prev, [connId]: "error" }));
-    }
-    setTesting(null);
-  };
-
-  return (
-    <div className="space-y-4">
-      <div className="mb-6">
-        <h3 className="text-lg font-semibold text-neutral-900 dark:text-white">Connections</h3>
-        <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">
-          Connect external services for content distribution and notifications.
-        </p>
-      </div>
-
-      <div className="space-y-3">
-        {CONNECTION_DEFS.map((conn) => {
-          const Icon = conn.icon;
-          const isExpanded = expandedId === conn.id;
-          const isConnected = testResults[conn.id] === "success";
-
-          return (
-            <div
-              key={conn.id}
-              className={cn(
-                "rounded-2xl border transition-all overflow-hidden",
-                isConnected
-                  ? "border-primary-500 bg-primary-50/50 dark:bg-primary-500/5"
-                  : "border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900"
-              )}
-            >
-              <button
-                onClick={() => setExpandedId(isExpanded ? null : conn.id)}
-                className="w-full flex items-center gap-4 p-4 text-left"
-              >
-                <div
-                  className={cn(
-                    "flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br shrink-0",
-                    conn.color
-                  )}
-                >
-                  <Icon className="w-5 h-5 text-white" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <span className="text-sm font-semibold text-neutral-900 dark:text-white">
-                    {conn.name}
-                  </span>
-                  <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
-                    {conn.description}
-                  </p>
-                </div>
-                <Badge variant={isConnected ? "success" : "default"} dot>
-                  {isConnected ? "Connected" : "Not configured"}
-                </Badge>
-              </button>
-
-              {isExpanded && (
-                <div className="px-4 pb-4 pt-1 border-t border-neutral-100 dark:border-neutral-800 space-y-4">
-                  {conn.fields.map((field) => (
-                    <Input
-                      key={field.key}
-                      label={field.label}
-                      type={field.type}
-                      value={configs[conn.id]?.[field.key] || ""}
-                      onChange={(e) => updateField(conn.id, field.key, e.target.value)}
-                      placeholder={field.placeholder}
-                    />
-                  ))}
-
-                  <div className="flex items-center gap-3">
-                    <Button
-                      variant="secondary"
-                      onClick={() => handleTest(conn.id)}
-                      disabled={testing === conn.id}
-                    >
-                      {testing === conn.id ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        "Save & Test"
-                      )}
-                    </Button>
-
-                    {testResults[conn.id] === "success" && (
-                      <p className="text-sm text-success flex items-center gap-1.5">
-                        <Check className="w-4 h-4" /> Connected
-                      </p>
-                    )}
-                    {testResults[conn.id] === "error" && (
-                      <p className="text-sm text-error">
-                        Failed. Check your credentials.
-                      </p>
-                    )}
-                  </div>
-
-                  <a
-                    href={conn.helpUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 text-xs text-primary-500 hover:underline"
-                  >
-                    {conn.helpLabel} <ExternalLink className="w-3 h-3" />
-                  </a>
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
     </div>
   );
 }
@@ -1344,7 +1140,7 @@ export default function SettingsPage() {
       {/* Tab Content */}
       <div className="max-w-4xl mx-auto px-6 py-8">
         {activeTab === "providers" && <AIProvidersTab />}
-        {activeTab === "connections" && <ConnectionsTab />}
+
         {activeTab === "brand" && <BrandVoiceTab />}
         {activeTab === "appearance" && <AppearanceTab />}
         {activeTab === "data" && <DataExportTab />}

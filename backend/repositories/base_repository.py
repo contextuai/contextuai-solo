@@ -60,23 +60,19 @@ class BaseRepository(Generic[T], ABC):
         return doc
 
     @staticmethod
-    def _to_object_id(id: str) -> Optional[ObjectId]:
+    def _to_object_id(id: str):
         """
-        Safely convert string id to ObjectId.
+        Convert string id to ObjectId, or return the raw string if it is
+        not a valid ObjectId (e.g. UUID from the SQLite adapter).
 
-        Args:
-            id: String representation of ObjectId
-
-        Returns:
-            ObjectId instance or None if invalid
-
-        Raises:
-            ValueError: If id is not a valid ObjectId string
+        The motor_compat layer normalises ObjectId values back to strings
+        before passing them to the SQLite adapter, so both forms work.
         """
         try:
             return ObjectId(id)
-        except (InvalidId, TypeError) as e:
-            raise ValueError(f"Invalid ObjectId: {id}") from e
+        except (InvalidId, TypeError):
+            # UUID or other non-ObjectId string — pass through as-is
+            return id
 
     def _add_timestamps(self, data: Dict[str, Any], update: bool = False) -> Dict[str, Any]:
         """

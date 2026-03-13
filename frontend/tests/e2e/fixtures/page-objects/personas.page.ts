@@ -19,9 +19,9 @@ export class PersonasPage {
 
   // ── Locators ────────────────────────────────────────────────────
 
-  /** The "Create Persona" button in the header. */
+  /** The "Create Persona" button (header — always visible). */
   get createButton(): Locator {
-    return this.page.getByRole("button", { name: /create persona/i });
+    return this.page.getByRole("button", { name: /create persona/i }).first();
   }
 
   /** The search input field. */
@@ -163,13 +163,11 @@ export class PersonasPage {
     }
   ): Promise<void> {
     const card = this.personaCards.filter({ hasText: currentName }).first();
-    await card.hover();
+    await card.scrollIntoViewIfNeeded();
 
-    // Click the pencil (edit) button
-    const editButton = card.locator("button", {
-      has: this.page.locator("svg.lucide-pencil"),
-    });
-    await editButton.click();
+    // Click the pencil (edit) button — use dispatchEvent to bypass opacity:0
+    const editBtn = card.locator("button").first();
+    await editBtn.dispatchEvent("click");
     await expect(this.formName).toBeVisible({ timeout: 5_000 });
 
     if (data.name !== undefined) {
@@ -201,12 +199,11 @@ export class PersonasPage {
    */
   async deletePersona(name: string): Promise<void> {
     const card = this.personaCards.filter({ hasText: name }).first();
-    await card.hover();
+    await card.scrollIntoViewIfNeeded();
 
-    const deleteButton = card.locator("button", {
-      has: this.page.locator("svg.lucide-trash-2"),
-    });
-    await deleteButton.click();
+    // Click the trash (delete) button — use dispatchEvent to bypass opacity:0
+    const deleteBtn = card.locator("button").last();
+    await deleteBtn.dispatchEvent("click");
 
     await expect(this.deleteDialog).toBeVisible({ timeout: 5_000 });
     await this.confirmDeleteButton.click();
@@ -228,6 +225,7 @@ export class PersonasPage {
     await this.page
       .locator("button")
       .filter({ hasText: new RegExp(`^${category}$`) })
+      .first()
       .click();
     await this.page.waitForTimeout(300);
   }

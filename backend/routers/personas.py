@@ -93,7 +93,7 @@ async def list_personas(
             if status:
                 filter_query["status"] = status.lower()
 
-            personas = await persona_repo.get_all(filter=filter_query if filter_query else None)
+            personas = await persona_repo.get_all(filter=filter_query if filter_query else None, limit=1000)
 
             # Mask credentials in response (get_all doesn't mask by default)
             for persona in personas:

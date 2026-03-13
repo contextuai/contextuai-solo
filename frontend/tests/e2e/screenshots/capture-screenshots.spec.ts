@@ -55,7 +55,7 @@ test.describe("Website Screenshots", () => {
     await page.waitForTimeout(1000);
 
     // Click create crew button
-    const createBtn = page.getByRole("button", { name: /create crew/i });
+    const createBtn = page.getByRole("button", { name: /create crew/i }).first();
     if (await createBtn.isVisible()) {
       await createBtn.click();
       await page.waitForTimeout(500);
