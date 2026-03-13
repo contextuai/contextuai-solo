@@ -13,11 +13,15 @@ requirements, and enabled/disabled flags. Content is published via a
 unified interface with delivery receipts logged for tracking.
 """
 
+import base64
+import time
+import urllib.parse
 import uuid
 import hmac
 import hashlib
 import httpx
 import logging
+import secrets
 from datetime import datetime
 from typing import Optional, Dict, Any, List
 from enum import Enum
@@ -30,6 +34,8 @@ logger = logging.getLogger(__name__)
 class DistributionChannelType(str, Enum):
     LINKEDIN = "linkedin"
     TWITTER = "twitter"
+    INSTAGRAM = "instagram"
+    FACEBOOK = "facebook"
     BLOG = "blog"
     EMAIL = "email"
     SLACK = "slack"
@@ -317,6 +323,10 @@ class DistributionService:
             return await self._publish_email(config, content, title, metadata)
         elif ct == DistributionChannelType.SLACK:
             return await self._publish_slack(config, content, title)
+        elif ct == DistributionChannelType.INSTAGRAM:
+            return await self._publish_instagram(config, content, metadata)
+        elif ct == DistributionChannelType.FACEBOOK:
+            return await self._publish_facebook(config, content)
         else:
             return {"success": False, "error": f"Unsupported channel: {channel_type}"}
 
@@ -357,22 +367,129 @@ class DistributionService:
     async def _publish_twitter(
         self, config: Dict[str, Any], content: str
     ) -> Dict[str, Any]:
-        """Publish to Twitter/X via API v2."""
+        """
+        Publish to Twitter/X via API v2.
+        Supports two auth methods:
+          1. OAuth 1.0a User Context (api_key + api_secret + access_token + access_token_secret)
+          2. Bearer token (app-level, read-only for most endpoints)
+        """
+        api_key = config.get("api_key")
+        api_secret = config.get("api_secret")
+        access_token = config.get("access_token")
+        access_token_secret = config.get("access_token_secret")
         bearer_token = config.get("bearer_token")
-        if not bearer_token:
-            return {"success": False, "error": "Missing bearer_token"}
 
         url = "https://api.twitter.com/2/tweets"
-        headers = {
-            "Authorization": f"Bearer {bearer_token}",
-            "Content-Type": "application/json",
-        }
+
+        # Prefer OAuth 1.0a user context (can post on behalf of user)
+        if api_key and api_secret and access_token and access_token_secret:
+            try:
+                # Build OAuth 1.0a signature
+                nonce = secrets.token_hex(16)
+                timestamp = str(int(time.time()))
+                oauth_params = {
+                    "oauth_consumer_key": api_key,
+                    "oauth_nonce": nonce,
+                    "oauth_signature_method": "HMAC-SHA1",
+                    "oauth_timestamp": timestamp,
+                    "oauth_token": access_token,
+                    "oauth_version": "1.0",
+                }
+                # Create signature base string
+                param_str = "&".join(f"{k}={urllib.parse.quote(v, safe='')}" for k, v in sorted(oauth_params.items()))
+                base_string = f"POST&{urllib.parse.quote(url, safe='')}&{urllib.parse.quote(param_str, safe='')}"
+                signing_key = f"{urllib.parse.quote(api_secret, safe='')}&{urllib.parse.quote(access_token_secret, safe='')}"
+                signature = hmac.new(signing_key.encode(), base_string.encode(), hashlib.sha1).digest()
+                oauth_signature = base64.b64encode(signature).decode()
+                oauth_params["oauth_signature"] = oauth_signature
+
+                auth_header = "OAuth " + ", ".join(
+                    f'{k}="{urllib.parse.quote(v, safe="")}"' for k, v in sorted(oauth_params.items())
+                )
+                headers = {"Authorization": auth_header, "Content-Type": "application/json"}
+
+                async with httpx.AsyncClient() as client:
+                    r = await client.post(url, json={"text": content[:280]}, headers=headers)
+                    if r.status_code in (200, 201):
+                        data = r.json()
+                        return {"success": True, "tweet_id": data.get("data", {}).get("id"), "status_code": r.status_code}
+                    return {"success": False, "error": r.text, "status_code": r.status_code}
+            except Exception as e:
+                logger.exception("Twitter OAuth 1.0a publish failed")
+                return {"success": False, "error": str(e)}
+
+        elif bearer_token:
+            headers = {"Authorization": f"Bearer {bearer_token}", "Content-Type": "application/json"}
+            async with httpx.AsyncClient() as client:
+                r = await client.post(url, json={"text": content[:280]}, headers=headers)
+                if r.status_code in (200, 201):
+                    data = r.json()
+                    return {"success": True, "tweet_id": data.get("data", {}).get("id"), "status_code": r.status_code}
+            return {"success": False, "error": r.text, "status_code": r.status_code}
+
+        else:
+            return {"success": False, "error": "Missing Twitter credentials (need api_key+api_secret+access_token+access_token_secret or bearer_token)"}
+
+    async def _publish_instagram(
+        self, config: Dict[str, Any], content: str,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Publish to Instagram via Graph API.
+        Requires a Facebook Page linked to an Instagram Business account.
+        Two-step: create media container, then publish it.
+        """
+        access_token = config.get("access_token")
+        ig_user_id = config.get("instagram_user_id")
+
+        if not access_token or not ig_user_id:
+            return {"success": False, "error": "Missing access_token or instagram_user_id"}
+
+        image_url = (metadata or {}).get("image_url")
+        base_url = f"https://graph.facebook.com/v21.0/{ig_user_id}"
 
         async with httpx.AsyncClient() as client:
-            r = await client.post(url, json={"text": content[:280]}, headers=headers)
-            if r.status_code in (200, 201):
-                data = r.json()
-                return {"success": True, "tweet_id": data.get("data", {}).get("id"), "status_code": r.status_code}
+            if image_url:
+                # Photo post: create media container then publish
+                r1 = await client.post(f"{base_url}/media", params={
+                    "image_url": image_url,
+                    "caption": content[:2200],
+                    "access_token": access_token,
+                })
+                if r1.status_code != 200:
+                    return {"success": False, "error": r1.text, "status_code": r1.status_code}
+                container_id = r1.json().get("id")
+
+                r2 = await client.post(f"{base_url}/media_publish", params={
+                    "creation_id": container_id,
+                    "access_token": access_token,
+                })
+                if r2.status_code != 200:
+                    return {"success": False, "error": r2.text, "status_code": r2.status_code}
+                return {"success": True, "post_id": r2.json().get("id"), "status_code": r2.status_code}
+            else:
+                # Text-only: not supported by Instagram API (requires image/video)
+                return {"success": False, "error": "Instagram requires an image_url or video_url for posts"}
+
+    async def _publish_facebook(
+        self, config: Dict[str, Any], content: str
+    ) -> Dict[str, Any]:
+        """Publish to a Facebook Page via Graph API."""
+        access_token = config.get("page_access_token") or config.get("access_token")
+        page_id = config.get("page_id")
+
+        if not access_token or not page_id:
+            return {"success": False, "error": "Missing page_access_token or page_id"}
+
+        url = f"https://graph.facebook.com/v21.0/{page_id}/feed"
+
+        async with httpx.AsyncClient() as client:
+            r = await client.post(url, params={
+                "message": content,
+                "access_token": access_token,
+            })
+            if r.status_code == 200:
+                return {"success": True, "post_id": r.json().get("id"), "status_code": r.status_code}
             return {"success": False, "error": r.text, "status_code": r.status_code}
 
     async def _publish_blog(

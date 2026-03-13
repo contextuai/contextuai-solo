@@ -39,6 +39,24 @@ OAUTH_PROVIDERS = {
         "scopes": ["openid", "profile", "w_member_social"],
         "docs_url": "https://learn.microsoft.com/en-us/linkedin/marketing/getting-started",
     },
+    "instagram": {
+        "name": "Instagram",
+        "authorize_url": "https://www.facebook.com/v21.0/dialog/oauth",
+        "token_url": "https://graph.facebook.com/v21.0/oauth/access_token",
+        "userinfo_url": "https://graph.facebook.com/v21.0/me",
+        "scopes": ["instagram_basic", "instagram_content_publish", "pages_show_list"],
+        "docs_url": "https://developers.facebook.com/docs/instagram-api/",
+        "userinfo_params": {"fields": "id,name"},
+    },
+    "facebook": {
+        "name": "Facebook",
+        "authorize_url": "https://www.facebook.com/v21.0/dialog/oauth",
+        "token_url": "https://graph.facebook.com/v21.0/oauth/access_token",
+        "userinfo_url": "https://graph.facebook.com/v21.0/me",
+        "scopes": ["pages_manage_posts", "pages_read_engagement", "pages_show_list"],
+        "docs_url": "https://developers.facebook.com/docs/pages-api/",
+        "userinfo_params": {"fields": "id,name"},
+    },
 }
 
 # The desktop backend port — callback comes back here
@@ -314,10 +332,16 @@ async def oauth_callback(
         profile_name = None
         profile_id = None
         try:
+            userinfo_params = provider_config.get("userinfo_params", {})
             async with httpx.AsyncClient() as client:
                 userinfo_resp = await client.get(
                     provider_config["userinfo_url"],
-                    headers={"Authorization": f"Bearer {access_token}"},
+                    params={"access_token": access_token, **userinfo_params}
+                    if provider in ("instagram", "facebook")
+                    else {},
+                    headers={"Authorization": f"Bearer {access_token}"}
+                    if provider not in ("instagram", "facebook")
+                    else {},
                 )
             if userinfo_resp.status_code == 200:
                 userinfo = userinfo_resp.json()
