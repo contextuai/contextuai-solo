@@ -85,6 +85,48 @@ export class CrewsPage {
     return this.page.locator("svg.lucide-loader-2.animate-spin");
   }
 
+  // ── Crew Builder Dialog Locators ─────────────────────────────────
+
+  /** The crew builder dialog overlay. */
+  get builderDialog(): Locator {
+    return this.page.locator(".fixed.inset-0.z-50");
+  }
+
+  /** "Browse Library" button inside the crew builder. */
+  get browseLibraryButton(): Locator {
+    return this.builderDialog.getByRole("button", { name: /browse library/i });
+  }
+
+  /** The library panel overlay (appears inside the builder dialog). */
+  get libraryPanel(): Locator {
+    return this.builderDialog.locator(".absolute.inset-0.z-10");
+  }
+
+  /** "Agent Library" heading inside the library panel. */
+  get libraryPanelHeading(): Locator {
+    return this.libraryPanel.locator("h3", { hasText: "Agent Library" });
+  }
+
+  /** Search input inside the library panel. */
+  get librarySearchInput(): Locator {
+    return this.libraryPanel.locator('input[placeholder="Search agents..."]');
+  }
+
+  /** Agent rows (buttons) inside the library panel list. */
+  get libraryAgentRows(): Locator {
+    return this.libraryPanel.locator(".overflow-y-auto button.w-full");
+  }
+
+  /** Close button for the library panel. */
+  get libraryCloseButton(): Locator {
+    return this.libraryPanel.locator("button").filter({ has: this.page.locator("svg.lucide-x") });
+  }
+
+  /** Category filter dropdown inside the library panel. */
+  get libraryCategoryFilter(): Locator {
+    return this.libraryPanel.locator("select");
+  }
+
   // ── Actions ─────────────────────────────────────────────────────
 
   /** Navigate to the crews page. */
@@ -156,5 +198,47 @@ export class CrewsPage {
   async runCrew(index: number): Promise<void> {
     await this.runButtons.nth(index).click();
     await this.page.waitForTimeout(500);
+  }
+
+  /** Open the crew builder dialog by clicking "Create Crew". */
+  async openBuilder(): Promise<void> {
+    await this.createButton.click();
+    await this.builderDialog.waitFor({ state: "visible", timeout: 5000 });
+    await this.page.waitForTimeout(300);
+  }
+
+  /** Open the library panel from within the crew builder dialog. */
+  async openLibraryPanel(): Promise<void> {
+    await this.browseLibraryButton.click();
+    await this.libraryPanel.waitFor({ state: "visible", timeout: 5000 });
+    await this.page.waitForTimeout(500);
+  }
+
+  /** Search for agents in the library panel. */
+  async searchLibraryAgents(query: string): Promise<void> {
+    await this.librarySearchInput.clear();
+    await this.librarySearchInput.fill(query);
+    // Wait for debounced search (300ms) plus render
+    await this.page.waitForTimeout(600);
+  }
+
+  /** Click a library agent row by index. */
+  async selectLibraryAgent(index: number): Promise<void> {
+    await this.libraryAgentRows.nth(index).click();
+    await this.page.waitForTimeout(300);
+  }
+
+  /** Get all agent name inputs in the crew builder (for the agent pipeline section). */
+  get agentNameInputs(): Locator {
+    return this.builderDialog.locator(
+      '.space-y-4 input[placeholder="e.g., Researcher"]'
+    );
+  }
+
+  /** Get all agent instruction textareas in the crew builder. */
+  get agentInstructionTextareas(): Locator {
+    return this.builderDialog.locator(
+      'textarea[placeholder*="What should this agent do"]'
+    );
   }
 }

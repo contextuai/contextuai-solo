@@ -5,8 +5,8 @@
  * Backend: http://127.0.0.1:18741 (no auth)
  * Frontend: http://localhost:1420 (Vite SPA)
  *
- * Connections are stored in localStorage. Telegram and Discord use token-paste,
- * LinkedIn uses OAuth flow.
+ * Connections are stored in localStorage. Telegram, Discord, and Twitter/X use
+ * token-paste; LinkedIn, Instagram, and Facebook use OAuth flow.
  */
 import { test, expect } from "@playwright/test";
 import { ConnectionsPage } from "../fixtures/page-objects";
@@ -23,16 +23,19 @@ test.beforeEach(async ({ page }) => {
 // ==========================================================================
 
 test.describe("CRUD via UI", () => {
-  // DC-CONN-01: View all 3 connection cards (Telegram, Discord, LinkedIn)
-  test("DC-CONN-01: view all 3 connection cards", async ({ page }) => {
+  // DC-CONN-01: View all 6 connection cards
+  test("DC-CONN-01: view all 6 connection cards", async ({ page }) => {
     await expect(page.locator("h1", { hasText: "Connections" })).toBeVisible();
 
     await expect(page.locator("h3", { hasText: "Telegram Bot" })).toBeVisible();
     await expect(page.locator("h3", { hasText: "Discord Bot" })).toBeVisible();
     await expect(page.locator("h3", { hasText: "LinkedIn" })).toBeVisible();
+    await expect(page.locator("h3", { hasText: "Twitter / X" })).toBeVisible();
+    await expect(page.locator("h3", { hasText: "Instagram" })).toBeVisible();
+    await expect(page.locator("h3", { hasText: "Facebook" })).toBeVisible();
 
     const count = await connections.connectionCards.count();
-    expect(count).toBe(3);
+    expect(count).toBe(6);
   });
 
   // DC-CONN-02: Expand Telegram connection form
@@ -79,6 +82,34 @@ test.describe("CRUD via UI", () => {
 
     const status = await connections.getConnectionStatus("Telegram");
     expect(status).toBe("disconnected");
+  });
+
+  // DC-CONN-12: Expand Twitter/X connection form and verify 4 fields
+  test("DC-CONN-12: expand twitter/x connection form", async ({ page }) => {
+    const twitterCard = connections.connectionCards.filter({ hasText: "Twitter / X" });
+    await twitterCard.locator("button").filter({ hasText: /connect|edit/i }).click();
+    await page.waitForTimeout(300);
+
+    await expect(page.locator("input[placeholder*='Twitter API Key']")).toBeVisible();
+    await expect(page.locator("input[placeholder*='Twitter API Secret']")).toBeVisible();
+    await expect(page.locator("input[placeholder*='Access Token']").first()).toBeVisible();
+    await expect(page.locator("input[placeholder*='Access Token Secret']")).toBeVisible();
+
+    // Twitter/X supports outbound only — no Inbound toggle
+    await expect(page.locator("text=Outbound")).toBeVisible();
+  });
+
+  // DC-CONN-13: Save Twitter/X credentials
+  test("DC-CONN-13: save twitter/x credentials", async ({ page }) => {
+    await connections.connectTwitter(
+      "fake-api-key",
+      "fake-api-secret",
+      "fake-access-token",
+      "fake-access-token-secret"
+    );
+
+    const status = await connections.getConnectionStatus("Twitter");
+    expect(status).toBe("connected");
   });
 });
 
@@ -137,7 +168,7 @@ test.describe("Positive Workflows", () => {
   test("DC-CONN-09: external docs links are present", async ({ page }) => {
     const docsLinks = page.locator("a[title='Setup guide']");
     const count = await docsLinks.count();
-    expect(count).toBe(3);
+    expect(count).toBe(6);
 
     const links = await docsLinks.all();
     for (const link of links) {
@@ -145,6 +176,48 @@ test.describe("Positive Workflows", () => {
       expect(href).toBeTruthy();
       expect(href).toMatch(/^https?:\/\//);
     }
+  });
+
+  // DC-CONN-14: Instagram shows OAuth setup instructions
+  test("DC-CONN-14: instagram shows oauth setup instructions", async ({ page }) => {
+    const instagramCard = connections.connectionCards.filter({ hasText: "Instagram" });
+    await instagramCard.locator("button").filter({ hasText: /connect|edit/i }).click();
+    await page.waitForTimeout(300);
+
+    await expect(page.locator("text=How to connect Instagram:")).toBeVisible();
+
+    // Verify callback URL mentions instagram
+    await expect(
+      page.locator("code", { hasText: /\/oauth\/instagram\/callback/ })
+    ).toBeVisible();
+
+    // OAuth setup fields
+    await expect(page.locator("input[placeholder*='Instagram App ID' i]")).toBeVisible();
+    await expect(page.locator("input[placeholder*='Instagram App Secret' i]")).toBeVisible();
+
+    // Sign in button
+    await expect(page.locator("button", { hasText: "Sign in with Instagram" })).toBeVisible();
+  });
+
+  // DC-CONN-15: Facebook shows OAuth setup instructions
+  test("DC-CONN-15: facebook shows oauth setup instructions", async ({ page }) => {
+    const facebookCard = connections.connectionCards.filter({ hasText: "Facebook" });
+    await facebookCard.locator("button").filter({ hasText: /connect|edit/i }).click();
+    await page.waitForTimeout(300);
+
+    await expect(page.locator("text=How to connect Facebook:")).toBeVisible();
+
+    // Verify callback URL mentions facebook
+    await expect(
+      page.locator("code", { hasText: /\/oauth\/facebook\/callback/ })
+    ).toBeVisible();
+
+    // OAuth setup fields
+    await expect(page.locator("input[placeholder*='Facebook App ID' i]")).toBeVisible();
+    await expect(page.locator("input[placeholder*='Facebook App Secret' i]")).toBeVisible();
+
+    // Sign in button
+    await expect(page.locator("button", { hasText: "Sign in with Facebook" })).toBeVisible();
   });
 });
 

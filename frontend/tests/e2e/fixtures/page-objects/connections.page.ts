@@ -3,15 +3,18 @@ import { type Page, type Locator, expect } from "@playwright/test";
 /**
  * Page object for the Desktop Connections route ("/connections").
  *
- * The page contains 3 connection cards:
+ * The page contains 6 connection cards:
  * - Telegram Bot (token-paste flow)
  * - Discord Bot (token-paste flow)
+ * - Twitter / X (token-paste flow — 4 fields)
  * - LinkedIn (OAuth flow)
+ * - Instagram (OAuth flow)
+ * - Facebook (OAuth flow)
  *
  * Each card has a Connect/Edit button that expands a form with:
  * - Token/credential fields
  * - Direction toggles (Inbound/Outbound) for Telegram & Discord
- * - Save & Test / Cancel buttons (or Sign in with LinkedIn for OAuth)
+ * - Save & Test / Cancel buttons (or Sign in with <provider> for OAuth)
  * - Disconnect (trash) button when connected
  */
 export class ConnectionsPage {
@@ -103,6 +106,29 @@ export class ConnectionsPage {
     await this.saveTestButton.click();
 
     // Wait for testing to complete
+    await expect(this.saveTestButton).toBeHidden({ timeout: 10_000 });
+  }
+
+  /**
+   * Connect Twitter/X by entering API Key, API Secret, Access Token, and Access Token Secret.
+   */
+  async connectTwitter(
+    apiKey: string,
+    apiSecret: string,
+    accessToken: string,
+    accessTokenSecret: string
+  ): Promise<void> {
+    await this.getConnectEditButton("Twitter").click();
+    await this.page.waitForTimeout(300);
+
+    const card = this.getCard("Twitter");
+
+    await card.locator('input[placeholder*="API Key" i]').first().fill(apiKey);
+    await card.locator('input[placeholder*="API Secret" i]').fill(apiSecret);
+    await card.locator('input[placeholder*="Access Token" i]').first().fill(accessToken);
+    await card.locator('input[placeholder*="Access Token Secret" i]').fill(accessTokenSecret);
+
+    await this.saveTestButton.click();
     await expect(this.saveTestButton).toBeHidden({ timeout: 10_000 });
   }
 

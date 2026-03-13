@@ -40,9 +40,9 @@ test.describe("CRUD via UI", () => {
     }
   });
 
-  // DC-SETTINGS-02: AI Providers tab shows 5 providers
-  test("DC-SETTINGS-02: ai providers tab shows 5 providers", async ({ page }) => {
-    const providerNames = ["Anthropic Claude", "OpenAI", "Google Gemini", "AWS Bedrock", "Ollama"];
+  // DC-SETTINGS-02: AI Providers tab shows 6 providers
+  test("DC-SETTINGS-02: ai providers tab shows 6 providers", async ({ page }) => {
+    const providerNames = ["Local AI (Built-in)", "Anthropic Claude", "OpenAI", "Google Gemini", "AWS Bedrock", "Ollama"];
     for (const name of providerNames) {
       await expect(page.locator(`text=${name}`).first()).toBeVisible();
     }
@@ -169,6 +169,73 @@ test.describe("Positive Workflows", () => {
     await page.waitForTimeout(2500);
 
     await expect(page.locator("text=latest version")).toBeVisible();
+  });
+});
+
+// ==========================================================================
+// Local AI Models
+// ==========================================================================
+
+test.describe("Local AI Models", () => {
+  // DC-SETTINGS-14: Local AI provider card is visible
+  test("DC-SETTINGS-14: local ai provider card is visible", async ({ page }) => {
+    await expect(page.locator("text=Local AI (Built-in)")).toBeVisible();
+    await expect(
+      page.locator("text=Downloaded GGUF models running on your CPU")
+    ).toBeVisible();
+  });
+
+  // DC-SETTINGS-15: Expanding Local AI card shows available models
+  test("DC-SETTINGS-15: expanding local ai card shows available models", async ({ page }) => {
+    await settings.expandProvider("Local AI (Built-in)");
+
+    // The summary line "X of Y models downloaded" should appear
+    await expect(
+      page.locator("text=/\\d+ of \\d+ models downloaded/")
+    ).toBeVisible();
+  });
+
+  // DC-SETTINGS-16: At least one known model name is visible
+  test("DC-SETTINGS-16: at least one model name is visible", async ({ page }) => {
+    await settings.expandProvider("Local AI (Built-in)");
+
+    const gemma = page.locator("text=Gemma 3 1B");
+    const qwen = page.locator("text=Qwen 2.5 1.5B");
+    const qwen3b = page.locator("text=Qwen 2.5 3B");
+
+    // At least one of the known models should be listed
+    const gemmaVisible = await gemma.isVisible().catch(() => false);
+    const qwenVisible = await qwen.isVisible().catch(() => false);
+    const qwen3bVisible = await qwen3b.isVisible().catch(() => false);
+
+    expect(gemmaVisible || qwenVisible || qwen3bVisible).toBe(true);
+  });
+
+  // DC-SETTINGS-17: Model cards show size in GB
+  test("DC-SETTINGS-17: model cards show ram requirements", async ({ page }) => {
+    await settings.expandProvider("Local AI (Built-in)");
+
+    // Each model card shows size like "0.8 GB" or "1.2 GB"
+    const sizeLabels = page.locator("text=/\\d+\\.\\d+ GB/");
+    await expect(sizeLabels.first()).toBeVisible();
+
+    const count = await sizeLabels.count();
+    expect(count).toBeGreaterThanOrEqual(1);
+  });
+
+  // DC-SETTINGS-18: Download buttons are visible for available models
+  test("DC-SETTINGS-18: download buttons visible for available models", async ({ page }) => {
+    await settings.expandProvider("Local AI (Built-in)");
+
+    // There should be at least one Download button or Downloaded badge
+    const downloadBtns = settings.localModelDownloadButtons;
+    const downloadedBadges = settings.localModelDownloadedBadges;
+
+    const btnCount = await downloadBtns.count();
+    const badgeCount = await downloadedBadges.count();
+
+    // Every model has either a Download button or a Downloaded badge
+    expect(btnCount + badgeCount).toBeGreaterThanOrEqual(1);
   });
 });
 

@@ -188,3 +188,111 @@ test.describe("Negative Workflows", () => {
     }
   });
 });
+
+// ==========================================================================
+// Library Agent Browser
+// ==========================================================================
+
+test.describe("Library Agent Browser", () => {
+  // DC-CREW-12: Browse Library button is visible in the crew builder dialog
+  test("DC-CREW-12: browse library button is visible in crew builder", async () => {
+    await crews.openBuilder();
+    await expect(crews.browseLibraryButton).toBeVisible();
+  });
+
+  // DC-CREW-13: Clicking Browse Library opens the library panel
+  test("DC-CREW-13: clicking browse library opens the library panel", async () => {
+    await crews.openBuilder();
+    await crews.openLibraryPanel();
+
+    await expect(crews.libraryPanelHeading).toBeVisible();
+    await expect(crews.librarySearchInput).toBeVisible();
+  });
+
+  // DC-CREW-14: Library panel shows agents
+  test("DC-CREW-14: library panel shows agents", async () => {
+    await crews.openBuilder();
+    await crews.openLibraryPanel();
+
+    // Wait for agents to load
+    await crews.page.waitForTimeout(1000);
+
+    const agentCount = await crews.libraryAgentRows.count();
+    expect(agentCount).toBeGreaterThanOrEqual(1);
+  });
+
+  // DC-CREW-15: Library panel search functionality filters agents
+  test("DC-CREW-15: library panel search filters agents", async ({ page }) => {
+    await crews.openBuilder();
+    await crews.openLibraryPanel();
+
+    // Wait for initial load
+    await page.waitForTimeout(1000);
+    const initialCount = await crews.libraryAgentRows.count();
+
+    // Search for something unlikely to match all agents
+    await crews.searchLibraryAgents("zzz_no_agent_matches_this_zzz");
+
+    const filteredCount = await crews.libraryAgentRows.count();
+
+    // Either no results or fewer results than initial
+    if (initialCount > 0) {
+      expect(filteredCount).toBeLessThan(initialCount);
+    }
+
+    // Verify the "No agents found" message appears when there are no results
+    if (filteredCount === 0) {
+      await expect(
+        crews.libraryPanel.getByText(/no agents found/i)
+      ).toBeVisible();
+    }
+  });
+
+  // DC-CREW-16: Selecting a library agent adds it to the crew agent list
+  test("DC-CREW-16: selecting a library agent adds it to agent list", async ({ page }) => {
+    await crews.openBuilder();
+
+    // Count initial agent entries (there should be 1 empty agent by default)
+    const initialAgentCount = await crews.agentNameInputs.count();
+
+    await crews.openLibraryPanel();
+
+    // Wait for agents to load
+    await page.waitForTimeout(1000);
+
+    const agentCount = await crews.libraryAgentRows.count();
+    if (agentCount === 0) {
+      test.skip();
+      return;
+    }
+
+    // Capture the name of the first library agent before clicking
+    const firstAgentName = await crews.libraryAgentRows
+      .first()
+      .locator("span.text-sm.font-medium")
+      .first()
+      .textContent();
+
+    // Select the first agent
+    await crews.selectLibraryAgent(0);
+
+    // Library panel should close after selection
+    await expect(crews.libraryPanel).not.toBeVisible({ timeout: 3000 });
+
+    // A new agent entry should have been added
+    const updatedAgentCount = await crews.agentNameInputs.count();
+    expect(updatedAgentCount).toBe(initialAgentCount + 1);
+
+    // The last agent name input should contain the selected agent's name
+    const lastAgentNameValue = await crews.agentNameInputs
+      .last()
+      .inputValue();
+    expect(lastAgentNameValue).toBe(firstAgentName?.trim() ?? "");
+
+    // The last agent instructions textarea should not be empty
+    const lastInstructionsValue = await crews.agentInstructionTextareas
+      .last()
+      .inputValue();
+    expect(lastInstructionsValue.length).toBeGreaterThan(0);
+  });
+});

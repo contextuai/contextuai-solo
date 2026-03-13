@@ -99,6 +99,32 @@ export class SettingsPage {
     return this.page.getByText(/connection successful/i);
   }
 
+  // ── Local AI Locators ───────────────────────────────────────────
+
+  /** The Local AI (Built-in) provider card. */
+  get localAICard(): Locator {
+    return this.providerCards.filter({ hasText: "Local AI (Built-in)" }).first();
+  }
+
+  /** Local model items inside the expanded Local AI card. */
+  get localModelItems(): Locator {
+    return this.page.locator("[class*='rounded-xl'][class*='border']").filter({
+      has: this.page.locator("text=/\\d+\\.\\d+ GB/"),
+    });
+  }
+
+  /** Download buttons for local models (only visible for non-downloaded models). */
+  get localModelDownloadButtons(): Locator {
+    return this.page.getByRole("button", { name: /download/i }).filter({
+      hasNotText: /downloaded/i,
+    });
+  }
+
+  /** "Downloaded" badges on local model items. */
+  get localModelDownloadedBadges(): Locator {
+    return this.page.locator("text=Downloaded");
+  }
+
   // ── Actions ─────────────────────────────────────────────────────
 
   /** Navigate to the settings page. */
