@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-ContextuAI Solo is a single-user desktop AI assistant with 50+ pre-built business agents. It's a Tauri v2 desktop app with a React 19 frontend and a FastAPI Python backend running as a sidecar process. Data is stored locally in SQLite.
+ContextuAI Solo is a single-user desktop AI assistant with 81 pre-built business agents. It's a Tauri v2 desktop app with a React 19 frontend and a FastAPI Python backend running as a sidecar process. Data is stored locally in SQLite. Supports both cloud AI providers (Anthropic, AWS Bedrock) and local GGUF models via llama-cpp-python.
 
 ## Commands
 
@@ -68,16 +68,38 @@ The backend was ported from MongoDB. A compatibility layer preserves the Motor A
 - **Workspace orchestration**: `services/workspace/orchestrator.py` polls job queue, `agent_runner.py` executes individual agents, `checkpoint_service.py` handles pause/resume
 - **Crew system**: Multi-agent teams with persistent memory (`crew_memory_service.py`)
 
+### Local AI Models (`backend/routers/local_models.py`)
+GGUF models downloaded from HuggingFace, stored in `~/.contextuai-solo/models/`. Inference via llama-cpp-python on CPU.
+- Available models: Gemma 3 1B, Qwen 2.5 1.5B, Phi-3 Mini
+- Download: `POST /api/v1/local-models/{model_id}/download` (SSE progress)
+- Sync to DB: `POST /api/v1/local-models/sync` (registers downloaded models in the `models` collection)
+- Models appear in chat dropdown after sync
+
 ### Agent Library (`agent-library/`)
-50+ agents as markdown files organized by category (c-suite, marketing-sales, finance-operations, etc.). Each markdown file contains a system prompt, recommended model, and tool configs. Auto-seeded into `workspace_agents` collection on first startup. Re-seed via `POST /api/v1/desktop/reseed`.
+81 business agents as markdown files organized by category (c-suite, marketing-sales, finance-operations, etc.). Engineering category is excluded from desktop mode. Each markdown file contains a system prompt, recommended model, and tool configs. Auto-seeded into `workspace_agents` collection on first startup. Re-seed via `POST /api/v1/desktop/reseed`.
+
+### Crew System
+Multi-agent teams with persistent memory. Crew builder (`components/crews/crew-builder.tsx`) supports both manual agent creation and browsing from the 81-agent library via `GET /api/v1/crews/library-agents`. Execution modes: sequential, parallel, pipeline, autonomous.
+
+### Connections (`routes/connections.tsx`)
+External platform integrations: Telegram, Discord, LinkedIn (OAuth), Twitter/X, Instagram (OAuth), Facebook (OAuth). Token-paste flow for Telegram/Discord/Twitter; OAuth2 flow for LinkedIn/Instagram/Facebook with provider-specific setup instructions.
 
 ### Authentication
 Desktop mode uses a static admin user — no login required. Auth is bypassed via dependency overrides in `app.py`. The `auth_service.py` has Cognito JWT support for the enterprise edition.
 
+### Persona Types
+Desktop mode seeds 12 persona types: Nexus Agent, Web Researcher, PostgreSQL, MySQL, MSSQL, Snowflake, MongoDB, MCP Server, API Connector, File Operations, Slack, Twitter/X. No code/engineering personas — desktop users are expected to use IDEs for that.
+
 ### Key Configuration
-- `backend/settings.py` — Centralized env-var config with defaults
+- `backend/settings.py` — Centralized env-var config with defaults (port 18741)
 - `frontend/src-tauri/tauri.conf.json` — Tauri app config, sidecar path, window settings
 - `frontend/vite.config.ts` — Path alias `@/` → `./src/`, dev port 1420
+
+### Port Convention
+Backend sidecar runs on **port 18741** (not 8000). This avoids conflicts with Docker stacks, common dev tools, and other desktop apps. All references are aligned: `sidecar.rs`, `transport.ts`, `settings.py`.
+
+### camelCase / snake_case Mismatch
+Backend API returns camelCase (`messageType`, `messageId`, `sessionId`) but frontend types use snake_case (`message_type`, `message_id`, `session_id`). The `normalizeMessage()` function in `lib/api/chat-client.ts` bridges this gap when loading messages from the API.
 
 ## Code Conventions
 
