@@ -54,7 +54,7 @@ export class PersonasPage {
 
   /** Name input in the create/edit modal. */
   get formName(): Locator {
-    return this.page.locator('input[placeholder="e.g., Code Reviewer"]');
+    return this.page.locator('input[placeholder="e.g., My Production DB"]');
   }
 
   /** Description input in the create/edit modal. */
@@ -81,7 +81,7 @@ export class PersonasPage {
   /** System prompt textarea in the create/edit modal. */
   get formSystemPrompt(): Locator {
     return this.page.locator(
-      'textarea[placeholder*="Instructions that define how this persona behaves"]'
+      'textarea[placeholder*="Optional instructions that define how this persona behaves"]'
     );
   }
 
