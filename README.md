@@ -54,7 +54,8 @@ contextuai-solo/
 │   ├── services/       # Business logic and AI orchestration
 │   └── requirements.txt
 ├── agent-library/      # Built-in agent templates (81 agents across 12 categories)
-├── run.sh              # One-command backend launcher
+├── run.sh              # One-command backend launcher (Linux/macOS)
+├── run-tests.ps1       # One-click test runner (backend + frontend)
 ├── docker-compose.yml  # Docker-based development setup
 └── LICENSE             # Apache 2.0
 ```
@@ -180,7 +181,7 @@ The built app will be in `frontend/src-tauri/target/release/`.
 |  | Vite + React|  | --> |  | SQLite Database   |  | --> |  - OpenAI          |
 |  | SPA (1420)  |  | API |  | (via async adapter)|  |     |  - Google Gemini   |
 |  +-------------+  |     |  +-------------------+  |     |  - AWS Bedrock     |
-|                   |     |  Port 18741             |     |  - Ollama (local)  |
+|                   |     |  Port 18741             |     |  - Local GGUF      |
 +-------------------+     +-------------------------+     +--------------------+
 ```
 
@@ -241,9 +242,21 @@ Please read our [Contributing Guide](CONTRIBUTING.md) before submitting a pull r
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/amazing-feature`)
 3. Make your changes
-4. Run tests (`npm run test` for frontend, `pytest` for backend)
+4. Run tests: `.\run-tests.ps1` (runs both backend pytest + frontend Playwright E2E — auto-starts servers)
 5. Commit with clear messages (`git commit -m "feat: add amazing feature"`)
 6. Push and open a Pull Request
+
+### Testing
+
+```powershell
+.\run-tests.ps1                              # Run all tests (auto-starts servers)
+.\run-tests.ps1 -Backend                     # Backend pytest only (607+ tests)
+.\run-tests.ps1 -Frontend                    # Frontend Playwright E2E only (118+ tests)
+.\run-tests.ps1 -Backend -Filter "sqlite"    # Filter by test name
+.\run-tests.ps1 -Frontend -Filter "chat"     # Filter Playwright tests
+```
+
+The test runner automatically starts/stops the backend and frontend dev servers as needed. If servers are already running, it uses them and leaves them alone.
 
 ---
 

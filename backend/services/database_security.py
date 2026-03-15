@@ -245,12 +245,7 @@ class DatabaseSecurity:
         return result
 
     async def _check_persona_access(self, user_id: str, persona_id: str) -> bool:
-        """
-        Check if user has access to specific persona.
-        In production, this would check against a user-persona mapping table.
-        """
-        # For now, implement basic check
-        # TODO: Integrate with actual user-persona permissions table
+        """Check if user has access to specific persona. Solo: always True (single user)."""
         return True
 
     async def _check_rate_limit(self, user_id: str, access_level: AccessLevel) -> Dict[str, Any]:

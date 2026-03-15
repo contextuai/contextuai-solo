@@ -515,15 +515,6 @@ class PersonaService:
             }
         }
 
-    async def validate_persona_access(self, user_id: str, persona_id: str) -> bool:
-        """
-        Validate if user has access to the specified persona
-        TODO: Implement when persona access control is added
-        """
-        # For now, return True (all personas are accessible)
-        # This should integrate with the persona_access router when implemented
-        return True
-
     async def get_persona_summary(self, persona_id: str) -> Optional[Dict[str, Any]]:
         """Get basic persona information for display purposes"""
 

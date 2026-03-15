@@ -417,8 +417,6 @@ class ConnectionPoolManager:
                 logger.error(f"Failed to retrieve password from Secrets Manager: {e}")
                 raise
         else:
-            # Direct password (should be encrypted in production)
-            # TODO: Implement DynamoDB credential decryption
             return credentials.get("password", "")
 
     async def _is_pool_healthy(self, pool, db_type: str) -> bool:

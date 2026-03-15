@@ -143,8 +143,6 @@ async def list_users(
         logger.info(f"[DEBUG Users Router] Email: {current_user.get('email')}")
         logger.info(f"[DEBUG Users Router] Initial role: {current_user.get('role')}")
 
-        # TEMPORARY LOCAL TESTING WORKAROUND: Fetch role from MongoDB since Cognito custom attributes don't exist yet
-        # TODO: Remove this workaround after adding custom:role to Cognito User Pool schema
         user_role = current_user.get("role", "standardUser")
         logger.info(f"[DEBUG Users Router] Role from token: {user_role}")
 

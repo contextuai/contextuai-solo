@@ -5,12 +5,14 @@
 .DESCRIPTION
     Runs backend pytest tests (607+) and/or frontend Playwright E2E tests (118+).
     By default runs both. Use -Backend or -Frontend to run only one.
+    For frontend tests, the script automatically starts/stops the backend and
+    frontend dev servers — no manual setup needed.
 
 .PARAMETER Backend
     Run only backend tests (pytest).
 
 .PARAMETER Frontend
-    Run only frontend E2E tests (Playwright). Requires dev servers running.
+    Run only frontend E2E tests (Playwright).
 
 .PARAMETER Filter
     Test name filter. Passed to pytest -k (backend) or playwright --grep (frontend).
@@ -47,6 +49,43 @@ $runFrontend = $Frontend -or (-not $Backend -and -not $Frontend)
 
 $backendFailed = $false
 $frontendFailed = $false
+
+# Track server processes we start so we can clean them up
+$startedBackend = $false
+$startedFrontend = $false
+$backendProcess = $null
+$frontendProcess = $null
+
+function Test-ServerReady {
+    param([string]$Url, [int]$TimeoutSeconds = 30, [string]$Label = "Server")
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    while ((Get-Date) -lt $deadline) {
+        try {
+            $response = Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec 2 -ErrorAction SilentlyContinue
+            if ($response.StatusCode -eq 200) { return $true }
+        } catch {}
+        Start-Sleep -Milliseconds 500
+    }
+    Write-Host "  TIMEOUT: $Label not ready at $Url after ${TimeoutSeconds}s" -ForegroundColor Red
+    return $false
+}
+
+function Stop-ServerProcesses {
+    if ($script:backendProcess -and -not $script:backendProcess.HasExited) {
+        Write-Host "  Stopping backend server (PID $($script:backendProcess.Id))..." -ForegroundColor Gray
+        Stop-Process -Id $script:backendProcess.Id -Force -ErrorAction SilentlyContinue
+        # Also kill any child uvicorn processes on port 18741
+        Get-NetTCPConnection -LocalPort 18741 -ErrorAction SilentlyContinue |
+            ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }
+    }
+    if ($script:frontendProcess -and -not $script:frontendProcess.HasExited) {
+        Write-Host "  Stopping frontend server (PID $($script:frontendProcess.Id))..." -ForegroundColor Gray
+        Stop-Process -Id $script:frontendProcess.Id -Force -ErrorAction SilentlyContinue
+        # Also kill any child node processes on port 1420
+        Get-NetTCPConnection -LocalPort 1420 -ErrorAction SilentlyContinue |
+            ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }
+    }
+}
 
 # ===================================================================
 # Backend Tests (pytest)
@@ -127,7 +166,75 @@ if ($runFrontend) {
                 npm install
             }
 
-            # Build args
+            # -----------------------------------------------------------
+            # Auto-start backend server if not already running
+            # -----------------------------------------------------------
+            $backendUrl = "http://127.0.0.1:18741/api/v1/health"
+            $backendAlreadyRunning = $false
+            try {
+                $r = Invoke-WebRequest -Uri $backendUrl -UseBasicParsing -TimeoutSec 2 -ErrorAction SilentlyContinue
+                if ($r.StatusCode -eq 200) { $backendAlreadyRunning = $true }
+            } catch {}
+
+            if ($backendAlreadyRunning) {
+                Write-Host "  Backend already running on port 18741" -ForegroundColor Green
+            } else {
+                Write-Host "  Starting backend server..." -ForegroundColor Yellow
+                $venvPython = "$projectRoot\backend\.venv\Scripts\python.exe"
+                if (-not (Test-Path $venvPython)) {
+                    $venvPython = "python"
+                }
+
+                $env:CONTEXTUAI_MODE = "desktop"
+                $backendProcess = Start-Process -FilePath $venvPython `
+                    -ArgumentList "-m", "uvicorn", "app:app", "--host", "127.0.0.1", "--port", "18741" `
+                    -WorkingDirectory "$projectRoot\backend" `
+                    -WindowStyle Hidden -PassThru
+                $startedBackend = $true
+
+                if (-not (Test-ServerReady -Url $backendUrl -TimeoutSeconds 30 -Label "Backend")) {
+                    Write-Host "ERROR: Backend failed to start" -ForegroundColor Red
+                    $frontendFailed = $true
+                    Stop-ServerProcesses
+                    Pop-Location
+                    return
+                }
+                Write-Host "  Backend ready (PID $($backendProcess.Id))" -ForegroundColor Green
+            }
+
+            # -----------------------------------------------------------
+            # Auto-start frontend dev server if not already running
+            # -----------------------------------------------------------
+            $frontendUrl = "http://127.0.0.1:1420"
+            $frontendAlreadyRunning = $false
+            try {
+                $r = Invoke-WebRequest -Uri $frontendUrl -UseBasicParsing -TimeoutSec 2 -ErrorAction SilentlyContinue
+                if ($r.StatusCode -eq 200) { $frontendAlreadyRunning = $true }
+            } catch {}
+
+            if ($frontendAlreadyRunning) {
+                Write-Host "  Frontend already running on port 1420" -ForegroundColor Green
+            } else {
+                Write-Host "  Starting frontend dev server..." -ForegroundColor Yellow
+                $frontendProcess = Start-Process -FilePath "npm" `
+                    -ArgumentList "run", "dev" `
+                    -WorkingDirectory "$projectRoot\frontend" `
+                    -WindowStyle Hidden -PassThru
+                $startedFrontend = $true
+
+                if (-not (Test-ServerReady -Url $frontendUrl -TimeoutSeconds 30 -Label "Frontend")) {
+                    Write-Host "ERROR: Frontend dev server failed to start" -ForegroundColor Red
+                    $frontendFailed = $true
+                    Stop-ServerProcesses
+                    Pop-Location
+                    return
+                }
+                Write-Host "  Frontend ready (PID $($frontendProcess.Id))" -ForegroundColor Green
+            }
+
+            Write-Host ""
+
+            # Build Playwright args
             $playwrightArgs = @()
 
             if ($File) {
@@ -139,11 +246,6 @@ if ($runFrontend) {
                 $playwrightArgs += $Filter
             }
 
-            # Note: Playwright needs dev servers running
-            Write-Host "NOTE: Frontend tests require both servers running:" -ForegroundColor Yellow
-            Write-Host "  - Backend:  cd backend && uvicorn app:app --port 18741" -ForegroundColor Yellow
-            Write-Host "  - Frontend: cd frontend && npm run dev`n" -ForegroundColor Yellow
-
             Write-Host "npx playwright test $($playwrightArgs -join ' ')`n" -ForegroundColor Gray
             npx playwright test @playwrightArgs
 
@@ -153,6 +255,8 @@ if ($runFrontend) {
         }
     }
     finally {
+        # Stop servers we started (leave pre-existing ones alone)
+        Stop-ServerProcesses
         Pop-Location
     }
 }

@@ -32,7 +32,6 @@ from routers.workspace_project_types import router as workspace_project_types_ro
 from routers.crews import router as crews_router
 from routers.tools import router as tools_router
 from routers.files import router as files_router
-from routers.users import router as users_router
 from routers.analytics import router as analytics_router
 from routers.channels import router as channels_router
 from routers.distribution import router as distribution_router
@@ -77,7 +76,6 @@ app.include_router(workspace_project_types_router)
 app.include_router(crews_router)
 app.include_router(tools_router)
 app.include_router(files_router)
-app.include_router(users_router)
 app.include_router(analytics_router)
 app.include_router(channels_router)
 app.include_router(distribution_router)
