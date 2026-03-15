@@ -9,7 +9,7 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-Python%203.11+-009688.svg)](https://fastapi.tiangolo.com/)
 [![SQLite](https://img.shields.io/badge/Database-SQLite-003B57.svg)](https://sqlite.org/)
 
-**ContextuAI Solo** is a free, open-source desktop AI assistant that gives you an entire team of 50+ specialized AI business agents — right on your machine. Bring your own API keys, keep your data local, and get enterprise-grade AI assistance without the enterprise price tag.
+**ContextuAI Solo** is a free, open-source desktop AI assistant that gives you an entire team of 81 specialized AI business agents — right on your machine. Bring your own API keys, run local AI models for free, keep your data local, and get enterprise-grade AI assistance without the enterprise price tag.
 
 ---
 
@@ -19,20 +19,23 @@ ContextuAI Solo is the community edition of the [ContextuAI](https://contextuai.
 
 ### Why Solo?
 
-- **BYOK (Bring Your Own Key)** — Use your existing API keys from Anthropic, OpenAI, Google, AWS Bedrock, or run completely free with Ollama local models
-- **50+ Pre-Built Business Agents** — Ready-to-use AI agents across 11 departments: C-Suite, Marketing, Finance, Legal, HR, Design, Data Science, IT, Product, Startup, and Operations
-- **Multi-Agent Crews** — Assemble teams of agents that collaborate autonomously on complex tasks
-- **Custom Personas** — Create AI personas with tailored system prompts and enterprise connectors
+- **BYOK (Bring Your Own Key)** — Use your existing API keys from Anthropic, OpenAI, Google, or AWS Bedrock
+- **Local AI Models (Free)** — Run AI completely offline with built-in GGUF models (Gemma 3 1B, Qwen 2.5 1.5B, Phi-3 Mini) — no API key required
+- **81 Pre-Built Business Agents** — Ready-to-use AI agents across 12 departments: C-Suite, Marketing & Sales, Finance & Operations, Legal & Compliance, HR & People, Design & UX, Data & Analytics, IT & Security, Product Management, Startup & Venture, Specialized, and Operations
+- **Multi-Agent Crews** — Assemble teams of agents that collaborate autonomously — sequential, parallel, pipeline, or fully autonomous execution modes
+- **12 Persona Types** — Nexus Agent, Web Researcher, database connectors (PostgreSQL, MySQL, MSSQL, Snowflake, MongoDB), MCP Server, API Connector, File Operations, Slack, and Twitter/X
 - **Workshop Mode** — Run multi-agent brainstorming sessions with structured outputs and artifact generation
-- **External Connections** — Connect to Telegram, Discord, and LinkedIn for automated messaging workflows
-- **100% Local** — Your data never leaves your machine. SQLite database + localStorage. No cloud required.
+- **6 Platform Connections** — Integrate with Telegram, Discord, LinkedIn, Twitter/X, Instagram, and Facebook for automated messaging and publishing workflows
+- **100% Local** — Your data never leaves your machine. SQLite database + localStorage. No cloud required. No telemetry.
 - **Beautiful UI** — Dark/Light theme, brand voice customization, and a polished desktop experience built with Tauri v2
 
 ---
 
 ## Screenshots
 
-> **Screenshots coming soon.** We're preparing a visual walkthrough of the app. Star this repo to get notified!
+![ContextuAI Solo](screenshots/app-overview.png)
+
+> More screenshots and a visual walkthrough coming soon. Star this repo to get notified!
 
 ---
 
@@ -50,7 +53,7 @@ contextuai-solo/
 │   ├── routers/        # API route handlers
 │   ├── services/       # Business logic and AI orchestration
 │   └── requirements.txt
-├── agent-library/      # Built-in agent templates (50+ agents)
+├── agent-library/      # Built-in agent templates (81 agents across 12 categories)
 ├── run.sh              # One-command backend launcher
 ├── docker-compose.yml  # Docker-based development setup
 └── LICENSE             # Apache 2.0
@@ -130,7 +133,7 @@ The built app will be in `frontend/src-tauri/target/release/`.
 ### First Run
 
 1. The app launches a **Setup Wizard** that walks you through API key configuration
-2. Choose your preferred AI provider (or use Ollama for free local models)
+2. Choose your preferred AI provider or download a free local GGUF model
 3. Start chatting, building agents, or assembling crews
 
 ---
@@ -140,14 +143,14 @@ The built app will be in `frontend/src-tauri/target/release/`.
 | Feature | Solo (Free) | Enterprise |
 |---------|:-----------:|:----------:|
 | AI Chat with Streaming | Yes | Yes |
-| 50+ Business Agents | Yes | Yes |
-| Custom Personas | Yes | Yes |
+| 81 Business Agents | Yes | Yes |
+| 12 Persona Types | Yes | Yes |
 | Multi-Agent Crews | Yes | Yes |
 | Workshop (Brainstorming) | Yes | Yes |
 | BYOK (Bring Your Own Key) | Yes | Yes |
-| Ollama Local Models | Yes | Yes |
+| Local AI Models (GGUF) | Yes | Yes |
 | Dark/Light Theme | Yes | Yes |
-| Telegram/Discord/LinkedIn | Yes | Yes |
+| 6 Platform Connections | Yes | Yes |
 | SQLite (Local Storage) | Yes | -- |
 | MongoDB + Cloud Infra | -- | Yes |
 | Multi-User / Teams | -- | Yes |
@@ -190,20 +193,21 @@ The built app will be in `frontend/src-tauri/target/release/`.
 
 ## Agent Library
 
-Solo ships with **50+ pre-built business agents** across 11 categories:
+Solo ships with **81 pre-built business agents** across 12 categories:
 
 | Category | Example Agents |
 |----------|---------------|
 | **C-Suite** | CEO Strategic Advisor, CFO Financial Strategist, COO Operations Optimizer, CTO Technology Advisor |
-| **Marketing** | Content Strategist, SEO Specialist, Social Media Manager, Brand Voice Designer, Email Campaign Builder |
-| **Finance** | Financial Analyst, Budget Planner, Invoice Processor, Tax Advisor, Revenue Forecaster |
-| **Legal** | Contract Reviewer, Compliance Checker, IP Advisor, Privacy Policy Drafter, Terms of Service Generator |
-| **HR** | Recruiter Assistant, Job Description Writer, Employee Handbook Drafter, Performance Review Helper |
-| **Design** | UI/UX Advisor, Brand Identity Designer, Presentation Builder, Color Palette Generator |
-| **Data Science** | Data Analyst, SQL Query Builder, Dashboard Designer, Statistical Modeler, Data Cleaning Assistant |
-| **IT** | DevOps Assistant, Security Auditor, Infrastructure Planner, Incident Response Helper |
-| **Product** | Product Manager, Feature Prioritizer, User Story Writer, Roadmap Planner, Competitive Analyst |
-| **Startup** | Pitch Deck Builder, Business Model Canvas Creator, Investor Brief Writer, Go-to-Market Strategist |
+| **Marketing & Sales** | Content Strategist, SEO Specialist, Social Media Manager, Brand Voice Designer, Email Campaign Builder |
+| **Finance & Operations** | Financial Analyst, Budget Planner, Invoice Processor, Tax Advisor, Revenue Forecaster |
+| **Legal & Compliance** | Contract Reviewer, Compliance Checker, IP Advisor, Privacy Policy Drafter, Terms of Service Generator |
+| **HR & People** | Recruiter Assistant, Job Description Writer, Employee Handbook Drafter, Performance Review Helper |
+| **Design & UX** | UI/UX Advisor, Brand Identity Designer, Presentation Builder, Color Palette Generator |
+| **Data & Analytics** | Data Analyst, SQL Query Builder, Dashboard Designer, Statistical Modeler, Data Cleaning Assistant |
+| **IT & Security** | DevOps Assistant, Security Auditor, Infrastructure Planner, Incident Response Helper |
+| **Product Management** | Product Manager, Feature Prioritizer, User Story Writer, Roadmap Planner, Competitive Analyst |
+| **Startup & Venture** | Pitch Deck Builder, Business Model Canvas Creator, Investor Brief Writer, Go-to-Market Strategist |
+| **Specialized** | Industry-specific and cross-functional agents for niche business needs |
 | **Operations** | Process Optimizer, Supply Chain Analyst, Quality Assurance Planner, Vendor Evaluation Assistant |
 
 Each agent comes with a specialized system prompt, recommended model, and relevant tool configurations.
@@ -220,7 +224,8 @@ Each agent comes with a specialized system prompt, recommended model, and releva
 | **Icons** | [Lucide Icons](https://lucide.dev/) |
 | **Backend** | [FastAPI](https://fastapi.tiangolo.com/) (Python 3.11+) |
 | **Database** | [SQLite](https://sqlite.org/) via async adapter |
-| **AI Providers** | Anthropic Claude, OpenAI GPT, Google Gemini, AWS Bedrock, Ollama |
+| **AI Providers** | Anthropic Claude, OpenAI GPT, Google Gemini, AWS Bedrock |
+| **Local AI** | GGUF models via llama-cpp-python (Gemma 3, Qwen 2.5, Phi-3) |
 | **Agent Framework** | [Strands Agents SDK](https://github.com/strands-agents/sdk-python) |
 
 ---
