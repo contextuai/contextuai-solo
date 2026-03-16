@@ -1,8 +1,10 @@
 import { useState, useRef, useEffect, KeyboardEvent, ChangeEvent } from "react";
 import { cn } from "@/lib/utils";
-import { ArrowUp, Square, ChevronDown, Cpu, Sparkles, Check } from "lucide-react";
+import { ArrowUp, Square, ChevronDown, Cpu, Sparkles, Check, Monitor, Cloud } from "lucide-react";
 import type { ModelConfig } from "@/lib/api/models-client";
+import { getModels } from "@/lib/api/models-client";
 import type { Persona } from "@/lib/api/personas-client";
+import { useAiMode } from "@/contexts/ai-mode-context";
 
 interface ChatInputProps {
   value: string;
@@ -153,6 +155,16 @@ export default function ChatInput({
   onSelectPersona,
 }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const { aiMode } = useAiMode();
+  const [showAllModels, setShowAllModels] = useState(false);
+  const [allModels, setAllModels] = useState<ModelConfig[]>([]);
+
+  // When "Show all models" is toggled, fetch unfiltered models
+  useEffect(() => {
+    if (showAllModels) {
+      getModels().then(setAllModels).catch(() => setAllModels([]));
+    }
+  }, [showAllModels]);
 
   // Auto-resize textarea
   useEffect(() => {
@@ -188,8 +200,19 @@ export default function ChatInput({
       <div className="max-w-3xl mx-auto">
         {/* Model & Persona selectors */}
         <div className="flex items-center gap-2 mb-2">
+          <span
+            className={cn(
+              "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider",
+              aiMode === "local"
+                ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+                : "bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400"
+            )}
+          >
+            {aiMode === "local" ? <Monitor className="w-2.5 h-2.5" /> : <Cloud className="w-2.5 h-2.5" />}
+            {aiMode}
+          </span>
           <MiniDropdown
-            items={models}
+            items={showAllModels ? allModels : models}
             selectedId={selectedModelId}
             onSelect={(id) => id && onSelectModel(id)}
             label="Select model"
@@ -203,6 +226,18 @@ export default function ChatInput({
             icon={Sparkles}
             allowClear
           />
+          <button
+            type="button"
+            onClick={() => setShowAllModels(!showAllModels)}
+            className={cn(
+              "text-[10px] font-medium px-2 py-0.5 rounded-md border transition-colors",
+              showAllModels
+                ? "border-primary-300 dark:border-primary-700 bg-primary-50 dark:bg-primary-500/10 text-primary-600 dark:text-primary-400"
+                : "border-neutral-200 dark:border-neutral-700 text-neutral-500 dark:text-neutral-400 hover:text-neutral-700"
+            )}
+          >
+            {showAllModels ? "Filtered" : "All models"}
+          </button>
         </div>
 
         <div

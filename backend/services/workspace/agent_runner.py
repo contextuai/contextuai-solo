@@ -82,6 +82,13 @@ class AgentRunner:
         else:
             raise RuntimeError("Neither Claude Agent SDK nor Strands SDK available")
 
+    def _is_local_model(self) -> bool:
+        """Check if the configured model is a local GGUF model."""
+        return (
+            self.model_id.startswith("local-")
+            or self.model_id.startswith("local:")
+        )
+
     async def run_agent(
         self,
         agent_blueprint: Dict[str, Any],
@@ -90,10 +97,79 @@ class AgentRunner:
         project_id: str,
     ) -> Dict[str, Any]:
         """Execute a single agent with native tool execution."""
+        # Route to local model path if configured
+        if self._is_local_model():
+            return await self._run_agent_local(agent_blueprint, context, artifact_service, project_id)
         if CLAUDE_SDK_AVAILABLE:
             return await self._run_agent_sdk(agent_blueprint, context, artifact_service, project_id)
         else:
             return await self._run_agent_strands(agent_blueprint, context, artifact_service, project_id)
+
+    async def _run_agent_local(
+        self,
+        agent_blueprint: Dict[str, Any],
+        context: Dict[str, Any],
+        artifact_service: ArtifactService,
+        project_id: str,
+    ) -> Dict[str, Any]:
+        """Execute agent using local GGUF model (text generation only, no tool calling)."""
+        try:
+            from services.local_model_service import LocalModelService
+
+            agent_name = agent_blueprint.get("name", "Agent")
+            logger.info(f"Running agent '{agent_name}' via local model: {self.model_id}")
+
+            prompt = self.build_prompt(agent_blueprint, context)
+            # Prepend a note about local model limitations
+            prompt = (
+                "[Local AI mode: text generation only — no tool use available]\n\n"
+                + prompt
+            )
+
+            local_svc = LocalModelService()
+            # Strip "local-" prefix to get the model catalog ID
+            catalog_id = self.model_id.replace("local-", "")
+            output = await local_svc.generate(model_id=catalog_id, prompt=prompt, max_tokens=self.max_tokens)
+
+            # Parse any file blocks from the output (```file:path\ncontent```)
+            import re
+            files_created = []
+            file_matches = re.findall(r'```file:([^\n]+)\n(.*?)```', output, re.DOTALL)
+            for filename, content in file_matches:
+                filename = filename.strip()
+                content = content.strip()
+                result = await artifact_service.save_file(
+                    project_id=project_id, filename=filename, content=content
+                )
+                if result.get("success"):
+                    files_created.append({
+                        "filename": filename,
+                        "content": content,
+                        "size": result.get("size", len(content)),
+                    })
+
+            logger.info(f"Agent '{agent_name}' completed via local model: {len(files_created)} files")
+
+            return {
+                "success": True,
+                "output": output,
+                "files_created": files_created,
+                "tool_calls": [],
+                "tokens_used": len(prompt.split()) + len(output.split()),
+                "cost": 0.0,
+                "error": None,
+            }
+        except Exception as e:
+            logger.error(f"Error running agent via local model: {e}")
+            return {
+                "success": False,
+                "output": "",
+                "files_created": [],
+                "tool_calls": [],
+                "tokens_used": 0,
+                "cost": 0.0,
+                "error": str(e),
+            }
 
     async def _run_agent_sdk(
         self,

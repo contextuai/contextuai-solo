@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { type CreateAgentPayload, workspaceApi } from "@/lib/api/workspace-client";
 import { getModels, type ModelConfig } from "@/lib/api/models-client";
+import { useAiMode } from "@/contexts/ai-mode-context";
 import {
   X,
   Loader2,
@@ -51,6 +52,7 @@ interface AgentCreateProps {
 }
 
 export function AgentCreate({ isOpen, onClose, onCreated }: AgentCreateProps) {
+  const { aiMode } = useAiMode();
   const [form, setForm] = useState({
     name: "",
     role: "",
@@ -78,7 +80,7 @@ export function AgentCreate({ isOpen, onClose, onCreated }: AgentCreateProps) {
         is_public: false,
       });
       setError(null);
-      getModels()
+      getModels(aiMode)
         .then(setModels)
         .catch(() => setModels([]));
     }

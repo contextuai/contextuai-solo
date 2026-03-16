@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/components/providers/theme-provider";
 import { useSettings } from "@/hooks/use-settings";
+import { useAiMode } from "@/contexts/ai-mode-context";
 import { Tabs, Button, Input, Textarea, Select, Badge, Dialog, TagInput } from "@/components/ui";
 import type { AIProviderConfig } from "@/types/settings";
 import {
@@ -237,6 +238,63 @@ function LocalAIConfig() {
   );
 }
 
+// ─── AI Mode Card ───────────────────────────────────────────────────────────
+
+function AiModeCard() {
+  const { aiMode, setAiMode } = useAiMode();
+
+  return (
+    <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-5 mb-6">
+      <h3 className="text-sm font-semibold text-neutral-900 dark:text-white mb-1">AI Mode</h3>
+      <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-4">
+        Choose where your AI runs. This applies globally across Chat, Workspace, and Crews.
+      </p>
+      <div className="grid grid-cols-2 gap-3">
+        <button
+          onClick={() => setAiMode("local")}
+          className={cn(
+            "relative p-4 rounded-xl border-2 text-left transition-all",
+            aiMode === "local"
+              ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-500/5"
+              : "border-neutral-200 dark:border-neutral-700 hover:border-neutral-300 dark:hover:border-neutral-600"
+          )}
+        >
+          <div className="flex items-center gap-2 mb-1.5">
+            <MonitorIcon className={cn("w-4 h-4", aiMode === "local" ? "text-emerald-500" : "text-neutral-400")} />
+            <span className={cn("text-sm font-medium", aiMode === "local" ? "text-emerald-600 dark:text-emerald-400" : "text-neutral-900 dark:text-white")}>
+              Local AI
+            </span>
+          </div>
+          <p className="text-xs text-neutral-500 dark:text-neutral-400">
+            Free, private, offline. Smaller models, slower on CPU.
+          </p>
+          {aiMode === "local" && <div className="absolute top-2 right-2 w-2 h-2 rounded-full bg-emerald-500" />}
+        </button>
+        <button
+          onClick={() => setAiMode("cloud")}
+          className={cn(
+            "relative p-4 rounded-xl border-2 text-left transition-all",
+            aiMode === "cloud"
+              ? "border-sky-500 bg-sky-50 dark:bg-sky-500/5"
+              : "border-neutral-200 dark:border-neutral-700 hover:border-neutral-300 dark:hover:border-neutral-600"
+          )}
+        >
+          <div className="flex items-center gap-2 mb-1.5">
+            <Cloud className={cn("w-4 h-4", aiMode === "cloud" ? "text-sky-500" : "text-neutral-400")} />
+            <span className={cn("text-sm font-medium", aiMode === "cloud" ? "text-sky-600 dark:text-sky-400" : "text-neutral-900 dark:text-white")}>
+              Cloud
+            </span>
+          </div>
+          <p className="text-xs text-neutral-500 dark:text-neutral-400">
+            Requires API keys. Larger models, faster inference.
+          </p>
+          {aiMode === "cloud" && <div className="absolute top-2 right-2 w-2 h-2 rounded-full bg-sky-500" />}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── AI Providers Tab ───────────────────────────────────────────────────────
 
 function AIProvidersTab() {
@@ -357,6 +415,8 @@ function AIProvidersTab() {
 
   return (
     <div className="space-y-4">
+      <AiModeCard />
+
       <div className="mb-6">
         <h3 className="text-lg font-semibold text-neutral-900 dark:text-white">AI Providers</h3>
         <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">

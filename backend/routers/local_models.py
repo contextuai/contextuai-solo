@@ -40,6 +40,7 @@ router = APIRouter(prefix="/api/v1/local-models", tags=["local-models"])
 # ---------------------------------------------------------------------------
 
 AVAILABLE_MODELS: List[Dict[str, Any]] = [
+    # ── Small (any machine) ──────────────────────────────────────────
     {
         "id": "gemma-3-1b",
         "name": "Gemma 3 1B",
@@ -60,7 +61,7 @@ AVAILABLE_MODELS: List[Dict[str, Any]] = [
         "size_bytes": 1_073_741_824,
         "ram_gb": 3,
         "supports_tools": True,
-        "tier": "recommended",
+        "tier": "basic",
     },
     {
         "id": "qwen2.5-3b",
@@ -70,6 +71,63 @@ AVAILABLE_MODELS: List[Dict[str, Any]] = [
         "hf_file": "qwen2.5-3b-instruct-q4_k_m.gguf",
         "size_bytes": 2_147_483_648,
         "ram_gb": 4,
+        "supports_tools": True,
+        "tier": "basic",
+    },
+    # ── Medium (8-16 GB RAM) ─────────────────────────────────────────
+    {
+        "id": "qwen2.5-7b",
+        "name": "Qwen 2.5 7B",
+        "file": "qwen2.5-7b-instruct-q4_k_m.gguf",
+        "hf_repo": "Qwen/Qwen2.5-7B-Instruct-GGUF",
+        "hf_file": "qwen2.5-7b-instruct-q4_k_m.gguf",
+        "size_bytes": 4_685_000_000,
+        "ram_gb": 6,
+        "supports_tools": True,
+        "tier": "recommended",
+    },
+    {
+        "id": "qwen2.5-14b",
+        "name": "Qwen 2.5 14B",
+        "file": "qwen2.5-14b-instruct-q4_k_m.gguf",
+        "hf_repo": "Qwen/Qwen2.5-14B-Instruct-GGUF",
+        "hf_file": "qwen2.5-14b-instruct-q4_k_m.gguf",
+        "size_bytes": 8_988_000_000,
+        "ram_gb": 10,
+        "supports_tools": True,
+        "tier": "recommended",
+    },
+    # ── Large (16-32 GB RAM) — rivals cloud models ───────────────────
+    {
+        "id": "mistral-small-22b",
+        "name": "Mistral Small 22B",
+        "file": "Mistral-Small-24B-Instruct-2501-Q4_K_M.gguf",
+        "hf_repo": "bartowski/Mistral-Small-24B-Instruct-2501-GGUF",
+        "hf_file": "Mistral-Small-24B-Instruct-2501-Q4_K_M.gguf",
+        "size_bytes": 13_500_000_000,
+        "ram_gb": 15,
+        "supports_tools": True,
+        "tier": "best",
+    },
+    {
+        "id": "gemma-2-27b",
+        "name": "Gemma 2 27B",
+        "file": "gemma-2-27b-it-Q4_K_M.gguf",
+        "hf_repo": "bartowski/gemma-2-27b-it-GGUF",
+        "hf_file": "gemma-2-27b-it-Q4_K_M.gguf",
+        "size_bytes": 16_700_000_000,
+        "ram_gb": 18,
+        "supports_tools": False,
+        "tier": "best",
+    },
+    {
+        "id": "qwen2.5-32b",
+        "name": "Qwen 2.5 32B",
+        "file": "qwen2.5-32b-instruct-q4_k_m.gguf",
+        "hf_repo": "Qwen/Qwen2.5-32B-Instruct-GGUF",
+        "hf_file": "qwen2.5-32b-instruct-q4_k_m.gguf",
+        "size_bytes": 19_800_000_000,
+        "ram_gb": 22,
         "supports_tools": True,
         "tier": "best",
     },

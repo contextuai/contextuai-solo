@@ -3,6 +3,7 @@ import type { ChatSession, ChatMessage } from "@/types/chat";
 import type { ModelConfig } from "@/lib/api/models-client";
 import type { Persona } from "@/lib/api/personas-client";
 import { getModels } from "@/lib/api/models-client";
+import { useAiMode } from "@/contexts/ai-mode-context";
 import { getPersonas } from "@/lib/api/personas-client";
 import {
   generateSessionId,
@@ -20,6 +21,8 @@ import ChatInput from "@/components/chat/chat-input";
 import MessageList from "@/components/chat/message-list";
 
 export default function ChatPage() {
+  const { aiMode } = useAiMode();
+
   // ── Data state ─────────────────────────────────────────────────
   const [models, setModels] = useState<ModelConfig[]>([]);
   const [personas, setPersonas] = useState<Persona[]>([]);
@@ -52,6 +55,11 @@ export default function ChatPage() {
     loadSessions();
   }, []);
 
+  // Re-fetch models when AI mode changes
+  useEffect(() => {
+    loadModels();
+  }, [aiMode]);
+
   // Keyboard shortcut: Ctrl/Cmd+N for new chat
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -66,23 +74,17 @@ export default function ChatPage() {
 
   async function loadModels() {
     try {
-      const data = await getModels();
+      const data = await getModels(aiMode);
       setModels(data);
-      if (!selectedModelId) {
-        // If user chose "local" in wizard, prefer the local model
-        const savedProvider = localStorage.getItem("contextuai-solo-provider");
-        const savedModel = localStorage.getItem("contextuai-solo-model");
-        if (savedProvider === "local" && savedModel) {
-          const localMatch = data.find((m) => m.id === `local-${savedModel}` && m.enabled);
-          if (localMatch) {
-            setSelectedModelId(localMatch.id);
-            return;
-          }
-        }
-        // Otherwise select first enabled model
+
+      // Auto-select: if current selection is not in the new list, pick first
+      const currentValid = data.some((m) => m.id === selectedModelId && m.enabled);
+      if (!currentValid) {
         const first = data.find((m) => m.enabled);
         if (first) {
           setSelectedModelId(first.id);
+        } else {
+          setSelectedModelId(null);
         }
       }
     } catch (err) {
