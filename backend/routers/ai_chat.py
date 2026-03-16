@@ -406,6 +406,7 @@ async def ai_chat(request: ChatRequest, http_request: Request = None):
 
                 async def local_event_generator() -> AsyncGenerator[str, None]:
                     collected_response = []
+                    disconnected = False
                     try:
                         gen = await local_model_service.call_model(
                             prompt=request.prompt,
@@ -422,30 +423,39 @@ async def ai_chat(request: ChatRequest, http_request: Request = None):
                             if text:
                                 collected_response.append(text)
                                 yield f"data: {json.dumps({'chunk': text})}\n\n"
+                    except (GeneratorExit, asyncio.CancelledError):
+                        disconnected = True
+                        logger.info("Client disconnected during local model streaming")
                     except Exception as e:
                         logger.error(f"❌ Local model streaming error: {e}")
                         yield f"data: {json.dumps({'chunk': f'Error: {e}', 'error': True})}\n\n"
 
-                    yield "data: [DONE]\n\n"
+                    if not disconnected:
+                        yield "data: [DONE]\n\n"
 
+                    # Always store what we have so far
                     full_response = "".join(collected_response)
-                    await store_message(session_id, "assistant", full_response)
-                    await update_session_stats(session_id)
-                    if is_first_message and full_response:
-                        try:
+                    try:
+                        if full_response:
+                            await store_message(session_id, "assistant", full_response)
+                        await update_session_stats(session_id)
+                        if is_first_message and full_response:
                             await update_session_title_from_first_message(session_id, request.prompt, max_length=20)
-                        except Exception:
-                            pass
+                    except Exception:
+                        pass
 
-                    response_time_ms = int((time.time() - request_start_time) * 1000)
-                    await capture_chat_analytics(
-                        user_id=user_id, session_id=session_id, model_id=model_id,
-                        persona_id=request.persona_id,
-                        input_tokens=len(request.prompt.split()) * 2,
-                        output_tokens=len(full_response.split()) * 2,
-                        response_time_ms=response_time_ms, is_streaming=True,
-                        status=EventStatus.SUCCESS,
-                    )
+                    try:
+                        response_time_ms = int((time.time() - request_start_time) * 1000)
+                        await capture_chat_analytics(
+                            user_id=user_id, session_id=session_id, model_id=model_id,
+                            persona_id=request.persona_id,
+                            input_tokens=len(request.prompt.split()) * 2,
+                            output_tokens=len(full_response.split()) * 2,
+                            response_time_ms=response_time_ms, is_streaming=True,
+                            status=EventStatus.SUCCESS,
+                        )
+                    except Exception:
+                        pass
 
                 return StreamingResponse(local_event_generator(), media_type="text/plain")
             else:
@@ -765,51 +775,52 @@ async def ai_chat(request: ChatRequest, http_request: Request = None):
             async def event_generator() -> AsyncGenerator[str, None]:
                 """Async generator to stream response chunks."""
                 nonlocal collected_response
+                disconnected = False
                 prompt = full_prompt
-                agent_stream = agent.stream_async(prompt)
 
-                async for event in agent_stream:
-                    if "data" in event:
-                        collected_response.append(event['data'])
-                        yield f"data: {json.dumps({'chunk': event['data']})}\n\n"
-                    elif "current_tool_use" in event and event["current_tool_use"].get("name"):
-                        yield f"data: [Tool use delta for: {event['current_tool_use']['name']}]\n\n"
+                try:
+                    agent_stream = agent.stream_async(prompt)
 
-                yield "data: [DONE]\n\n"
+                    async for event in agent_stream:
+                        if "data" in event:
+                            collected_response.append(event['data'])
+                            yield f"data: {json.dumps({'chunk': event['data']})}\n\n"
+                        elif "current_tool_use" in event and event["current_tool_use"].get("name"):
+                            yield f"data: [Tool use delta for: {event['current_tool_use']['name']}]\n\n"
+                except (GeneratorExit, asyncio.CancelledError):
+                    disconnected = True
+                    logger.info("Client disconnected during cloud model streaming")
+                except Exception as e:
+                    logger.error(f"❌ Cloud model streaming error: {e}")
+                    yield f"data: {json.dumps({'chunk': f'Error: {e}', 'error': True})}\n\n"
 
-                # After streaming completes, store assistant message
+                if not disconnected:
+                    yield "data: [DONE]\n\n"
+
+                # Always store what we have so far
                 full_response = ''.join(collected_response)
-                assistant_message_id = await store_message(session_id, "assistant", full_response)
-
-                # Update session stats (message_count += 2 for user + assistant)
-                await update_session_stats(session_id)
-
-                # Generate title if first message
-                if is_first_message and full_response:
-                    try:
+                try:
+                    if full_response:
+                        await store_message(session_id, "assistant", full_response)
+                    await update_session_stats(session_id)
+                    if is_first_message and full_response:
                         await update_session_title_from_first_message(session_id, request.prompt, max_length=20)
-                        logger.info(f"✅ Session title generated for first message")
-                    except Exception as e:
-                        logger.error(f"⚠️ Title generation failed (non-critical): {e}")
+                except Exception:
+                    pass
 
-                # Capture chat analytics (non-blocking)
-                response_time_ms = int((time.time() - request_start_time) * 1000)
-                # Estimate tokens (rough calculation - actual would come from model response)
-                input_tokens = len(request.prompt.split()) * 2  # Rough estimate
-                output_tokens = len(full_response.split()) * 2 if full_response else 0
-
-                await capture_chat_analytics(
-                    user_id=user_id,
-                    session_id=session_id,
-                    model_id=model_id,
-                    persona_id=request.persona_id,
-                    input_tokens=input_tokens,
-                    output_tokens=output_tokens,
-                    response_time_ms=response_time_ms,
-                    is_streaming=True,
-                    status=EventStatus.SUCCESS
-                )
-                logger.debug(f"📊 Analytics captured for streaming chat request")
+                try:
+                    response_time_ms = int((time.time() - request_start_time) * 1000)
+                    input_tokens = len(request.prompt.split()) * 2
+                    output_tokens = len(full_response.split()) * 2 if full_response else 0
+                    await capture_chat_analytics(
+                        user_id=user_id, session_id=session_id, model_id=model_id,
+                        persona_id=request.persona_id,
+                        input_tokens=input_tokens, output_tokens=output_tokens,
+                        response_time_ms=response_time_ms, is_streaming=True,
+                        status=EventStatus.SUCCESS,
+                    )
+                except Exception:
+                    pass
 
             return StreamingResponse(event_generator(),
                                      media_type="text/plain")
