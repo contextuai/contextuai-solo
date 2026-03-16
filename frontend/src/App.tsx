@@ -11,6 +11,7 @@ import WorkspacePage from "@/routes/workspace";
 import PersonasPage from "@/routes/personas";
 import AnalyticsPage from "@/routes/analytics";
 import ConnectionsPage from "@/routes/connections";
+import ModelsPage from "@/routes/models";
 import SettingsPage from "@/routes/settings";
 import WizardPage from "@/routes/wizard";
 
@@ -41,6 +42,7 @@ export default function App() {
             <Route path="/wizard" element={<WizardPage />} />
             <Route element={<RequireWizard><DesktopLayout /></RequireWizard>}>
               <Route path="/" element={<ChatPage />} />
+              <Route path="/models" element={<ModelsPage />} />
               <Route path="/personas" element={<PersonasPage />} />
               <Route path="/agents" element={<AgentsPage />} />
               <Route path="/agents/:id" element={<AgentsPage />} />

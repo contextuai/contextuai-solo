@@ -17,10 +17,9 @@ import {
   ExternalLink,
 } from "lucide-react";
 import logoImg from "@/assets/logo.png";
+import { useAiMode } from "@/contexts/ai-mode-context";
 import {
-  startDownload,
-  loadModel,
-  streamDownloadProgress,
+  downloadModel,
   syncLocalModels,
   type DownloadProgress,
 } from "@/lib/api/local-models-client";
@@ -40,9 +39,12 @@ interface WizardData {
 }
 
 const LOCAL_MODELS = [
-  { id: "gemma-3-1b", name: "Gemma 3 1B", maker: "Google", size: "756 MB", tag: "Basic", url: "https://huggingface.co/bartowski/google_gemma-3-1b-it-GGUF" },
-  { id: "qwen2.5-1.5b", name: "Qwen 2.5 1.5B", maker: "Alibaba", size: "1 GB", tag: "Recommended", url: "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF" },
-  { id: "qwen2.5-3b", name: "Qwen 2.5 3B", maker: "Alibaba", size: "2 GB", tag: "Best quality", url: "https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF" },
+  { id: "gemma-3-1b", name: "Gemma 3 1B", maker: "Google", size: "756 MB", ram: "2 GB", tag: "Starter", url: "https://huggingface.co/bartowski/google_gemma-3-1b-it-GGUF" },
+  { id: "qwen2.5-3b", name: "Qwen 2.5 3B", maker: "Alibaba", size: "2 GB", ram: "4 GB", tag: "Good", url: "https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF" },
+  { id: "qwen2.5-7b", name: "Qwen 2.5 7B", maker: "Alibaba", size: "4.7 GB", ram: "6 GB", tag: "Recommended", url: "https://huggingface.co/Qwen/Qwen2.5-7B-Instruct-GGUF" },
+  { id: "qwen2.5-14b", name: "Qwen 2.5 14B", maker: "Alibaba", size: "9 GB", ram: "10 GB", tag: "Great", url: "https://huggingface.co/Qwen/Qwen2.5-14B-Instruct-GGUF" },
+  { id: "mistral-small-22b", name: "Mistral Small 22B", maker: "Mistral", size: "13.5 GB", ram: "15 GB", tag: "Powerful", url: "https://huggingface.co/bartowski/Mistral-Small-24B-Instruct-2501-GGUF" },
+  { id: "qwen2.5-32b", name: "Qwen 2.5 32B", maker: "Alibaba", size: "19.8 GB", ram: "22 GB", tag: "Best", url: "https://huggingface.co/Qwen/Qwen2.5-32B-Instruct-GGUF" },
 ];
 
 const PROVIDERS = [
@@ -53,19 +55,18 @@ const PROVIDERS = [
     icon: Monitor,
     iconBg: "bg-emerald-100 dark:bg-emerald-500/20",
     iconColor: "text-emerald-600 dark:text-emerald-400",
-    badge: "Free",
-    badgeColor: "bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400",
+    badge: "Recommended",
+    badgeColor: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400",
     models: LOCAL_MODELS.map((m) => ({ id: m.id, name: `${m.name} by ${m.maker} (${m.size})`, tag: m.tag })),
+    isLocal: true,
   },
   {
     id: "anthropic",
     name: "Anthropic",
-    subtitle: "Best for content creation.\nRecommended.",
+    subtitle: "Best for content creation.\nPaid API.",
     icon: Sparkles,
     iconBg: "bg-amber-100 dark:bg-amber-500/20",
     iconColor: "text-amber-600 dark:text-amber-400",
-    badge: "Recommended",
-    badgeColor: "bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400",
     pricingUrl: "https://www.anthropic.com/pricing",
     models: [
       { id: "claude-sonnet-4-20250514", name: "Claude Sonnet 4", tag: "Recommended" },
@@ -274,6 +275,7 @@ function TagInput({
 
 export default function WizardPage() {
   const navigate = useNavigate();
+  const { setAiMode } = useAiMode();
   const [step, setStep] = useState<WizardStep>(1);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<"success" | "error" | null>(null);
@@ -281,6 +283,7 @@ export default function WizardPage() {
   const [downloadProgress, setDownloadProgress] = useState<DownloadProgress | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const downloadCancelRef = useRef<{ cancel: () => void } | null>(null);
+  const [showCloudProviders, setShowCloudProviders] = useState(false);
   const [data, setData] = useState<WizardData>({
     name: "",
     provider: "",
@@ -424,6 +427,7 @@ export default function WizardPage() {
   if (step === 2) {
     const needsKey = data.provider && data.provider !== "ollama" && data.provider !== "local";
     const isLocal = data.provider === "local";
+    const cloudProviders = PROVIDERS.filter((p) => p.id !== "local");
 
     const handleLocalDownload = async () => {
       if (!data.model) return;
@@ -431,37 +435,40 @@ export default function WizardPage() {
       setDownloadError(null);
       setDownloadProgress(null);
 
+      const controller = new AbortController();
+      downloadCancelRef.current = { cancel: () => controller.abort() };
+
       try {
-        await startDownload(data.model);
-        // Start polling progress via SSE
-        const stream = streamDownloadProgress(
-          (progress) => {
+        await downloadModel(
+          data.model,
+          (progress: DownloadProgress) => {
             setDownloadProgress(progress);
-            if (progress.status === "complete") {
+            if (progress.status === "done") {
               setDownloading(false);
-              // Sync to DB so it appears in chat dropdown, then auto-load
               syncLocalModels().catch(() => {});
-              loadModel(data.model).catch(() => {});
               setTestResult("success");
               downloadCancelRef.current = null;
             } else if (progress.status === "error") {
               setDownloading(false);
-              setDownloadError(progress.error || "Download failed");
+              setDownloadError(progress.detail || "Download failed");
               downloadCancelRef.current = null;
             }
           },
-          (err) => {
-            setDownloading(false);
-            setDownloadError(err);
-            downloadCancelRef.current = null;
-          }
+          controller.signal
         );
-        downloadCancelRef.current = stream;
-      } catch (err) {
-        setDownloading(false);
-        setDownloadError(String(err));
+      } catch (err: unknown) {
+        if (!controller.signal.aborted) {
+          setDownloading(false);
+          setDownloadError(String(err));
+        }
       }
     };
+
+    // Auto-select local provider on first render
+    if (!data.provider) {
+      update("provider", "local");
+      update("model", "qwen2.5-7b");
+    }
 
     return (
       <div className="min-h-screen bg-neutral-50 dark:bg-[#242523] flex flex-col">
@@ -474,246 +481,367 @@ export default function WizardPage() {
           <div className="max-w-xl mx-auto">
             <StepProgress current={2} total={3} />
 
-            <h1 className="text-2xl font-bold text-neutral-900 dark:text-white text-center mb-8">
-              Connect Your AI
+            <h1 className="text-2xl font-bold text-neutral-900 dark:text-white text-center mb-2">
+              Your AI, Your Machine
             </h1>
+            <p className="text-sm text-neutral-500 dark:text-neutral-400 text-center mb-8">
+              No cloud, no API keys, no subscriptions. Just download and go.
+            </p>
 
-            {/* Provider grid */}
-            <div className="grid grid-cols-2 gap-3 mb-6">
-              {PROVIDERS.map((provider) => {
-                const Icon = provider.icon;
-                const selected = data.provider === provider.id;
-                return (
-                  <button
-                    key={provider.id}
-                    onClick={() => {
-                      update("provider", provider.id);
-                      update("model", provider.models[0].id);
-                      setTestResult(null);
-                    }}
-                    className={cn(
-                      "relative flex items-start gap-3 p-4 rounded-xl border-2 text-left transition-all",
-                      selected
-                        ? "border-primary-500 bg-primary-50/50 dark:bg-primary-500/5"
-                        : "border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 hover:border-neutral-300 dark:hover:border-neutral-700"
-                    )}
+            {/* ── LOCAL AI HERO SECTION ─────────────────────────────── */}
+            <div className={cn(
+              "relative rounded-2xl border-2 p-6 mb-6 transition-all overflow-hidden",
+              isLocal
+                ? "border-emerald-500 bg-gradient-to-br from-emerald-50 via-white to-emerald-50/50 dark:from-emerald-500/10 dark:via-neutral-900 dark:to-emerald-500/5"
+                : "border-emerald-300 dark:border-emerald-800 bg-white dark:bg-neutral-900 hover:border-emerald-400 cursor-pointer"
+            )}
+              onClick={() => {
+                if (!isLocal) {
+                  update("provider", "local");
+                  update("model", "qwen2.5-7b");
+                  setTestResult(null);
+                  setShowCloudProviders(false);
+                }
+              }}
+            >
+              {/* Decorative glow */}
+              <div className="absolute -top-20 -right-20 w-40 h-40 bg-emerald-400/10 dark:bg-emerald-400/5 rounded-full blur-3xl" />
+
+              {/* Header row */}
+              <div className="relative flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-xl bg-emerald-100 dark:bg-emerald-500/20">
+                    <Monitor className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h2 className="text-lg font-bold text-neutral-900 dark:text-white">Local AI</h2>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400">
+                        Recommended
+                      </span>
+                    </div>
+                    <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                      Free forever. 100% private. Works offline.
+                    </p>
+                  </div>
+                </div>
+                {isLocal && (
+                  <div className="w-6 h-6 rounded-full bg-emerald-500 flex items-center justify-center">
+                    <Check className="w-3.5 h-3.5 text-white" />
+                  </div>
+                )}
+              </div>
+
+              {/* Feature pills */}
+              <div className="relative flex flex-wrap gap-2 mb-5">
+                {[
+                  { label: "Zero cost", icon: "$0" },
+                  { label: "No API key", icon: null },
+                  { label: "Your data stays local", icon: null },
+                  { label: "No internet needed", icon: null },
+                ].map((f) => (
+                  <span
+                    key={f.label}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400 text-[11px] font-medium"
                   >
-                    {provider.badge && (
-                      <span className={cn(
-                        "absolute top-2 right-2 px-1.5 py-0.5 rounded text-[10px] font-semibold",
-                        provider.badgeColor
-                      )}>
-                        {provider.badge}
-                      </span>
-                    )}
-                    <div className={cn("p-2 rounded-lg flex-shrink-0", provider.iconBg)}>
-                      <Icon className={cn("w-4 h-4", provider.iconColor)} />
-                    </div>
-                    <div className="min-w-0">
-                      <span className="text-sm font-semibold text-neutral-900 dark:text-white block">
-                        {provider.name}
-                      </span>
-                      <span className="text-[11px] text-neutral-500 dark:text-neutral-400 leading-tight whitespace-pre-line">
-                        {provider.subtitle}
-                      </span>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* API Key section */}
-            {needsKey && (
-              <div className="space-y-3 mb-4">
-                <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">
-                  {selectedProvider?.name} API Key
-                </label>
-                <input
-                  type="password"
-                  value={data.apiKey}
-                  onChange={(e) => {
-                    update("apiKey", e.target.value);
-                    setTestResult(null);
-                  }}
-                  placeholder={`Enter your ${selectedProvider?.name} API key`}
-                  className={inputCls}
-                />
-                <button
-                  onClick={handleTestConnection}
-                  disabled={!data.apiKey || testing}
-                  className={cn(
-                    "w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-medium transition-all border",
-                    data.apiKey && !testing
-                      ? "border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white hover:bg-neutral-50 dark:hover:bg-neutral-700"
-                      : "border-neutral-200 dark:border-neutral-700 bg-neutral-100 dark:bg-neutral-800 text-neutral-400 cursor-not-allowed"
-                  )}
-                >
-                  {testing ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    "Test Connection"
-                  )}
-                </button>
-                {testResult === "success" && (
-                  <p className="text-sm text-green-600 dark:text-green-400 flex items-center gap-1.5">
-                    <Check className="w-4 h-4" /> Connected successfully!
-                  </p>
-                )}
-                {testResult === "error" && (
-                  <p className="text-sm text-red-500">
-                    Connection failed. Please check your API key.
-                  </p>
-                )}
+                    {f.icon && <span className="font-bold">{f.icon}</span>}
+                    {f.label}
+                  </span>
+                ))}
               </div>
-            )}
 
-            {data.provider === "ollama" && (
-              <div className="p-4 bg-green-50 dark:bg-green-500/10 border border-green-200 dark:border-green-800 rounded-xl mb-4">
-                <p className="text-sm text-green-700 dark:text-green-400">
-                  Ollama runs models locally — no API key needed. Make sure Ollama is installed and running on your system.
-                </p>
-              </div>
-            )}
-
-            {/* Model selector */}
-            {selectedProvider && (
-              <div className="space-y-3 mb-6">
-                <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">
-                  Preferred Model
-                </label>
-                <div className="grid gap-2">
-                  {selectedProvider.models.map((m) => (
-                    <button
-                      key={m.id}
-                      onClick={() => update("model", m.id)}
-                      className={cn(
-                        "flex items-center justify-between px-4 py-2.5 rounded-xl border text-left text-sm transition-all",
-                        data.model === m.id
-                          ? "border-primary-500 bg-primary-50/50 dark:bg-primary-500/5"
-                          : "border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 hover:border-neutral-300 dark:hover:border-neutral-600"
-                      )}
-                    >
-                      <div className="flex items-center gap-2">
-                        {data.model === m.id && (
-                          <Check className="w-3.5 h-3.5 text-primary-500" />
-                        )}
-                        <span className={cn(
-                          "font-medium",
-                          data.model === m.id ? "text-primary-600 dark:text-primary-400" : "text-neutral-900 dark:text-white"
-                        )}>
-                          {m.name}
-                        </span>
-                        {/* HuggingFace link for local models */}
-                        {isLocal && (() => {
-                          const lm = LOCAL_MODELS.find((l) => l.id === m.id);
-                          return lm?.url ? (
+              {/* Model picker — only when local is selected */}
+              {isLocal && (
+                <div className="relative space-y-2">
+                  <label className="text-xs font-semibold text-neutral-600 dark:text-neutral-300 uppercase tracking-wider">
+                    Pick your model
+                  </label>
+                  <div className="grid gap-1.5">
+                    {LOCAL_MODELS.map((m) => {
+                      const selected = data.model === m.id;
+                      const isRecommended = m.tag === "Recommended";
+                      return (
+                        <button
+                          key={m.id}
+                          onClick={(e) => { e.stopPropagation(); update("model", m.id); }}
+                          className={cn(
+                            "flex items-center justify-between px-3.5 py-2.5 rounded-xl border text-left text-sm transition-all",
+                            selected
+                              ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-500/10"
+                              : "border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800/50 hover:border-emerald-300 dark:hover:border-emerald-700",
+                            isRecommended && !selected && "ring-1 ring-emerald-200 dark:ring-emerald-800"
+                          )}
+                        >
+                          <div className="flex items-center gap-2.5">
+                            {selected ? (
+                              <div className="w-4 h-4 rounded-full bg-emerald-500 flex items-center justify-center flex-shrink-0">
+                                <Check className="w-2.5 h-2.5 text-white" />
+                              </div>
+                            ) : (
+                              <div className="w-4 h-4 rounded-full border-2 border-neutral-300 dark:border-neutral-600 flex-shrink-0" />
+                            )}
+                            <div>
+                              <span className={cn(
+                                "font-medium block",
+                                selected ? "text-emerald-700 dark:text-emerald-400" : "text-neutral-900 dark:text-white"
+                              )}>
+                                {m.name}
+                              </span>
+                              <span className="text-[10px] text-neutral-400">
+                                {m.maker} &middot; {m.size} download &middot; needs {m.ram} RAM
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className={cn(
+                              "text-[10px] font-semibold px-2 py-0.5 rounded-full",
+                              isRecommended
+                                ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400"
+                                : m.tag === "Best"
+                                  ? "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400"
+                                  : "bg-neutral-100 text-neutral-500 dark:bg-neutral-700 dark:text-neutral-400"
+                            )}>
+                              {m.tag}
+                            </span>
                             <a
-                              href={lm.url}
+                              href={m.url}
                               target="_blank"
                               rel="noopener noreferrer"
                               onClick={(e) => e.stopPropagation()}
-                              className="text-neutral-400 hover:text-primary-500 transition-colors"
-                              title={`View on HuggingFace (by ${lm.maker})`}
+                              className="text-neutral-300 hover:text-emerald-500 transition-colors"
+                              title="View on HuggingFace"
                             >
                               <ExternalLink className="w-3 h-3" />
                             </a>
-                          ) : null;
-                        })()}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Download button */}
+                  <div className="pt-2">
+                    {!downloading && testResult !== "success" && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleLocalDownload(); }}
+                        disabled={!data.model}
+                        className={cn(
+                          "w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-sm font-bold transition-all",
+                          data.model
+                            ? "bg-emerald-500 hover:bg-emerald-600 text-white shadow-lg shadow-emerald-500/25 hover:shadow-emerald-500/40"
+                            : "bg-neutral-200 dark:bg-neutral-700 text-neutral-400 cursor-not-allowed"
+                        )}
+                      >
+                        <Download className="w-4 h-4" />
+                        Download {LOCAL_MODELS.find((m) => m.id === data.model)?.name || "Model"} &mdash; Free
+                      </button>
+                    )}
+
+                    {downloading && downloadProgress && (
+                      <div className="p-4 bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-800 rounded-xl">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm font-medium text-emerald-700 dark:text-emerald-400">
+                            Downloading...
+                          </span>
+                          <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                            {Math.round(downloadProgress.percent || 0)}%
+                          </span>
+                        </div>
+                        <div className="w-full h-2.5 bg-emerald-200 dark:bg-emerald-900 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-gradient-to-r from-emerald-400 to-emerald-500 rounded-full transition-all duration-300"
+                            style={{ width: `${Math.round(downloadProgress.percent || 0)}%` }}
+                          />
+                        </div>
+                        <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1.5">
+                          {((downloadProgress.completed || 0) / 1024 / 1024).toFixed(0)} MB
+                          {(downloadProgress.total || 0) > 0 && ` / ${((downloadProgress.total || 0) / 1024 / 1024).toFixed(0)} MB`}
+                        </p>
                       </div>
-                      <div className="flex items-center gap-2">
-                        {m.tag && (
+                    )}
+
+                    {downloading && !downloadProgress && (
+                      <div className="flex items-center justify-center gap-2 py-4">
+                        <Loader2 className="w-4 h-4 animate-spin text-emerald-500" />
+                        <span className="text-sm text-neutral-500">Starting download...</span>
+                      </div>
+                    )}
+
+                    {testResult === "success" && isLocal && (
+                      <div className="p-4 bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-800 rounded-xl">
+                        <p className="text-sm font-medium text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
+                          <Check className="w-4 h-4" /> Model ready! You&apos;re all set.
+                        </p>
+                      </div>
+                    )}
+
+                    {downloadError && (
+                      <p className="text-sm text-red-500 mt-2">
+                        Download failed: {downloadError}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* ── DIVIDER: OR USE CLOUD ─────────────────────────────── */}
+            <div className="relative flex items-center justify-center my-6">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-neutral-200 dark:border-neutral-700" />
+              </div>
+              <button
+                onClick={() => setShowCloudProviders(!showCloudProviders)}
+                className="relative z-10 px-4 py-1.5 bg-neutral-50 dark:bg-[#242523] text-xs font-medium text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 transition-colors"
+              >
+                {showCloudProviders ? "Hide cloud providers" : "Or connect a cloud provider instead"}
+              </button>
+            </div>
+
+            {/* ── CLOUD PROVIDERS (collapsed by default) ───────────── */}
+            {showCloudProviders && (
+              <div className="space-y-4 mb-6">
+                <div className="grid grid-cols-2 gap-3">
+                  {cloudProviders.map((provider) => {
+                    const Icon = provider.icon;
+                    const selected = data.provider === provider.id;
+                    return (
+                      <button
+                        key={provider.id}
+                        onClick={() => {
+                          update("provider", provider.id);
+                          update("model", provider.models[0].id);
+                          setTestResult(null);
+                        }}
+                        className={cn(
+                          "relative flex items-start gap-3 p-4 rounded-xl border-2 text-left transition-all",
+                          selected
+                            ? "border-primary-500 bg-primary-50/50 dark:bg-primary-500/5"
+                            : "border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 hover:border-neutral-300 dark:hover:border-neutral-700"
+                        )}
+                      >
+                        {provider.badge && (
                           <span className={cn(
-                            "text-[10px] font-medium px-2 py-0.5 rounded-full",
-                            m.tag === "Recommended"
-                              ? "bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400"
-                              : m.tag === "Budget"
-                                ? "bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400"
-                                : "bg-neutral-100 text-neutral-600 dark:bg-neutral-700 dark:text-neutral-300"
+                            "absolute top-2 right-2 px-1.5 py-0.5 rounded text-[10px] font-semibold",
+                            provider.badgeColor
                           )}>
-                            {m.tag}
+                            {provider.badge}
                           </span>
                         )}
-                      </div>
-                    </button>
-                  ))}
+                        <div className={cn("p-2 rounded-lg flex-shrink-0", provider.iconBg)}>
+                          <Icon className={cn("w-4 h-4", provider.iconColor)} />
+                        </div>
+                        <div className="min-w-0">
+                          <span className="text-sm font-semibold text-neutral-900 dark:text-white block">
+                            {provider.name}
+                          </span>
+                          <span className="text-[11px] text-neutral-500 dark:text-neutral-400 leading-tight whitespace-pre-line">
+                            {provider.subtitle}
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
-                {selectedProvider.pricingUrl && (
-                  <p className="text-xs text-neutral-400 text-center">
-                    Pricing changes often.{" "}
-                    <a
-                      href={selectedProvider.pricingUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-primary-500 hover:text-primary-400 underline underline-offset-2"
+
+                {/* API Key section for cloud */}
+                {needsKey && (
+                  <div className="space-y-3">
+                    <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">
+                      {selectedProvider?.name} API Key
+                    </label>
+                    <input
+                      type="password"
+                      value={data.apiKey}
+                      onChange={(e) => {
+                        update("apiKey", e.target.value);
+                        setTestResult(null);
+                      }}
+                      placeholder={`Enter your ${selectedProvider?.name} API key`}
+                      className={inputCls}
+                    />
+                    <button
+                      onClick={handleTestConnection}
+                      disabled={!data.apiKey || testing}
+                      className={cn(
+                        "w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-medium transition-all border",
+                        data.apiKey && !testing
+                          ? "border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white hover:bg-neutral-50 dark:hover:bg-neutral-700"
+                          : "border-neutral-200 dark:border-neutral-700 bg-neutral-100 dark:bg-neutral-800 text-neutral-400 cursor-not-allowed"
+                      )}
                     >
-                      Check {selectedProvider.name} pricing
-                    </a>
-                  </p>
-                )}
-              </div>
-            )}
-
-            {/* Local AI download section — after model selector */}
-            {isLocal && (
-              <div className="space-y-3 mb-4">
-                {!downloading && testResult !== "success" && (
-                  <button
-                    onClick={handleLocalDownload}
-                    disabled={!data.model}
-                    className={cn(
-                      "w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold transition-all",
-                      data.model
-                        ? "bg-emerald-500 hover:bg-emerald-600 text-white shadow-lg shadow-emerald-500/25"
-                        : "bg-neutral-200 dark:bg-neutral-700 text-neutral-400 cursor-not-allowed"
+                      {testing ? <Loader2 className="w-4 h-4 animate-spin" /> : "Test Connection"}
+                    </button>
+                    {testResult === "success" && (
+                      <p className="text-sm text-green-600 dark:text-green-400 flex items-center gap-1.5">
+                        <Check className="w-4 h-4" /> Connected successfully!
+                      </p>
                     )}
-                  >
-                    <Download className="w-4 h-4" />
-                    Download & Continue
-                  </button>
-                )}
-
-                {downloading && downloadProgress && (
-                  <div className="p-4 bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-800 rounded-xl">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium text-emerald-700 dark:text-emerald-400">
-                        Downloading model...
-                      </span>
-                      <span className="text-xs text-emerald-600 dark:text-emerald-400">
-                        {downloadProgress.percent}%
-                      </span>
-                    </div>
-                    <div className="w-full h-2 bg-emerald-200 dark:bg-emerald-900 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-emerald-500 rounded-full transition-all duration-300"
-                        style={{ width: `${downloadProgress.percent}%` }}
-                      />
-                    </div>
-                    <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1.5">
-                      {(downloadProgress.bytes_downloaded / 1024 / 1024).toFixed(0)} MB
-                      {downloadProgress.bytes_total > 0 && ` / ${(downloadProgress.bytes_total / 1024 / 1024).toFixed(0)} MB`}
-                    </p>
+                    {testResult === "error" && (
+                      <p className="text-sm text-red-500">Connection failed. Check your API key.</p>
+                    )}
                   </div>
                 )}
 
-                {downloading && !downloadProgress && (
-                  <div className="flex items-center justify-center gap-2 py-4">
-                    <Loader2 className="w-4 h-4 animate-spin text-emerald-500" />
-                    <span className="text-sm text-neutral-500">Starting download...</span>
-                  </div>
-                )}
-
-                {testResult === "success" && isLocal && (
+                {data.provider === "ollama" && (
                   <div className="p-4 bg-green-50 dark:bg-green-500/10 border border-green-200 dark:border-green-800 rounded-xl">
-                    <p className="text-sm text-green-700 dark:text-green-400 flex items-center gap-1.5">
-                      <Check className="w-4 h-4" /> Model downloaded and loaded! Ready to chat.
+                    <p className="text-sm text-green-700 dark:text-green-400">
+                      Ollama runs models locally — no API key needed. Make sure Ollama is installed and running.
                     </p>
                   </div>
                 )}
 
-                {downloadError && (
-                  <p className="text-sm text-red-500">
-                    Download failed: {downloadError}
-                  </p>
+                {/* Cloud model selector */}
+                {selectedProvider && !isLocal && (
+                  <div className="space-y-3">
+                    <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">
+                      Preferred Model
+                    </label>
+                    <div className="grid gap-2">
+                      {selectedProvider.models.map((m) => (
+                        <button
+                          key={m.id}
+                          onClick={() => update("model", m.id)}
+                          className={cn(
+                            "flex items-center justify-between px-4 py-2.5 rounded-xl border text-left text-sm transition-all",
+                            data.model === m.id
+                              ? "border-primary-500 bg-primary-50/50 dark:bg-primary-500/5"
+                              : "border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 hover:border-neutral-300 dark:hover:border-neutral-600"
+                          )}
+                        >
+                          <div className="flex items-center gap-2">
+                            {data.model === m.id && <Check className="w-3.5 h-3.5 text-primary-500" />}
+                            <span className={cn(
+                              "font-medium",
+                              data.model === m.id ? "text-primary-600 dark:text-primary-400" : "text-neutral-900 dark:text-white"
+                            )}>
+                              {m.name}
+                            </span>
+                          </div>
+                          {m.tag && (
+                            <span className={cn(
+                              "text-[10px] font-medium px-2 py-0.5 rounded-full",
+                              m.tag === "Recommended"
+                                ? "bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400"
+                                : m.tag === "Budget"
+                                  ? "bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400"
+                                  : "bg-neutral-100 text-neutral-600 dark:bg-neutral-700 dark:text-neutral-300"
+                            )}>
+                              {m.tag}
+                            </span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                    {selectedProvider.pricingUrl && (
+                      <p className="text-xs text-neutral-400 text-center">
+                        <a href={selectedProvider.pricingUrl} target="_blank" rel="noopener noreferrer"
+                          className="text-primary-500 hover:text-primary-400 underline underline-offset-2">
+                          Check {selectedProvider.name} pricing
+                        </a>
+                      </p>
+                    )}
+                  </div>
                 )}
               </div>
             )}
@@ -726,23 +854,17 @@ export default function WizardPage() {
               >
                 Back
               </button>
-              <div className="flex items-center gap-3">
-                {!data.provider && (
-                  <button
-                    onClick={() => setStep(3)}
-                    className="text-xs text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 transition-colors"
-                  >
-                    Skip for now
-                  </button>
-                )}
-                <button
-                  onClick={() => setStep(3)}
-                  className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-semibold bg-primary-500 hover:bg-primary-600 text-white shadow-lg shadow-primary-500/25 transition-all"
-                >
-                  Continue
-                  <ArrowRight className="w-4 h-4" />
-                </button>
-              </div>
+              <button
+                onClick={() => {
+                  // Set AI mode based on provider choice
+                  setAiMode(isLocal ? "local" : "cloud");
+                  setStep(3);
+                }}
+                className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-semibold bg-primary-500 hover:bg-primary-600 text-white shadow-lg shadow-primary-500/25 transition-all"
+              >
+                Continue
+                <ArrowRight className="w-4 h-4" />
+              </button>
             </div>
           </div>
         </div>

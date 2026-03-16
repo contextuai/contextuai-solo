@@ -1,123 +1,233 @@
 import { api } from "@/lib/transport";
 
-export interface LocalModel {
+// ── Types ──────────────────────────────────────────────────────────────
+
+export interface SystemInfo {
+  total_ram_gb: number;
+  available_ram_gb: number;
+  capped_ram_gb: number;
+  os: string;
+  arch: string;
+  gpu: string | null;
+  gpu_vram_gb: number | null;
+  max_recommended_params: string;
+}
+
+export interface ModelCategory {
+  id: string;
+  label: string;
+  icon: string;
+  description: string;
+}
+
+export interface CatalogModel {
   id: string;
   name: string;
-  file: string;
-  size_bytes: number;
-  ram_gb: number;
+  family: string;
+  provider: string;
+  parameter_size: string;
+  parameter_count: number;
+  size_gb: number;
+  ram_required_gb: number;
+  ram_recommended_gb: number;
+  categories: string[];
+  description: string;
+  quantization: string;
+  context_window: number;
+  supports_vision: boolean;
   supports_tools: boolean;
-  tier: "basic" | "recommended" | "best";
-  downloaded: boolean;
-  loaded: boolean;
+  quality_tier: "basic" | "good" | "great" | "best";
+  speed_tier: "fast" | "medium" | "slow";
+  hf_repo: string;
+  hf_filename: string;
+  chat_template: string;
+  installed: boolean;
+  is_recommended?: boolean;
+}
+
+export interface InstalledModel {
+  id: string;
+  name: string;
+  filename: string;
+  path: string;
+  size_gb: number;
+  provider: string;
+  parameter_size: string;
+  categories: string[];
+  ram_required_gb: number | null;
+  modified_at: string;
+}
+
+export interface DiskUsage {
+  models_gb: number;
+  model_count: number;
+  disk_free_gb: number;
+  disk_total_gb: number;
 }
 
 export interface DownloadProgress {
-  model_id: string;
-  percent: number;
-  bytes_downloaded: number;
-  bytes_total: number;
-  status: "downloading" | "verifying" | "complete" | "error";
-  error?: string;
+  status: "starting" | "downloading" | "done" | "error" | "cancelled";
+  model_id?: string;
+  completed?: number;
+  total?: number;
+  percent?: number;
+  path?: string;
+  detail?: string;
 }
 
-export interface ModelStatus {
-  loaded: boolean;
-  model_id: string | null;
-  model_file: string | null;
-  ram_mb: number | null;
-}
+// ── API calls ──────────────────────────────────────────────────────────
 
-export async function getAvailableModels(): Promise<LocalModel[]> {
-  const { data } = await api.get<LocalModel[]>("/local-models/available");
-  return Array.isArray(data) ? data : [];
-}
+const BASE = "/local-models";
 
-export async function getDownloadedModels(): Promise<LocalModel[]> {
-  const { data } = await api.get<LocalModel[]>("/local-models/downloaded");
-  return Array.isArray(data) ? data : [];
-}
-
-export async function getModelStatus(): Promise<ModelStatus> {
-  const { data } = await api.get<ModelStatus>("/local-models/status");
+export async function getSystemInfo(): Promise<SystemInfo> {
+  const { data } = await api.get<SystemInfo>(`${BASE}/system-info`);
   return data;
 }
 
-export async function startDownload(modelId: string): Promise<void> {
-  await api.post("/local-models/download", { model_id: modelId });
+export async function getCatalog(params?: {
+  category?: string;
+  max_ram_gb?: number;
+}): Promise<{
+  models: CatalogModel[];
+  total: number;
+  system_ram_gb: number;
+  max_recommended_params: string;
+  categories: ModelCategory[];
+}> {
+  const query = new URLSearchParams();
+  if (params?.category) query.set("category", params.category);
+  if (params?.max_ram_gb) query.set("max_ram_gb", String(params.max_ram_gb));
+  const qs = query.toString();
+  const path = qs ? `${BASE}/catalog?${qs}` : `${BASE}/catalog`;
+  const { data } = await api.get<{
+    models: CatalogModel[];
+    total: number;
+    system_ram_gb: number;
+    max_recommended_params: string;
+    categories: ModelCategory[];
+  }>(path);
+  return data;
 }
 
-export async function loadModel(modelId: string): Promise<void> {
-  await api.post("/local-models/load", { model_id: modelId });
+export async function getRecommended(limit = 3): Promise<{
+  models: CatalogModel[];
+  system_ram_gb: number;
+  max_recommended_params: string;
+}> {
+  const { data } = await api.get<{
+    models: CatalogModel[];
+    system_ram_gb: number;
+    max_recommended_params: string;
+  }>(`${BASE}/recommended?limit=${limit}`);
+  return data;
 }
 
-export async function unloadModel(): Promise<void> {
-  await api.post("/local-models/unload");
+export async function getInstalledModels(): Promise<{
+  models: InstalledModel[];
+  count: number;
+  disk_usage: DiskUsage;
+}> {
+  const { data } = await api.get<{
+    models: InstalledModel[];
+    count: number;
+    disk_usage: DiskUsage;
+  }>(`${BASE}/installed`);
+  return data;
 }
 
-export async function deleteModel(modelId: string): Promise<void> {
-  await api.delete(`/local-models/${modelId}`);
+export async function deleteModel(
+  modelId: string
+): Promise<{ status: string; freed_gb?: number }> {
+  const { data } = await api.delete<{ status: string; freed_gb?: number }>(
+    `${BASE}/${modelId}`
+  );
+  return data;
+}
+
+export async function getDiskUsage(): Promise<DiskUsage> {
+  const { data } = await api.get<DiskUsage>(`${BASE}/disk-usage`);
+  return data;
+}
+
+export async function getLoadedModel(): Promise<{
+  loaded: boolean;
+  model_id?: string;
+  idle_seconds?: number;
+}> {
+  const { data } = await api.get<{
+    loaded?: boolean;
+    model_id?: string;
+    idle_seconds?: number;
+  }>(`${BASE}/loaded`);
+  return { loaded: !!data.model_id, ...data };
+}
+
+// ── Download with SSE progress ─────────────────────────────────────────
+
+const DEV_API_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:18741/api/v1";
+
+export async function downloadModel(
+  modelId: string,
+  onProgress: (progress: DownloadProgress) => void,
+  signal?: AbortSignal
+): Promise<void> {
+  const url = `${DEV_API_URL}${BASE}/download`;
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ model_id: modelId }),
+    signal,
+  });
+
+  if (!response.ok) {
+    onProgress({ status: "error", detail: `HTTP ${response.status}` });
+    return;
+  }
+
+  const reader = response.body?.getReader();
+  if (!reader) {
+    onProgress({ status: "error", detail: "No response body" });
+    return;
+  }
+
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() || "";
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith("data: ")) {
+        try {
+          const parsed = JSON.parse(trimmed.substring(6)) as DownloadProgress;
+          onProgress(parsed);
+        } catch {
+          // skip malformed lines
+        }
+      }
+    }
+  }
+}
+
+export async function cancelDownload(
+  modelId: string
+): Promise<{ status: string }> {
+  const { data } = await api.post<{ status: string }>(
+    `${BASE}/download/cancel`,
+    { model_id: modelId }
+  );
+  return data;
 }
 
 /** Sync downloaded models into the DB so they appear in the chat dropdown. */
 export async function syncLocalModels(): Promise<{ synced: number }> {
   const { data } = await api.post<{ synced: number }>("/local-models/sync");
   return data;
-}
-
-/**
- * Poll download progress via SSE.
- * Returns an EventSource-like interface using fetch (works in Tauri).
- */
-export function streamDownloadProgress(
-  onProgress: (progress: DownloadProgress) => void,
-  onError?: (error: string) => void
-): { cancel: () => void } {
-  const controller = new AbortController();
-
-  const baseUrl = import.meta.env.VITE_API_URL || "http://127.0.0.1:18741/api/v1";
-
-  (async () => {
-    try {
-      const response = await fetch(`${baseUrl}/local-models/download/progress`, {
-        signal: controller.signal,
-      });
-      if (!response.ok) {
-        onError?.(`HTTP ${response.status}`);
-        return;
-      }
-      const reader = response.body?.getReader();
-      if (!reader) return;
-
-      const decoder = new TextDecoder();
-      let buffer = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || "";
-
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (trimmed.startsWith("data: ")) {
-            try {
-              const parsed = JSON.parse(trimmed.substring(6)) as DownloadProgress;
-              onProgress(parsed);
-            } catch {
-              // skip parse errors
-            }
-          }
-        }
-      }
-    } catch (err) {
-      if (!controller.signal.aborted) {
-        onError?.(String(err));
-      }
-    }
-  })();
-
-  return { cancel: () => controller.abort() };
 }
