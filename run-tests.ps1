@@ -169,7 +169,7 @@ if ($runFrontend) {
             # -----------------------------------------------------------
             # Auto-start backend server if not already running
             # -----------------------------------------------------------
-            $backendUrl = "http://127.0.0.1:18741/api/v1/health"
+            $backendUrl = "http://127.0.0.1:18741/health"
             $backendAlreadyRunning = $false
             try {
                 $r = Invoke-WebRequest -Uri $backendUrl -UseBasicParsing -TimeoutSec 2 -ErrorAction SilentlyContinue
@@ -205,7 +205,7 @@ if ($runFrontend) {
             # -----------------------------------------------------------
             # Auto-start frontend dev server if not already running
             # -----------------------------------------------------------
-            $frontendUrl = "http://127.0.0.1:1420"
+            $frontendUrl = "http://localhost:1420"
             $frontendAlreadyRunning = $false
             try {
                 $r = Invoke-WebRequest -Uri $frontendUrl -UseBasicParsing -TimeoutSec 2 -ErrorAction SilentlyContinue
@@ -216,8 +216,8 @@ if ($runFrontend) {
                 Write-Host "  Frontend already running on port 1420" -ForegroundColor Green
             } else {
                 Write-Host "  Starting frontend dev server..." -ForegroundColor Yellow
-                $frontendProcess = Start-Process -FilePath "npm" `
-                    -ArgumentList "run", "dev" `
+                $frontendProcess = Start-Process -FilePath "cmd.exe" `
+                    -ArgumentList "/c", "npm run dev" `
                     -WorkingDirectory "$projectRoot\frontend" `
                     -WindowStyle Hidden -PassThru
                 $startedFrontend = $true

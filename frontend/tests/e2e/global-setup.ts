@@ -28,7 +28,7 @@ async function checkService(url: string, label: string, retries = 3): Promise<vo
 
 export default async function globalSetup(): Promise<void> {
   console.log("[global-setup] Verifying backend health...");
-  await checkService(BACKEND_URL, "Backend");
+  await checkService(`${BACKEND_URL}/health`, "Backend");
 
   console.log("[global-setup] Verifying frontend is served...");
   await checkService(FRONTEND_URL, "Frontend");
