@@ -73,10 +73,19 @@ async def sync_local_models_to_db(db) -> int:
 
         synced += 1
 
-    # Remove stale entries (models that were deleted from disk)
-    async for stale in collection.find({"model_metadata.runtime": "llama-cpp"}):
-        stale_id = stale.get("_id") or stale.get("id")
-        if stale_id and stale_id not in installed_ids:
+    # Remove stale entries (models deleted from disk or old format entries)
+    # Check both new format (local:*) and legacy format (local-*)
+    async for stale in collection.find({}):
+        stale_id = stale.get("_id") or stale.get("id") or ""
+        provider = (stale.get("provider") or "").lower()
+        runtime = (stale.get("model_metadata", {}).get("runtime") or "").lower()
+        is_local_entry = (
+            provider == "local"
+            or runtime in ("local", "llama-cpp")
+            or str(stale_id).startswith("local-")
+            or str(stale_id).startswith("local:")
+        )
+        if is_local_entry and stale_id not in installed_ids:
             await collection.delete_one({"_id": stale_id})
             logger.info("Removed stale local model: %s", stale_id)
 

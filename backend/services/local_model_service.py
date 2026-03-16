@@ -121,6 +121,9 @@ class LocalModelService:
                 "Install with: pip install llama-cpp-python"
             )
 
+        # Normalize path for consistent comparison
+        model_path = os.path.normpath(os.path.abspath(model_path))
+
         if self._model is not None and self._loaded_model_path == model_path:
             return self._model
 

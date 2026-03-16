@@ -17,9 +17,25 @@ pub fn is_running() -> bool {
 pub fn stop_sidecar() {
     if let Ok(mut guard) = SIDECAR_CHILD.lock() {
         if let Some(ref mut child) = *guard {
-            let _ = child.kill();
-            let _ = child.wait();
-            log::info!("Sidecar process stopped");
+            let pid = child.id();
+
+            // On Windows, kill the entire process tree (sidecar + llama-cpp threads)
+            #[cfg(target_os = "windows")]
+            {
+                use std::os::windows::process::CommandExt;
+                let _ = std::process::Command::new("taskkill")
+                    .args(["/F", "/T", "/PID", &pid.to_string()])
+                    .creation_flags(0x08000000) // CREATE_NO_WINDOW
+                    .output();
+                log::info!("Killed sidecar process tree (PID {})", pid);
+            }
+
+            #[cfg(not(target_os = "windows"))]
+            {
+                let _ = child.kill();
+                let _ = child.wait();
+                log::info!("Sidecar process stopped (PID {})", pid);
+            }
         }
         *guard = None;
     }
