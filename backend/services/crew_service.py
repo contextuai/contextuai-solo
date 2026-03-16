@@ -248,13 +248,30 @@ class CrewService:
         run = await self.run_repo.create_run(crew_id, user_id, run_data)
         logger.info(f"Created run {run['run_id']} for crew {crew_id}")
 
-        # Dispatch to Celery for async execution
+        # Desktop mode: execute via orchestrator directly (no Celery)
         try:
-            from tasks.crew_tasks import execute_crew_run
-            execute_crew_run.delay(run["run_id"])
-            logger.info(f"Dispatched crew run {run['run_id']} to Celery")
+            import asyncio
+
+            async def _run_crew_in_background():
+                try:
+                    from services.crew_orchestrator import CrewOrchestrator
+                    from repositories.crew_repository import CrewRepository, CrewRunRepository
+                    from repositories.crew_memory_repository import CrewMemoryRepository
+                    from repositories.workspace_agent_repository import WorkspaceAgentRepository
+                    orchestrator = CrewOrchestrator(
+                        crew_repo=self.crew_repo,
+                        run_repo=self.run_repo,
+                        memory_repo=CrewMemoryRepository(self.crew_repo.db),
+                        agent_repo=self.agent_repo,
+                    )
+                    await orchestrator.execute_run(run["run_id"])
+                except Exception as exc:
+                    logger.error(f"Background crew execution failed: {exc}")
+
+            asyncio.get_event_loop().create_task(_run_crew_in_background())
+            logger.info(f"Crew run {run['run_id']} execution started (desktop mode)")
         except Exception as e:
-            logger.warning(f"Failed to dispatch to Celery (will need manual execution): {e}")
+            logger.warning(f"Failed to dispatch crew execution: {e}")
 
         return run
 
