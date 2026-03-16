@@ -14,24 +14,25 @@ test.beforeEach(async ({ page }) => {
   await nav.goto();
 });
 
-// DC-NAV-01: Sidebar shows all 7 navigation items
+// DC-NAV-01: Sidebar shows all 8 navigation items
 test("DC-NAV-01: sidebar shows all navigation items", async () => {
   await expect(nav.sidebar).toBeVisible();
 
   const labels = await nav.getNavLabels();
-  const expectedItems = ["Chat", "Personas", "Agents", "Crews", "Workshop", "Connections", "Settings"];
+  const expectedItems = ["Chat", "Model Hub", "Personas", "Agents", "Crews", "Workshop", "Connections", "Settings"];
 
   for (const item of expectedItems) {
     expect(labels).toContain(item);
   }
 
-  expect(labels.length).toBe(7);
+  expect(labels.length).toBe(8);
 });
 
 // DC-NAV-02: Navigate to each page and verify heading
 test("DC-NAV-02: navigate to each page and verify heading", async ({ page }) => {
   const routes: { label: string; heading: string }[] = [
     { label: "Chat", heading: "Start a conversation" },
+    { label: "Model Hub", heading: "Models" },
     { label: "Personas", heading: "Personas" },
     { label: "Agents", heading: "Agent Library" },
     { label: "Crews", heading: "Crews" },
@@ -98,7 +99,7 @@ test("DC-NAV-04: sidebar collapse/expand toggle works", async ({ page }) => {
   expect(expandedBox!.width).toBeGreaterThan(100);
 
   const expandedLabels = await nav.getNavLabels();
-  expect(expandedLabels.length).toBe(7);
+  expect(expandedLabels.length).toBe(8);
 });
 
 // DC-NAV-05: Page transitions are smooth (no flash)

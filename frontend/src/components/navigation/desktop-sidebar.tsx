@@ -15,6 +15,7 @@ import {
   WifiOff,
   Monitor,
   Cloud,
+  Cpu,
 } from "lucide-react";
 import { useAiMode } from "@/contexts/ai-mode-context";
 import logoImg from "@/assets/logo.png";
@@ -27,6 +28,7 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { label: "Chat", path: "/", icon: MessageSquare },
+  { label: "Model Hub", path: "/models", icon: Cpu },
   { label: "Personas", path: "/personas", icon: Sparkles },
   { label: "Agents", path: "/agents", icon: Bot },
   { label: "Crews", path: "/crews", icon: Users },
