@@ -183,8 +183,8 @@ export default function ChatPage() {
         setActiveSessionId(realId);
         setSessionTitle(prompt.slice(0, 30));
 
-        // Add to sessions list
-        setSessions((prev) => [created, ...prev]);
+        // Refresh session list from backend (avoids duplicates from optimistic add + reload)
+        loadSessions();
       } catch (err) {
         console.warn("Failed to create session, using local ID:", err);
       }
