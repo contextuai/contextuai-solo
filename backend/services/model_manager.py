@@ -95,7 +95,7 @@ class ModelManager:
     # ── Installed models ────────────────────────────────────────────────────
 
     def list_installed(self) -> List[Dict[str, Any]]:
-        """Scan models directory and return installed model info."""
+        """Scan models directory (and chat/ subdir) and return installed model info."""
         from .model_catalog import LOCAL_MODEL_CATALOG
 
         models_path = Path(self.models_dir)
@@ -106,8 +106,21 @@ class ModelManager:
         for entry in LOCAL_MODEL_CATALOG:
             filename_to_catalog[entry["hf_filename"].lower()] = entry
 
+        # Scan both root and chat/ subdirectory (legacy download location)
+        gguf_files = list(sorted(models_path.glob("*.gguf")))
+        chat_dir = models_path / "chat"
+        if chat_dir.exists():
+            gguf_files.extend(sorted(chat_dir.glob("*.gguf")))
+        # Dedupe by filename (prefer root over chat/)
+        seen: set = set()
+        unique_files = []
+        for f in gguf_files:
+            if f.name.lower() not in seen:
+                seen.add(f.name.lower())
+                unique_files.append(f)
+
         installed = []
-        for f in sorted(models_path.glob("*.gguf")):
+        for f in unique_files:
             size_gb = round(f.stat().st_size / (1024 ** 3), 2)
             modified = f.stat().st_mtime
             catalog_entry = filename_to_catalog.get(f.name.lower())
@@ -143,21 +156,29 @@ class ModelManager:
         return installed
 
     def is_installed(self, model_id: str) -> bool:
-        """Check if a catalog model is already downloaded."""
+        """Check if a catalog model is already downloaded (root or chat/ subdir)."""
         from .model_catalog import get_model
         entry = get_model(model_id)
         if not entry:
             return False
-        return (Path(self.models_dir) / entry["hf_filename"]).exists()
+        filename = entry["hf_filename"]
+        return (
+            (Path(self.models_dir) / filename).exists()
+            or (Path(self.models_dir) / "chat" / filename).exists()
+        )
 
     def get_model_path(self, model_id: str) -> Optional[str]:
-        """Get the local path for an installed model."""
+        """Get the local path for an installed model (checks root and chat/)."""
         from .model_catalog import get_model
         entry = get_model(model_id)
         if not entry:
             return None
-        path = Path(self.models_dir) / entry["hf_filename"]
-        return str(path) if path.exists() else None
+        filename = entry["hf_filename"]
+        for search_dir in [Path(self.models_dir), Path(self.models_dir) / "chat"]:
+            path = search_dir / filename
+            if path.exists():
+                return str(path)
+        return None
 
     # ── Download ────────────────────────────────────────────────────────────
 

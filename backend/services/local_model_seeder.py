@@ -40,11 +40,16 @@ async def sync_local_models_to_db(db) -> int:
 
     collection = db["models"]
 
-    # Find which GGUF files are on disk
+    # Find which GGUF files are on disk (check root and chat/ subdir)
     installed_ids: set = set()
     synced = 0
 
-    for f in models_path.glob("*.gguf"):
+    gguf_files = list(models_path.glob("*.gguf"))
+    chat_dir = models_path / "chat"
+    if chat_dir.exists():
+        gguf_files.extend(chat_dir.glob("*.gguf"))
+
+    for f in gguf_files:
         catalog_entry = filename_to_catalog.get(f.name.lower())
         if not catalog_entry:
             continue  # Unknown GGUF — skip
