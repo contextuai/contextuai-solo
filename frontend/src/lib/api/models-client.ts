@@ -1,4 +1,5 @@
 import { api } from "@/lib/transport";
+import type { AiMode } from "@/contexts/ai-mode-context";
 
 export interface ModelConfig {
   id: string;
@@ -16,8 +17,9 @@ export interface ModelConfig {
   supports_function_calling: boolean;
 }
 
-export async function getModels(): Promise<ModelConfig[]> {
-  const { data } = await api.get<{ models: ModelConfig[] } | ModelConfig[]>("/models/");
+export async function getModels(mode?: AiMode): Promise<ModelConfig[]> {
+  const query = mode ? `?mode=${mode}` : "";
+  const { data } = await api.get<{ models: ModelConfig[] } | ModelConfig[]>(`/models/${query}`);
   // Backend wraps models in { models: [...] }
   if (Array.isArray(data)) return data;
   return (data as { models: ModelConfig[] }).models ?? [];

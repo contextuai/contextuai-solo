@@ -97,6 +97,37 @@ class ModelRepository(BaseRepository):
             sort=sort
         )
 
+    async def get_enabled_models_by_mode(
+        self,
+        mode: str,
+        skip: int = 0,
+        limit: int = 100,
+        sort: Optional[List[tuple]] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Retrieve enabled models filtered by AI mode.
+
+        Uses get_enabled_models() + Python filtering to avoid SQLite adapter
+        limitations with $ne/$not operators.
+
+        Args:
+            mode: "local" — only local/GGUF models; "cloud" — exclude local models
+
+        Returns:
+            List of matching enabled model documents
+        """
+        all_enabled = await self.get_enabled_models(skip=0, limit=500, sort=sort)
+
+        def is_local(m: Dict[str, Any]) -> bool:
+            mid = m.get("_id", m.get("id", ""))
+            provider = str(m.get("provider", "")).lower()
+            return provider == "local" or str(mid).startswith("local-") or str(mid).startswith("local:")
+
+        if mode == "local":
+            return [m for m in all_enabled if is_local(m)]
+        else:
+            return [m for m in all_enabled if not is_local(m)]
+
     async def get_disabled_models(
         self,
         skip: int = 0,

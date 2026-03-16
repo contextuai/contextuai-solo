@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { DesktopAuthProvider } from "@/lib/desktop-auth";
 import { ThemeProvider } from "@/components/providers/theme-provider";
+import { AiModeProvider } from "@/contexts/ai-mode-context";
 import { DesktopLayout } from "@/components/navigation/desktop-layout";
 import ChatPage from "@/routes/chat";
 import AgentsPage from "@/routes/agents";
@@ -34,6 +35,7 @@ export default function App() {
   return (
     <DesktopAuthProvider>
       <ThemeProvider>
+        <AiModeProvider>
         <BrowserRouter>
           <Routes>
             <Route path="/wizard" element={<WizardPage />} />
@@ -52,6 +54,7 @@ export default function App() {
             </Route>
           </Routes>
         </BrowserRouter>
+        </AiModeProvider>
       </ThemeProvider>
     </DesktopAuthProvider>
   );

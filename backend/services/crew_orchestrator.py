@@ -365,15 +365,38 @@ class CrewOrchestrator:
             "agent_summaries": agent_summaries,
         }
 
+    def _is_local_model(self, model_id: str) -> bool:
+        """Check if a model ID refers to a local GGUF model."""
+        return model_id.startswith("local-") or model_id.startswith("local:")
+
     async def _invoke_agent(
         self, agent_cfg: Dict[str, Any], prompt: str
     ) -> Dict[str, Any]:
         """
         Invoke a single agent using the best available SDK.
 
-        Primary: Claude Agent SDK (cloud-agnostic, native tools).
-        Fallback: Strands SDK (AWS Bedrock only).
+        Routing: local GGUF > Claude Agent SDK > Strands SDK (Bedrock).
         """
+        # Check if we should use a local model
+        model_id = agent_cfg.get("model_id", "")
+        if not model_id:
+            # Resolve from AI mode preference
+            try:
+                from database import get_database
+                from services.default_model_service import DefaultModelService
+                db = await get_database()
+                default_svc = DefaultModelService(db)
+                ai_mode = await default_svc.get_ai_mode_preference()
+                model_id = await default_svc.get_default_model_id(ai_mode)
+            except Exception:
+                model_id = ""
+
+        if model_id and self._is_local_model(model_id):
+            try:
+                return await self._invoke_via_local(agent_cfg, prompt, model_id)
+            except Exception as e:
+                logger.warning(f"Local model failed for crew agent: {e}")
+
         if CLAUDE_SDK_AVAILABLE:
             try:
                 return await self._invoke_via_claude_sdk(agent_cfg, prompt)
@@ -389,6 +412,32 @@ class CrewOrchestrator:
                 "tokens_used": 0,
                 "cost": 0.0,
             }
+
+    async def _invoke_via_local(
+        self, agent_cfg: Dict[str, Any], prompt: str, model_id: str
+    ) -> Dict[str, Any]:
+        """Invoke agent via local GGUF model (text generation only)."""
+        from services.local_model_service import LocalModelService
+
+        agent_name = agent_cfg.get("name", "Agent")
+        logger.info(f"Running crew agent '{agent_name}' via local model: {model_id}")
+
+        local_svc = LocalModelService()
+        catalog_id = model_id.replace("local-", "")
+
+        system_prompt = await self._resolve_instructions(agent_cfg)
+        full_prompt = f"{system_prompt}\n\n{prompt}"
+
+        output = await local_svc.generate(model_id=catalog_id, prompt=full_prompt, max_tokens=4096)
+
+        tokens_used = len(full_prompt.split()) + len(output.split())
+        logger.info(f"Crew agent '{agent_name}' completed via local model (tokens~{tokens_used})")
+
+        return {
+            "output": output,
+            "tokens_used": tokens_used,
+            "cost": 0.0,
+        }
 
     async def _resolve_instructions(self, agent_cfg: Dict[str, Any]) -> str:
         """Resolve agent instructions, falling back to library agent if instructions are too short."""

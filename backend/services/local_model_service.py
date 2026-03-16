@@ -375,5 +375,20 @@ class LocalModelService:
                 }
 
 
+    async def generate(self, model_id: str, prompt: str, max_tokens: int = 2048) -> str:
+        """Simple text generation helper for workspace/crew agents.
+
+        Returns the generated text as a plain string.
+        """
+        result = await self.call_model(
+            prompt=prompt,
+            model_id=model_id,
+            max_tokens=max_tokens,
+            temperature=0.3,
+            stream=False,
+        )
+        return result.get("content", "")
+
+
 # Singleton
 local_model_service = LocalModelService()

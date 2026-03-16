@@ -315,7 +315,18 @@ class WorkspaceOrchestrator:
             })
 
             # Resolve model_id from project (user-selected Claude model)
+            # If not set, fall back to default based on saved AI mode preference
             project_model_id = project.get("model_id")
+            if not project_model_id:
+                try:
+                    from services.default_model_service import DefaultModelService
+                    default_svc = DefaultModelService(self.db)
+                    ai_mode = await default_svc.get_ai_mode_preference()
+                    project_model_id = await default_svc.get_default_model_id(ai_mode)
+                    if project_model_id:
+                        logger.info(f"Resolved default model for mode '{ai_mode}': {project_model_id}")
+                except Exception as e:
+                    logger.warning(f"Failed to resolve default model via preference: {e}")
 
             # Dispatch based on project type
             project_type = project.get("project_type", "build")
