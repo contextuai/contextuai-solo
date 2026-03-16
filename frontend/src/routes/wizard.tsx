@@ -19,9 +19,7 @@ import {
 import logoImg from "@/assets/logo.png";
 import { useAiMode } from "@/contexts/ai-mode-context";
 import {
-  startDownload,
-  loadModel,
-  streamDownloadProgress,
+  downloadModel,
   syncLocalModels,
   type DownloadProgress,
 } from "@/lib/api/local-models-client";
@@ -437,33 +435,32 @@ export default function WizardPage() {
       setDownloadError(null);
       setDownloadProgress(null);
 
+      const controller = new AbortController();
+      downloadCancelRef.current = { cancel: () => controller.abort() };
+
       try {
-        await startDownload(data.model);
-        const stream = streamDownloadProgress(
-          (progress) => {
+        await downloadModel(
+          data.model,
+          (progress: DownloadProgress) => {
             setDownloadProgress(progress);
-            if (progress.status === "complete") {
+            if (progress.status === "done") {
               setDownloading(false);
               syncLocalModels().catch(() => {});
-              loadModel(data.model).catch(() => {});
               setTestResult("success");
               downloadCancelRef.current = null;
             } else if (progress.status === "error") {
               setDownloading(false);
-              setDownloadError(progress.error || "Download failed");
+              setDownloadError(progress.detail || "Download failed");
               downloadCancelRef.current = null;
             }
           },
-          (err) => {
-            setDownloading(false);
-            setDownloadError(err);
-            downloadCancelRef.current = null;
-          }
+          controller.signal
         );
-        downloadCancelRef.current = stream;
-      } catch (err) {
-        setDownloading(false);
-        setDownloadError(String(err));
+      } catch (err: unknown) {
+        if (!controller.signal.aborted) {
+          setDownloading(false);
+          setDownloadError(String(err));
+        }
       }
     };
 
@@ -647,18 +644,18 @@ export default function WizardPage() {
                             Downloading...
                           </span>
                           <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
-                            {downloadProgress.percent}%
+                            {Math.round(downloadProgress.percent || 0)}%
                           </span>
                         </div>
                         <div className="w-full h-2.5 bg-emerald-200 dark:bg-emerald-900 rounded-full overflow-hidden">
                           <div
                             className="h-full bg-gradient-to-r from-emerald-400 to-emerald-500 rounded-full transition-all duration-300"
-                            style={{ width: `${downloadProgress.percent}%` }}
+                            style={{ width: `${Math.round(downloadProgress.percent || 0)}%` }}
                           />
                         </div>
                         <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1.5">
-                          {(downloadProgress.bytes_downloaded / 1024 / 1024).toFixed(0)} MB
-                          {downloadProgress.bytes_total > 0 && ` / ${(downloadProgress.bytes_total / 1024 / 1024).toFixed(0)} MB`}
+                          {((downloadProgress.completed || 0) / 1024 / 1024).toFixed(0)} MB
+                          {(downloadProgress.total || 0) > 0 && ` / ${((downloadProgress.total || 0) / 1024 / 1024).toFixed(0)} MB`}
                         </p>
                       </div>
                     )}

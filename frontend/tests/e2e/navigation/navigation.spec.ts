@@ -32,7 +32,7 @@ test("DC-NAV-01: sidebar shows all navigation items", async () => {
 test("DC-NAV-02: navigate to each page and verify heading", async ({ page }) => {
   const routes: { label: string; heading: string }[] = [
     { label: "Chat", heading: "Start a conversation" },
-    { label: "Model Hub", heading: "Models" },
+    { label: "Model Hub", heading: "Model Hub" },
     { label: "Personas", heading: "Personas" },
     { label: "Agents", heading: "Agent Library" },
     { label: "Crews", heading: "Crews" },

@@ -1,470 +1,714 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { cn } from "@/lib/utils";
-import { useAiMode } from "@/contexts/ai-mode-context";
 import {
-  getAvailableModels,
-  getModelStatus,
-  startDownload,
-  loadModel,
-  unloadModel,
-  deleteModel,
-  syncLocalModels,
-  streamDownloadProgress,
-  type LocalModel,
-  type ModelStatus,
-  type DownloadProgress,
-} from "@/lib/api/local-models-client";
-import { getModels, type ModelConfig } from "@/lib/api/models-client";
-import {
-  Monitor,
-  Cloud,
   Download,
   Trash2,
-  Loader2,
-  Zap,
+  Check,
   HardDrive,
   Cpu,
-  Power,
-  PowerOff,
+  Search,
+  Star,
+  Loader2,
+  X,
+  ExternalLink,
+  MessageSquare,
+  Brain,
+  Code,
+  Palette,
+  Globe,
+  Eye,
+  AlertTriangle,
   RefreshCw,
-  AlertCircle,
 } from "lucide-react";
+import {
+  getCatalog,
+  getInstalledModels,
+  getSystemInfo,
+  downloadModel,
+  cancelDownload,
+  deleteModel,
+  type CatalogModel,
+  type InstalledModel,
+  type SystemInfo,
+  type DiskUsage,
+  type DownloadProgress,
+} from "@/lib/api/local-models-client";
 
-const TIER_LABELS: Record<string, { label: string; color: string }> = {
-  basic: { label: "Starter", color: "bg-neutral-100 text-neutral-600 dark:bg-neutral-700 dark:text-neutral-400" },
-  recommended: { label: "Recommended", color: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400" },
-  best: { label: "Best", color: "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400" },
+// ── Constants ────────────────────────────────────────────────────────────
+
+const CATEGORY_ICONS: Record<string, React.ElementType> = {
+  general: MessageSquare,
+  reasoning: Brain,
+  coding: Code,
+  creative: Palette,
+  multilingual: Globe,
+  vision: Eye,
 };
 
-function formatSize(bytes: number): string {
-  if (bytes >= 1_000_000_000) return `${(bytes / 1_000_000_000).toFixed(1)} GB`;
-  if (bytes >= 1_000_000) return `${(bytes / 1_000_000).toFixed(0)} MB`;
-  return `${bytes} B`;
+const QUALITY_COLORS: Record<string, string> = {
+  basic: "bg-neutral-100 text-neutral-600 dark:bg-neutral-700 dark:text-neutral-300",
+  good: "bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400",
+  great: "bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-400",
+  best: "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400",
+};
+
+const SPEED_LABELS: Record<string, string> = {
+  fast: "Fast",
+  medium: "Medium",
+  slow: "Slow",
+};
+
+type Tab = "discover" | "installed";
+
+// ── RAM indicator ────────────────────────────────────────────────────────
+
+function RamIndicator({ required, systemRam }: { required: number; systemRam: number }) {
+  const fits = required <= systemRam;
+  const tight = required > systemRam * 0.7;
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 text-[11px] font-medium px-1.5 py-0.5 rounded",
+        fits && !tight && "bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400",
+        fits && tight && "bg-yellow-100 text-yellow-700 dark:bg-yellow-500/20 dark:text-yellow-400",
+        !fits && "bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400"
+      )}
+    >
+      {required} GB RAM
+      {!fits && <AlertTriangle className="w-3 h-3" />}
+    </span>
+  );
 }
 
+// ── Model Card ───────────────────────────────────────────────────────────
+
+function ModelCard({
+  model,
+  systemRam,
+  downloading,
+  progress,
+  onDownload,
+  onCancel,
+}: {
+  model: CatalogModel;
+  systemRam: number;
+  downloading: boolean;
+  progress?: DownloadProgress;
+  onDownload: (id: string) => void;
+  onCancel: (id: string) => void;
+}) {
+  const percent = progress?.percent ?? 0;
+
+  return (
+    <div
+      className={cn(
+        "relative flex flex-col p-4 rounded-xl border bg-white dark:bg-neutral-900 transition-all",
+        model.is_recommended
+          ? "border-primary-300 dark:border-primary-700 ring-1 ring-primary-200 dark:ring-primary-800"
+          : "border-neutral-200 dark:border-neutral-800"
+      )}
+    >
+      {model.is_recommended && (
+        <span className="absolute -top-2.5 left-3 px-2 py-0.5 text-[10px] font-bold bg-primary-500 text-white rounded-full flex items-center gap-1">
+          <Star className="w-3 h-3" /> Recommended
+        </span>
+      )}
+
+      {/* Header */}
+      <div className="flex items-start justify-between mb-2">
+        <div>
+          <h3 className="text-sm font-semibold text-neutral-900 dark:text-white">
+            {model.name}
+          </h3>
+          <p className="text-[11px] text-neutral-500">
+            {model.provider} · {model.parameter_size} · {model.size_gb} GB download
+          </p>
+        </div>
+        <span className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded", QUALITY_COLORS[model.quality_tier])}>
+          {model.quality_tier}
+        </span>
+      </div>
+
+      {/* Description */}
+      <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-3 line-clamp-2">
+        {model.description}
+      </p>
+
+      {/* Tags */}
+      <div className="flex flex-wrap gap-1.5 mb-3">
+        {model.categories.map((cat) => {
+          const Icon = CATEGORY_ICONS[cat] || MessageSquare;
+          return (
+            <span
+              key={cat}
+              className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400"
+            >
+              <Icon className="w-3 h-3" />
+              {cat}
+            </span>
+          );
+        })}
+        <span className="text-[10px] text-neutral-400 px-1.5 py-0.5">
+          {SPEED_LABELS[model.speed_tier]} · {model.context_window >= 100000 ? "128K ctx" : `${Math.round(model.context_window / 1024)}K ctx`}
+        </span>
+      </div>
+
+      {/* RAM + Action */}
+      <div className="flex items-center justify-between mt-auto pt-2 border-t border-neutral-100 dark:border-neutral-800">
+        <RamIndicator required={model.ram_required_gb} systemRam={systemRam} />
+
+        {model.installed ? (
+          <span className="inline-flex items-center gap-1 text-xs font-medium text-green-600 dark:text-green-400">
+            <Check className="w-3.5 h-3.5" /> Installed
+          </span>
+        ) : downloading ? (
+          <div className="flex items-center gap-2">
+            <div className="w-24 h-1.5 rounded-full bg-neutral-200 dark:bg-neutral-700 overflow-hidden">
+              <div
+                className="h-full rounded-full bg-primary-500 transition-all duration-300"
+                style={{ width: `${percent}%` }}
+              />
+            </div>
+            <span className="text-[10px] text-neutral-500 w-8 text-right">
+              {Math.round(percent)}%
+            </span>
+            <button
+              onClick={() => onCancel(model.id)}
+              className="p-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800"
+            >
+              <X className="w-3 h-3 text-neutral-400" />
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => onDownload(model.id)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-primary-500 hover:bg-primary-600 text-white transition-colors"
+          >
+            <Download className="w-3.5 h-3.5" />
+            Download
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Installed Model Row ──────────────────────────────────────────────────
+
+function InstalledRow({
+  model,
+  deleting,
+  onDelete,
+}: {
+  model: InstalledModel;
+  deleting: boolean;
+  onDelete: (id: string) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between p-4 bg-white dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-800">
+      <div className="flex items-center gap-3">
+        <div className="p-2 rounded-lg bg-green-100 dark:bg-green-500/20">
+          <Check className="w-4 h-4 text-green-600 dark:text-green-400" />
+        </div>
+        <div>
+          <h4 className="text-sm font-semibold text-neutral-900 dark:text-white">
+            {model.name}
+          </h4>
+          <p className="text-[11px] text-neutral-500">
+            {model.provider} · {model.parameter_size} · {model.size_gb} GB on disk
+          </p>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => onDelete(model.id)}
+          disabled={deleting}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors disabled:opacity-50"
+        >
+          {deleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+          Delete
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Custom Model Input ───────────────────────────────────────────────────
+
+function CustomModelInput({ onDownload }: { onDownload: () => void }) {
+  const [repo, setRepo] = useState("");
+  const [filename, setFilename] = useState("");
+  const [downloading, setDownloading] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
+
+  const handleCustomDownload = async () => {
+    if (!repo.trim() || !filename.trim()) return;
+    setDownloading(true);
+    setStatus("Downloading...");
+
+    const DEV_API_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:18741/api/v1";
+    try {
+      const response = await fetch(`${DEV_API_URL}/local-models/download/custom`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ hf_repo: repo.trim(), hf_filename: filename.trim() }),
+      });
+
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error("No response body");
+
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (trimmed.startsWith("data: ")) {
+            try {
+              const parsed = JSON.parse(trimmed.substring(6));
+              if (parsed.status === "done") {
+                setStatus("Download complete!");
+                setTimeout(() => {
+                  setStatus(null);
+                  setRepo("");
+                  setFilename("");
+                  onDownload();
+                }, 1000);
+              } else if (parsed.status === "error") {
+                setStatus(`Error: ${parsed.detail}`);
+              } else if (parsed.percent) {
+                setStatus(`Downloading... ${Math.round(parsed.percent)}%`);
+              }
+            } catch { /* skip */ }
+          }
+        }
+      }
+    } catch (err) {
+      setStatus(`Error: ${err}`);
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  return (
+    <div className="flex items-end gap-2">
+      <div className="flex-1">
+        <label className="block text-[11px] text-neutral-500 mb-1">HuggingFace Repo</label>
+        <input
+          type="text"
+          value={repo}
+          onChange={(e) => setRepo(e.target.value)}
+          placeholder="e.g. Qwen/Qwen2.5-7B-Instruct-GGUF"
+          disabled={downloading}
+          className="w-full px-3 py-2 text-xs rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-primary-500/40"
+        />
+      </div>
+      <div className="flex-1">
+        <label className="block text-[11px] text-neutral-500 mb-1">GGUF Filename</label>
+        <input
+          type="text"
+          value={filename}
+          onChange={(e) => setFilename(e.target.value)}
+          placeholder="e.g. qwen2.5-7b-instruct-q4_k_m.gguf"
+          disabled={downloading}
+          className="w-full px-3 py-2 text-xs rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-primary-500/40"
+        />
+      </div>
+      <button
+        onClick={handleCustomDownload}
+        disabled={downloading || !repo.trim() || !filename.trim()}
+        className="px-4 py-2 text-xs font-medium rounded-lg bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-100 transition-colors disabled:opacity-50"
+      >
+        {downloading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Pull"}
+      </button>
+      {status && (
+        <span className="text-[11px] text-neutral-500 ml-1 whitespace-nowrap">{status}</span>
+      )}
+    </div>
+  );
+}
+
+// ── Main Page ────────────────────────────────────────────────────────────
+
 export default function ModelsPage() {
-  const { aiMode, setAiMode } = useAiMode();
-  const [localModels, setLocalModels] = useState<LocalModel[]>([]);
-  const [cloudModels, setCloudModels] = useState<ModelConfig[]>([]);
-  const [modelStatus, setModelStatus] = useState<ModelStatus | null>(null);
+  const [tab, setTab] = useState<Tab>("discover");
+  const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
+  const [catalog, setCatalog] = useState<CatalogModel[]>([]);
+  const [installed, setInstalled] = useState<InstalledModel[]>([]);
+  const [diskUsage, setDiskUsage] = useState<DiskUsage | null>(null);
   const [loading, setLoading] = useState(true);
-  const [downloadingId, setDownloadingId] = useState<string | null>(null);
-  const [downloadProgress, setDownloadProgress] = useState<DownloadProgress | null>(null);
-  const [loadingModelId, setLoadingModelId] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [activeCategory, setActiveCategory] = useState<string | null>(null);
+  const [downloads, setDownloads] = useState<Record<string, DownloadProgress>>({});
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const downloadCancelRef = useRef<{ cancel: () => void } | null>(null);
+  const abortControllers = useRef<Record<string, AbortController>>({});
 
-  useEffect(() => {
-    loadData();
-  }, []);
+  // ── Load data ──────────────────────────────────────────────────────────
 
-  async function loadData() {
+  const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [locals, status, cloud] = await Promise.all([
-        getAvailableModels(),
-        getModelStatus().catch(() => null),
-        getModels("cloud").catch(() => []),
+      const [sysInfo, catalogRes, installedRes] = await Promise.all([
+        getSystemInfo(),
+        getCatalog(),
+        getInstalledModels(),
       ]);
-      setLocalModels(locals);
-      setModelStatus(status);
-      setCloudModels(cloud);
+      setSystemInfo(sysInfo);
+      setCatalog(catalogRes.models);
+      setInstalled(installedRes.models);
+      setDiskUsage(installedRes.disk_usage);
     } catch (err) {
-      console.warn("Failed to load models:", err);
+      console.error("Failed to load model data:", err);
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
 
-  async function handleDownload(modelId: string) {
-    setDownloadingId(modelId);
-    setDownloadProgress(null);
-    setError(null);
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
-    try {
-      await startDownload(modelId);
-      const stream = streamDownloadProgress(
-        (progress) => {
-          setDownloadProgress(progress);
-          if (progress.status === "complete") {
-            setDownloadingId(null);
-            setDownloadProgress(null);
-            downloadCancelRef.current = null;
-            syncLocalModels().catch(() => {});
+  // ── Download handler ───────────────────────────────────────────────────
+
+  const handleDownload = useCallback(async (modelId: string) => {
+    const controller = new AbortController();
+    abortControllers.current[modelId] = controller;
+
+    setDownloads((prev) => ({
+      ...prev,
+      [modelId]: { status: "starting", percent: 0 },
+    }));
+
+    await downloadModel(
+      modelId,
+      (progress) => {
+        setDownloads((prev) => ({ ...prev, [modelId]: progress }));
+
+        if (progress.status === "done") {
+          setTimeout(() => {
+            setDownloads((prev) => {
+              const next = { ...prev };
+              delete next[modelId];
+              return next;
+            });
             loadData();
-          } else if (progress.status === "error") {
-            setDownloadingId(null);
-            setError(progress.error || "Download failed");
-            downloadCancelRef.current = null;
-          }
-        },
-        (err) => {
-          setDownloadingId(null);
-          setError(err);
-          downloadCancelRef.current = null;
+          }, 500);
         }
-      );
-      downloadCancelRef.current = stream;
-    } catch (err) {
-      setDownloadingId(null);
-      setError(String(err));
-    }
-  }
+      },
+      controller.signal
+    );
+  }, [loadData]);
 
-  async function handleLoad(modelId: string) {
-    setLoadingModelId(modelId);
-    try {
-      await loadModel(modelId);
-      const status = await getModelStatus().catch(() => null);
-      setModelStatus(status);
-    } catch (err) {
-      setError(`Failed to load model: ${err}`);
-    } finally {
-      setLoadingModelId(null);
-    }
-  }
+  const handleCancel = useCallback(async (modelId: string) => {
+    abortControllers.current[modelId]?.abort();
+    delete abortControllers.current[modelId];
+    await cancelDownload(modelId).catch(() => {});
+    setDownloads((prev) => {
+      const next = { ...prev };
+      delete next[modelId];
+      return next;
+    });
+  }, []);
 
-  async function handleUnload() {
-    try {
-      await unloadModel();
-      setModelStatus(null);
-    } catch (err) {
-      setError(`Failed to unload: ${err}`);
-    }
-  }
+  // ── Delete handler ─────────────────────────────────────────────────────
 
-  async function handleDelete(modelId: string) {
+  const handleDelete = useCallback(async (modelId: string) => {
+    if (!confirm(`Delete this model? This will free up disk space.`)) return;
     setDeletingId(modelId);
     try {
       await deleteModel(modelId);
-      await syncLocalModels().catch(() => {});
-      loadData();
+      await loadData();
     } catch (err) {
-      setError(`Failed to delete: ${err}`);
+      console.error("Delete failed:", err);
     } finally {
       setDeletingId(null);
     }
+  }, [loadData]);
+
+  // ── Filter catalog ─────────────────────────────────────────────────────
+
+  const filteredCatalog = catalog.filter((m) => {
+    if (activeCategory && !m.categories.includes(activeCategory)) return false;
+    if (search) {
+      const q = search.toLowerCase();
+      return (
+        m.name.toLowerCase().includes(q) ||
+        m.provider.toLowerCase().includes(q) ||
+        m.description.toLowerCase().includes(q) ||
+        m.categories.some((c) => c.includes(q))
+      );
+    }
+    return true;
+  });
+
+  const recommendedModels = filteredCatalog.filter((m) => m.is_recommended);
+  const otherModels = filteredCatalog.filter((m) => !m.is_recommended);
+
+  const categories = [
+    { id: null, label: "All" },
+    { id: "general", label: "General" },
+    { id: "reasoning", label: "Reasoning" },
+    { id: "coding", label: "Coding" },
+    { id: "creative", label: "Creative" },
+    { id: "multilingual", label: "Multilingual" },
+    { id: "vision", label: "Vision" },
+  ];
+
+  const activeDownloadCount = Object.keys(downloads).length;
+
+  // ── Render ─────────────────────────────────────────────────────────────
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <Loader2 className="w-6 h-6 animate-spin text-primary-500" />
+      </div>
+    );
   }
 
-  const downloadedModels = localModels.filter((m) => m.downloaded);
-  const availableModels = localModels.filter((m) => !m.downloaded);
-  const loadedModelId = modelStatus?.model_id || null;
-
   return (
-    <div className="flex-1 overflow-y-auto">
-      <div className="max-w-3xl mx-auto px-6 py-8">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-8">
+    <div className="flex flex-col h-full bg-neutral-50 dark:bg-[#1a1b1a]">
+      {/* Header */}
+      <div className="px-6 pt-6 pb-4 border-b border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900">
+        <div className="flex items-center justify-between mb-4">
           <div>
-            <h1 className="text-2xl font-bold text-neutral-900 dark:text-white">Models</h1>
-            <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">
-              Download and manage your AI models
+            <h1 className="text-xl font-bold text-neutral-900 dark:text-white">
+              Model Hub
+            </h1>
+            <p className="text-sm text-neutral-500 dark:text-neutral-400">
+              Download and manage local AI models
             </p>
           </div>
           <button
             onClick={loadData}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 transition-colors"
+            className="p-2 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+            title="Refresh"
           >
-            <RefreshCw className={cn("w-3 h-3", loading && "animate-spin")} />
-            Refresh
+            <RefreshCw className="w-4 h-4 text-neutral-500" />
           </button>
         </div>
 
-        {/* Error */}
-        {error && (
-          <div className="flex items-center gap-2 p-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 text-sm mb-6">
-            <AlertCircle className="w-4 h-4 flex-shrink-0" />
-            {error}
-            <button onClick={() => setError(null)} className="ml-auto text-xs underline">Dismiss</button>
+        {/* System info banner */}
+        {systemInfo && (
+          <div className="flex items-center gap-4 p-3 rounded-xl bg-neutral-50 dark:bg-neutral-800 mb-4">
+            <div className="flex items-center gap-2">
+              <Cpu className="w-4 h-4 text-primary-500" />
+              <span className="text-sm font-medium text-neutral-900 dark:text-white">
+                {systemInfo.total_ram_gb} GB RAM
+              </span>
+              <span className="text-xs text-neutral-500">
+                — models up to {systemInfo.max_recommended_params} recommended
+              </span>
+            </div>
+            {systemInfo.gpu && (
+              <div className="flex items-center gap-1.5 text-xs text-neutral-500">
+                <HardDrive className="w-3.5 h-3.5" />
+                {systemInfo.gpu}
+                {systemInfo.gpu_vram_gb && ` (${systemInfo.gpu_vram_gb} GB)`}
+              </div>
+            )}
+            {diskUsage && (
+              <div className="ml-auto flex items-center gap-1.5 text-xs text-neutral-500">
+                <HardDrive className="w-3.5 h-3.5" />
+                {diskUsage.models_gb} GB used · {diskUsage.disk_free_gb} GB free
+              </div>
+            )}
           </div>
         )}
 
-        {/* ── AI Mode Banner ───────────────────────────────────── */}
-        <div className={cn(
-          "rounded-2xl border-2 p-5 mb-8 transition-all",
-          aiMode === "local"
-            ? "border-emerald-200 dark:border-emerald-800 bg-gradient-to-r from-emerald-50 to-white dark:from-emerald-500/5 dark:to-neutral-900"
-            : "border-sky-200 dark:border-sky-800 bg-gradient-to-r from-sky-50 to-white dark:from-sky-500/5 dark:to-neutral-900"
-        )}>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              {aiMode === "local" ? (
-                <div className="p-2 rounded-xl bg-emerald-100 dark:bg-emerald-500/20">
-                  <Monitor className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-                </div>
-              ) : (
-                <div className="p-2 rounded-xl bg-sky-100 dark:bg-sky-500/20">
-                  <Cloud className="w-5 h-5 text-sky-600 dark:text-sky-400" />
-                </div>
-              )}
-              <div>
-                <h2 className="text-sm font-bold text-neutral-900 dark:text-white">
-                  {aiMode === "local" ? "Local AI Mode" : "Cloud Mode"}
-                </h2>
-                <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                  {aiMode === "local"
-                    ? "Running models on your machine. Free, private, offline."
-                    : "Using cloud APIs. Requires API keys and internet."}
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={() => setAiMode(aiMode === "local" ? "cloud" : "local")}
-              className={cn(
-                "px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors",
-                "text-neutral-600 dark:text-neutral-400 border-neutral-200 dark:border-neutral-700",
-                "hover:bg-neutral-100 dark:hover:bg-neutral-800"
-              )}
-            >
-              Switch to {aiMode === "local" ? "Cloud" : "Local"}
-            </button>
-          </div>
+        {/* Tabs */}
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => setTab("discover")}
+            className={cn(
+              "px-4 py-2 text-sm font-medium rounded-lg transition-colors",
+              tab === "discover"
+                ? "bg-primary-50 dark:bg-primary-500/10 text-primary-600 dark:text-primary-400"
+                : "text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+            )}
+          >
+            Discover
+          </button>
+          <button
+            onClick={() => setTab("installed")}
+            className={cn(
+              "px-4 py-2 text-sm font-medium rounded-lg transition-colors flex items-center gap-2",
+              tab === "installed"
+                ? "bg-primary-50 dark:bg-primary-500/10 text-primary-600 dark:text-primary-400"
+                : "text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+            )}
+          >
+            Installed
+            {installed.length > 0 && (
+              <span className="px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400">
+                {installed.length}
+              </span>
+            )}
+          </button>
+          {activeDownloadCount > 0 && (
+            <span className="ml-2 px-2 py-1 text-[10px] font-bold rounded-full bg-primary-100 text-primary-700 dark:bg-primary-500/20 dark:text-primary-400 animate-pulse">
+              {activeDownloadCount} downloading
+            </span>
+          )}
         </div>
+      </div>
 
-        {/* ── LOCAL MODELS ─────────────────────────────────────── */}
-        <div className="mb-10">
-          <div className="flex items-center gap-2 mb-4">
-            <Monitor className="w-4 h-4 text-emerald-500" />
-            <h2 className="text-lg font-bold text-neutral-900 dark:text-white">Local Models</h2>
-            <span className="text-xs text-neutral-400">({downloadedModels.length} downloaded)</span>
-          </div>
-
-          {/* Downloaded models */}
-          {downloadedModels.length > 0 && (
-            <div className="space-y-2 mb-6">
-              {downloadedModels.map((model) => {
-                const isLoaded = loadedModelId === model.id;
-                const isLoadingThis = loadingModelId === model.id;
-                const isDeletingThis = deletingId === model.id;
-                const tier = TIER_LABELS[model.tier] || TIER_LABELS.basic;
-
-                return (
-                  <div
-                    key={model.id}
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto px-6 py-6">
+        {/* ── Discover Tab ──────────────────────────────────────────────── */}
+        {tab === "discover" && (
+          <>
+            {/* Search + Filters */}
+            <div className="flex items-center gap-3 mb-6">
+              <div className="relative flex-1 max-w-md">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search models..."
+                  className="w-full pl-9 pr-4 py-2 text-sm rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-primary-500/40"
+                />
+              </div>
+              <div className="flex items-center gap-1.5 overflow-x-auto">
+                {categories.map((cat) => (
+                  <button
+                    key={cat.id ?? "all"}
+                    onClick={() => setActiveCategory(cat.id)}
                     className={cn(
-                      "flex items-center justify-between p-4 rounded-xl border transition-all",
-                      isLoaded
-                        ? "border-emerald-300 dark:border-emerald-700 bg-emerald-50/50 dark:bg-emerald-500/5"
-                        : "border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900"
+                      "px-3 py-1.5 text-xs font-medium rounded-full whitespace-nowrap transition-colors",
+                      activeCategory === cat.id
+                        ? "bg-primary-500 text-white"
+                        : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700"
                     )}
                   >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className={cn(
-                        "p-2 rounded-lg",
-                        isLoaded ? "bg-emerald-100 dark:bg-emerald-500/20" : "bg-neutral-100 dark:bg-neutral-800"
-                      )}>
-                        <Cpu className={cn("w-4 h-4", isLoaded ? "text-emerald-500" : "text-neutral-400")} />
-                      </div>
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="font-semibold text-sm text-neutral-900 dark:text-white">{model.name}</span>
-                          <span className={cn("text-[10px] font-semibold px-2 py-0.5 rounded-full", tier.color)}>
-                            {tier.label}
-                          </span>
-                          {isLoaded && (
-                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500 text-white">
-                              ACTIVE
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-3 mt-0.5">
-                          <span className="text-[11px] text-neutral-400 flex items-center gap-1">
-                            <HardDrive className="w-3 h-3" /> {formatSize(model.size_bytes)}
-                          </span>
-                          <span className="text-[11px] text-neutral-400 flex items-center gap-1">
-                            <Zap className="w-3 h-3" /> {model.ram_gb} GB RAM
-                          </span>
-                          {model.supports_tools && (
-                            <span className="text-[11px] text-blue-500 font-medium">Tool calling</span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      {isLoaded ? (
-                        <button
-                          onClick={handleUnload}
-                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
-                        >
-                          <PowerOff className="w-3 h-3" /> Unload
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => handleLoad(model.id)}
-                          disabled={isLoadingThis}
-                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 transition-colors"
-                        >
-                          {isLoadingThis ? <Loader2 className="w-3 h-3 animate-spin" /> : <Power className="w-3 h-3" />}
-                          Load
-                        </button>
-                      )}
-                      <button
-                        onClick={() => handleDelete(model.id)}
-                        disabled={isDeletingThis || isLoaded}
-                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 disabled:opacity-30 transition-colors"
-                      >
-                        {isDeletingThis ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
+                    {cat.label}
+                  </button>
+                ))}
+              </div>
             </div>
-          )}
 
-          {/* Available to download */}
-          <div className="space-y-2">
-            {availableModels.length > 0 && (
-              <h3 className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-3">
-                Available to Download
-              </h3>
-            )}
-            {loading && localModels.length === 0 && (
-              <div className="flex items-center justify-center py-12">
-                <Loader2 className="w-5 h-5 animate-spin text-neutral-400" />
+            {/* Recommended section */}
+            {recommendedModels.length > 0 && !search && !activeCategory && (
+              <div className="mb-8">
+                <h2 className="flex items-center gap-2 text-sm font-semibold text-neutral-900 dark:text-white mb-3">
+                  <Star className="w-4 h-4 text-primary-500" />
+                  Recommended for You
+                </h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {recommendedModels.map((m) => (
+                    <ModelCard
+                      key={m.id}
+                      model={m}
+                      systemRam={systemInfo?.total_ram_gb ?? 8}
+                      downloading={!!downloads[m.id]}
+                      progress={downloads[m.id]}
+                      onDownload={handleDownload}
+                      onCancel={handleCancel}
+                    />
+                  ))}
+                </div>
               </div>
             )}
-            {availableModels.map((model) => {
-              const isDownloading = downloadingId === model.id;
-              const tier = TIER_LABELS[model.tier] || TIER_LABELS.basic;
 
-              return (
-                <div
-                  key={model.id}
-                  className="flex items-center justify-between p-4 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 transition-all"
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="p-2 rounded-lg bg-neutral-100 dark:bg-neutral-800">
-                      <Cpu className="w-4 h-4 text-neutral-400" />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-sm text-neutral-900 dark:text-white">{model.name}</span>
-                        <span className={cn("text-[10px] font-semibold px-2 py-0.5 rounded-full", tier.color)}>
-                          {tier.label}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-3 mt-0.5">
-                        <span className="text-[11px] text-neutral-400 flex items-center gap-1">
-                          <Download className="w-3 h-3" /> {formatSize(model.size_bytes)}
-                        </span>
-                        <span className="text-[11px] text-neutral-400 flex items-center gap-1">
-                          <Zap className="w-3 h-3" /> {model.ram_gb} GB RAM needed
-                        </span>
-                        {model.supports_tools && (
-                          <span className="text-[11px] text-blue-500 font-medium">Tool calling</span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {isDownloading ? (
-                    <div className="w-40">
-                      {downloadProgress ? (
-                        <div>
-                          <div className="flex justify-between text-[10px] text-emerald-600 dark:text-emerald-400 mb-1">
-                            <span>Downloading</span>
-                            <span className="font-bold">{downloadProgress.percent}%</span>
-                          </div>
-                          <div className="w-full h-1.5 bg-emerald-200 dark:bg-emerald-900 rounded-full overflow-hidden">
-                            <div
-                              className="h-full bg-emerald-500 rounded-full transition-all"
-                              style={{ width: `${downloadProgress.percent}%` }}
-                            />
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-1.5">
-                          <Loader2 className="w-3 h-3 animate-spin text-emerald-500" />
-                          <span className="text-xs text-neutral-400">Starting...</span>
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => handleDownload(model.id)}
-                      disabled={downloadingId !== null}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-800 disabled:opacity-30 transition-colors"
-                    >
-                      <Download className="w-3 h-3" />
-                      Download
-                    </button>
-                  )}
+            {/* All models */}
+            <div>
+              <h2 className="text-sm font-semibold text-neutral-900 dark:text-white mb-3">
+                {search || activeCategory ? `Results (${filteredCatalog.length})` : "All Models"}
+              </h2>
+              {(search || activeCategory ? filteredCatalog : otherModels).length === 0 ? (
+                <div className="text-center py-12">
+                  <p className="text-sm text-neutral-500">No models found matching your search.</p>
                 </div>
-              );
-            })}
-          </div>
-
-          {/* RAM recommendation */}
-          <div className="mt-6 p-4 rounded-xl bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700">
-            <h4 className="text-xs font-semibold text-neutral-600 dark:text-neutral-300 uppercase tracking-wider mb-2">
-              RAM Guide
-            </h4>
-            <div className="grid grid-cols-3 gap-3 text-[11px]">
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-neutral-400" />
-                <span className="text-neutral-500 dark:text-neutral-400">8 GB RAM: up to 3B</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-emerald-500" />
-                <span className="text-neutral-500 dark:text-neutral-400">16 GB RAM: up to 7B</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-amber-500" />
-                <span className="text-neutral-500 dark:text-neutral-400">32+ GB RAM: up to 32B</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* ── CLOUD MODELS ─────────────────────────────────────── */}
-        <div>
-          <div className="flex items-center gap-2 mb-4">
-            <Cloud className="w-4 h-4 text-sky-500" />
-            <h2 className="text-lg font-bold text-neutral-900 dark:text-white">Cloud Models</h2>
-            <span className="text-xs text-neutral-400">({cloudModels.length} configured)</span>
-          </div>
-
-          {cloudModels.length === 0 ? (
-            <div className="text-center py-8 rounded-xl border border-dashed border-neutral-300 dark:border-neutral-700">
-              <Cloud className="w-8 h-8 text-neutral-300 dark:text-neutral-600 mx-auto mb-2" />
-              <p className="text-sm text-neutral-500 dark:text-neutral-400">
-                No cloud providers configured yet
-              </p>
-              <p className="text-xs text-neutral-400 mt-1">
-                Add API keys in Settings to use cloud models
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {cloudModels.map((model) => (
-                <div
-                  key={model.id}
-                  className="flex items-center justify-between p-4 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-sky-100 dark:bg-sky-500/20">
-                      <Cloud className="w-4 h-4 text-sky-500" />
-                    </div>
-                    <div>
-                      <span className="font-semibold text-sm text-neutral-900 dark:text-white">{model.name}</span>
-                      <span className="text-[11px] text-neutral-400 ml-2">{model.provider}</span>
-                    </div>
-                  </div>
-                  <span className={cn(
-                    "text-[10px] font-medium px-2 py-0.5 rounded-full",
-                    model.enabled
-                      ? "bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400"
-                      : "bg-neutral-100 text-neutral-500 dark:bg-neutral-700 dark:text-neutral-400"
-                  )}>
-                    {model.enabled ? "Enabled" : "Disabled"}
-                  </span>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {(search || activeCategory ? filteredCatalog : otherModels).map((m) => (
+                    <ModelCard
+                      key={m.id}
+                      model={m}
+                      systemRam={systemInfo?.total_ram_gb ?? 8}
+                      downloading={!!downloads[m.id]}
+                      progress={downloads[m.id]}
+                      onDownload={handleDownload}
+                      onCancel={handleCancel}
+                    />
+                  ))}
                 </div>
-              ))}
+              )}
             </div>
-          )}
-        </div>
+
+            {/* Custom model input */}
+            <div className="mt-8 p-4 rounded-xl border border-dashed border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900">
+              <div className="flex items-center gap-2 mb-2">
+                <ExternalLink className="w-4 h-4 text-neutral-500" />
+                <span className="text-sm font-medium text-neutral-900 dark:text-white">
+                  Custom Model
+                </span>
+              </div>
+              <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-3">
+                Don't see your model?{" "}
+                <a
+                  href="https://huggingface.co/models?sort=trending&search=gguf"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary-500 hover:text-primary-400 underline underline-offset-2 inline-flex items-center gap-1"
+                >
+                  Browse GGUF models on HuggingFace
+                  <ExternalLink className="w-3 h-3" />
+                </a>{" "}
+                and enter the repo and filename below.
+              </p>
+              <CustomModelInput onDownload={loadData} />
+            </div>
+          </>
+        )}
+
+        {/* ── Installed Tab ─────────────────────────────────────────────── */}
+        {tab === "installed" && (
+          <>
+            {installed.length === 0 ? (
+              <div className="text-center py-16">
+                <HardDrive className="w-10 h-10 text-neutral-300 dark:text-neutral-600 mx-auto mb-3" />
+                <h3 className="text-sm font-semibold text-neutral-900 dark:text-white mb-1">
+                  No models installed
+                </h3>
+                <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-4">
+                  Browse the Discover tab to download your first model.
+                </p>
+                <button
+                  onClick={() => setTab("discover")}
+                  className="px-4 py-2 text-sm font-medium rounded-lg bg-primary-500 text-white hover:bg-primary-600 transition-colors"
+                >
+                  Browse Models
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {diskUsage && (
+                  <div className="flex items-center gap-2 text-xs text-neutral-500 mb-4">
+                    <HardDrive className="w-3.5 h-3.5" />
+                    {diskUsage.model_count} model{diskUsage.model_count !== 1 ? "s" : ""} ·{" "}
+                    {diskUsage.models_gb} GB used · {diskUsage.disk_free_gb} GB free on disk
+                  </div>
+                )}
+                {installed.map((m) => (
+                  <InstalledRow
+                    key={m.id}
+                    model={m}
+                    deleting={deletingId === m.id}
+                    onDelete={handleDelete}
+                  />
+                ))}
+              </div>
+            )}
+          </>
+        )}
       </div>
     </div>
   );
