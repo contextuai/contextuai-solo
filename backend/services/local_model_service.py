@@ -55,7 +55,14 @@ class LocalModelService:
         """Check if a model config targets local GGUF inference."""
         provider = (model_config.get("provider") or "").lower()
         metadata = model_config.get("model_metadata", {})
-        return provider == "local" or metadata.get("runtime") == "local"
+        runtime = (metadata.get("runtime") or "").lower()
+        model_id = model_config.get("id") or model_config.get("_id") or ""
+        return (
+            provider == "local"
+            or runtime in ("local", "llama-cpp")
+            or str(model_id).startswith("local-")
+            or str(model_id).startswith("local:")
+        )
 
     # ------------------------------------------------------------------
     # Model lifecycle
@@ -65,34 +72,45 @@ class LocalModelService:
         """Determine the .gguf file path for the requested model.
 
         Resolution order:
-        1. ``model_metadata.local_model_file`` (explicit filename)
-        2. First ``.gguf`` file found in ``MODELS_DIR/chat/``
+        1. ``model_metadata.gguf_path`` (absolute path from seeder)
+        2. ``model_metadata.hf_filename`` (look in MODELS_DIR root)
+        3. ``model_metadata.local_model_file`` (legacy — look in MODELS_DIR/chat/)
+        4. First ``.gguf`` file found in ``MODELS_DIR`` or ``MODELS_DIR/chat/``
         """
         metadata = (model_config or {}).get("model_metadata", {})
-        local_file = metadata.get("local_model_file")
 
+        # 1. Absolute path from seeder
+        gguf_path = metadata.get("gguf_path")
+        if gguf_path and os.path.isfile(gguf_path):
+            return gguf_path
+
+        # 2. HuggingFace filename from catalog seeder — check MODELS_DIR root
+        hf_filename = metadata.get("hf_filename")
+        if hf_filename:
+            path = os.path.join(MODELS_DIR, hf_filename)
+            if os.path.isfile(path):
+                return path
+
+        # 3. Legacy local_model_file — check MODELS_DIR/chat/
+        local_file = metadata.get("local_model_file")
         if local_file:
-            # Accept absolute paths as-is; relative paths resolve under MODELS_DIR/chat/
             if os.path.isabs(local_file):
                 path = local_file
             else:
                 path = os.path.join(MODELS_DIR, "chat", local_file)
-            if not os.path.isfile(path):
-                raise FileNotFoundError(
-                    f"Configured local_model_file not found: {path}"
-                )
-            return path
+            if os.path.isfile(path):
+                return path
 
-        # Fallback – scan MODELS_DIR/chat/ for the first .gguf file
-        chat_dir = os.path.join(MODELS_DIR, "chat")
-        if os.path.isdir(chat_dir):
-            for fname in sorted(os.listdir(chat_dir)):
-                if fname.lower().endswith(".gguf"):
-                    return os.path.join(chat_dir, fname)
+        # 4. Fallback — scan both directories for any .gguf file
+        for search_dir in [MODELS_DIR, os.path.join(MODELS_DIR, "chat")]:
+            if os.path.isdir(search_dir):
+                for fname in sorted(os.listdir(search_dir)):
+                    if fname.lower().endswith(".gguf"):
+                        return os.path.join(search_dir, fname)
 
         raise FileNotFoundError(
-            f"No .gguf model files found in {chat_dir}. "
-            "Download a model or set 'local_model_file' in model metadata."
+            f"No .gguf model files found in {MODELS_DIR}. "
+            "Download a model from the Model Hub first."
         )
 
     def _ensure_model(self, model_path: str) -> Any:
