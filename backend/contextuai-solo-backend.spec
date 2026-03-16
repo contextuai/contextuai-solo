@@ -24,7 +24,7 @@ a = Analysis(
     ['__main__.py'],
     pathex=['.'],
     binaries=extra_binaries,
-    datas=[('../agent-library', 'agent-library'), ('../models/embedding/all-MiniLM-L6-v2', 'models/embedding/all-MiniLM-L6-v2')],
+    datas=[('../agent-library', 'agent-library')],
     hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
