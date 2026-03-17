@@ -32,6 +32,7 @@ router = APIRouter(prefix="/api/v1/local-models", tags=["local-models"])
 # ── Request / Response models ──────────────────────────────────────────────
 
 class DownloadRequest(BaseModel):
+    model_config = {"protected_namespaces": ()}
     model_id: str
 
 
@@ -41,6 +42,7 @@ class CustomDownloadRequest(BaseModel):
 
 
 class CancelRequest(BaseModel):
+    model_config = {"protected_namespaces": ()}
     model_id: str
 
 
@@ -185,6 +187,14 @@ async def delete_model(model_id: str):
         except Exception as e:
             logger.warning("Failed to sync DB after model delete: %s", e)
     return result
+
+
+@router.post("/sync")
+async def sync_models():
+    """Sync installed GGUF models into the models DB collection."""
+    db = await get_database()
+    synced = await sync_local_models_to_db(db)
+    return {"synced": synced}
 
 
 @router.get("/disk-usage")

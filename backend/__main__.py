@@ -7,6 +7,14 @@ import argparse
 import os
 import sys
 
+# Block tornado before anything else imports motor.
+# Motor's __init__.py does `try: import tornado` — if it succeeds, motor
+# tries to load motor_tornado which needs the full tornado package.
+# Setting sys.modules['tornado'] = None makes `import tornado` raise
+# ImportError, so motor skips the tornado bridge and only loads the
+# asyncio driver (which is all we use — actual DB is SQLite).
+sys.modules['tornado'] = None  # type: ignore[assignment]
+
 
 def main():
     parser = argparse.ArgumentParser(description="ContextuAI Solo Backend")

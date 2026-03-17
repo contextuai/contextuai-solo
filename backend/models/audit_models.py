@@ -26,14 +26,6 @@ class AuditAction(str, Enum):
     USER_DELETED = "user.deleted"
     ROLE_CHANGED = "user.role.changed"
 
-    # Automations
-    AUTOMATION_CREATED = "automation.created"
-    AUTOMATION_UPDATED = "automation.updated"
-    AUTOMATION_DELETED = "automation.deleted"
-    AUTOMATION_EXECUTED = "automation.executed"
-    AUTOMATION_FAILED = "automation.failed"
-    WEBHOOK_TRIGGERED = "automation.webhook.triggered"
-
     # Chat / AI
     CHAT_MESSAGE_SENT = "chat.message.sent"
     SESSION_CREATED = "chat.session.created"

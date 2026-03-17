@@ -10,16 +10,6 @@ from pydantic import BaseModel, Field
 
 class EventType(str, Enum):
     """Categories of subscribable events."""
-    # Automation lifecycle
-    AUTOMATION_CREATED = "automation.created"
-    AUTOMATION_UPDATED = "automation.updated"
-    AUTOMATION_DELETED = "automation.deleted"
-
-    # Execution lifecycle
-    EXECUTION_STARTED = "execution.started"
-    EXECUTION_COMPLETED = "execution.completed"
-    EXECUTION_FAILED = "execution.failed"
-
     # Workspace / Project
     PROJECT_CREATED = "project.created"
     PROJECT_COMPLETED = "project.completed"
