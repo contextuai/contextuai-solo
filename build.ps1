@@ -2,7 +2,6 @@
 # Usage: .\build.ps1
 # Builds: Python sidecar (PyInstaller) + Frontend (Vite) + Tauri desktop app (MSI + NSIS)
 
-$ErrorActionPreference = "Stop"
 $root = $PSScriptRoot
 $backend = "$root\backend"
 $frontend = "$root\frontend"
@@ -16,19 +15,25 @@ Write-Host "[1/3] Building Python sidecar (PyInstaller)..." -ForegroundColor Yel
 
 Push-Location $backend
 try {
-    & .venv\Scripts\pyinstaller.exe contextuai-solo-backend.spec `
+    $env:PYTHONIOENCODING = "utf-8"
+    $output = & .venv\Scripts\pyinstaller.exe contextuai-solo-backend.spec `
         --distpath "$sidecar" `
         --workpath .\build `
-        --noconfirm 2>&1 | Select-String -Pattern "completed successfully|ERROR"
+        --noconfirm 2>&1
+
+    # Show only important lines
+    $output | ForEach-Object {
+        $line = "$_"
+        if ($line -match "completed successfully|ERROR|Building") {
+            Write-Host "  $line"
+        }
+    }
 
     # PyInstaller COLLECT outputs a subdirectory — flatten it
     $nested = "$sidecar\contextuai-solo-backend"
     if (Test-Path $nested) {
-        # Remove old sidecar files
         Remove-Item "$sidecar\contextuai-solo-backend.exe" -ErrorAction SilentlyContinue
         Remove-Item "$sidecar\_internal" -Recurse -ErrorAction SilentlyContinue
-
-        # Move new build up
         Copy-Item "$nested\*" "$sidecar\" -Recurse -Force
         Remove-Item $nested -Recurse -Force
     }
@@ -39,25 +44,34 @@ try {
         Write-Host "  Sidecar built: $exe ($size MB)" -ForegroundColor Green
     } else {
         Write-Host "  ERROR: Sidecar exe not found!" -ForegroundColor Red
+        Pop-Location
         exit 1
     }
-} finally {
+} catch {
+    Write-Host "  ERROR: PyInstaller failed: $_" -ForegroundColor Red
     Pop-Location
+    exit 1
 }
+Pop-Location
 
 # ── Step 2: Build Tauri desktop app ─────────────────────────────────────
 Write-Host "`n[2/3] Building Tauri desktop app (TypeScript + Vite + Rust)..." -ForegroundColor Yellow
 
 Push-Location $frontend
 try {
-    npm run tauri build 2>&1 | ForEach-Object {
-        if ($_ -match "built in|Finished|Running (candle|light|makensis)|error") {
-            Write-Host "  $_"
+    $output = & npm run tauri build 2>&1
+    $output | ForEach-Object {
+        $line = "$_"
+        if ($line -match "built in|Finished|Running (candle|light|makensis)|error|Built application") {
+            Write-Host "  $line"
         }
     }
-} finally {
+} catch {
+    Write-Host "  ERROR: Tauri build failed: $_" -ForegroundColor Red
     Pop-Location
+    exit 1
 }
+Pop-Location
 
 # ── Step 3: Verify outputs ──────────────────────────────────────────────
 Write-Host "`n[3/3] Verifying outputs..." -ForegroundColor Yellow

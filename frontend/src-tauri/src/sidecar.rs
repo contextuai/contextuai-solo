@@ -15,6 +15,11 @@ pub fn is_running() -> bool {
 }
 
 pub fn stop_sidecar() {
+    // Guard against double-stop (WindowDestroyed + RunEvent::Exit)
+    if !SIDECAR_RUNNING.load(Ordering::Relaxed) {
+        return;
+    }
+
     if let Ok(mut guard) = SIDECAR_CHILD.lock() {
         if let Some(ref mut child) = *guard {
             let pid = child.id();
@@ -49,10 +54,12 @@ pub async fn start_sidecar(app_handle: &AppHandle) -> Result<(), String> {
 
     log::info!("Starting FastAPI sidecar on port {}", port);
 
-    // In development, assume backend is already running
+    // In development, assume backend is already running on the default port
     #[cfg(debug_assertions)]
     {
-        log::info!("Dev mode: expecting backend at 127.0.0.1:{}", port);
+        let dev_port = 18741u16;
+        SIDECAR_PORT.store(dev_port, Ordering::Relaxed);
+        log::info!("Dev mode: expecting backend at 127.0.0.1:{}", dev_port);
         SIDECAR_RUNNING.store(true, Ordering::Relaxed);
         return Ok(());
     }

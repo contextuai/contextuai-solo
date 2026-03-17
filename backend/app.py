@@ -364,42 +364,10 @@ async def _seed_agent_library(db):
 async def _seed_local_models(db):
     """Check for downloaded GGUF models and ensure they have DB entries."""
     try:
-        from routers.local_models import AVAILABLE_MODELS, CHAT_DIR
-        collection = db["models"]
-        seeded = 0
-        for model in AVAILABLE_MODELS:
-            file_path = CHAT_DIR / model["file"]
-            if not file_path.is_file():
-                continue
-            model_id = f"local-{model['id']}"
-            existing = await collection.find_one({"_id": model_id})
-            if existing:
-                continue
-            doc = {
-                "_id": model_id,
-                "name": model["name"],
-                "provider": "local",
-                "model": model_id,
-                "max_tokens": "4096",
-                "enabled": True,
-                "description": f"Local {model['name']} model (GGUF, runs on CPU)",
-                "capabilities": ["chat"],
-                "input_cost": 0,
-                "output_cost": 0,
-                "context_window": 4096,
-                "supports_vision": False,
-                "supports_function_calling": model.get("supports_tools", False),
-                "model_metadata": {
-                    "runtime": "local",
-                    "local_model_file": model["file"],
-                    "ram_gb": model.get("ram_gb"),
-                    "tier": model.get("tier"),
-                },
-            }
-            await collection.insert_one(doc)
-            seeded += 1
-        if seeded:
-            logger.info("Seeded %d local model config(s)", seeded)
+        from services.local_model_seeder import sync_local_models_to_db
+        synced = await sync_local_models_to_db(db)
+        if synced:
+            logger.info("Seeded %d local model config(s)", synced)
     except Exception:
         logger.exception("Failed to seed local model configs")
 

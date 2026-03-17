@@ -41,12 +41,13 @@ class ModelManager:
         """Detect system RAM and GPU, capped at 64 GB for recommendations."""
         try:
             import psutil
-            total_ram = round(psutil.virtual_memory().total / (1024 ** 3))
-            available_ram = round(psutil.virtual_memory().available / (1024 ** 3))
-        except ImportError:
-            logger.warning("psutil not installed — cannot detect RAM")
-            total_ram = 8
-            available_ram = 4
+            mem = psutil.virtual_memory()
+            total_ram = round(mem.total / (1024 ** 3))
+            available_ram = round(mem.available / (1024 ** 3))
+        except (ImportError, AttributeError) as exc:
+            logger.warning("psutil unavailable (%s) — falling back to platform detection", exc)
+            total_ram, available_ram = ModelManager._fallback_ram()
+
 
         gpu_info = ModelManager._detect_gpu()
 
@@ -74,6 +75,31 @@ class ModelManager:
             "gpu_vram_gb": gpu_info.get("vram_gb") if gpu_info else None,
             "max_recommended_params": max_params,
         }
+
+    @staticmethod
+    def _fallback_ram():
+        """Detect RAM without psutil (Windows wmic / Linux meminfo)."""
+        try:
+            if platform.system() == "Windows":
+                result = subprocess.run(
+                    ["wmic", "OS", "get", "TotalVisibleMemorySize", "/value"],
+                    capture_output=True, text=True, timeout=5,
+                )
+                for line in result.stdout.strip().splitlines():
+                    if "=" in line:
+                        kb = int(line.split("=")[1].strip())
+                        total = round(kb / (1024 ** 2))
+                        return total, max(total // 2, 4)
+            else:
+                with open("/proc/meminfo") as f:
+                    for line in f:
+                        if line.startswith("MemTotal"):
+                            kb = int(line.split()[1])
+                            total = round(kb / (1024 ** 2))
+                            return total, max(total // 2, 4)
+        except Exception:
+            pass
+        return 8, 4
 
     @staticmethod
     def _detect_gpu() -> Optional[Dict[str, Any]]:

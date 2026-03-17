@@ -4,12 +4,12 @@ mod commands;
 mod sidecar;
 mod tray;
 
-use tauri::Manager;
+use tauri::{Manager, RunEvent};
 
 fn main() {
     env_logger::init();
 
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         // .plugin(tauri_plugin_notification::init()) // disabled — config deserialization issue
         .plugin(tauri_plugin_os::init())
@@ -45,6 +45,13 @@ fn main() {
             commands::get_sidecar_port,
             commands::get_sidecar_status,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running ContextuAI Solo");
+        .build(tauri::generate_context!())
+        .expect("error while building ContextuAI Solo");
+
+    app.run(|_app_handle, event| {
+        if let RunEvent::Exit = event {
+            log::info!("App exiting — stopping sidecar");
+            sidecar::stop_sidecar();
+        }
+    });
 }
