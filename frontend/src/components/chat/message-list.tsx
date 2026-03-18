@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { Bot, User } from "lucide-react";
 import type { ChatMessage } from "@/types/chat";
@@ -193,11 +193,23 @@ function StreamingBubble({ content }: { content: string }) {
 }
 
 function TypingIndicator() {
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    const t = setInterval(() => setElapsed((e) => e + 1), 1000);
+    return () => clearInterval(t);
+  }, []);
+
   return (
-    <div className="flex items-center gap-1 py-1 px-1">
+    <div className="flex items-center gap-2 py-1 px-1">
       <span className="w-2 h-2 rounded-full bg-neutral-400 dark:bg-neutral-500 animate-bounce [animation-delay:0ms]" />
       <span className="w-2 h-2 rounded-full bg-neutral-400 dark:bg-neutral-500 animate-bounce [animation-delay:150ms]" />
       <span className="w-2 h-2 rounded-full bg-neutral-400 dark:bg-neutral-500 animate-bounce [animation-delay:300ms]" />
+      {elapsed >= 3 && (
+        <span className="ml-1 text-xs text-neutral-400 dark:text-neutral-500">
+          {elapsed < 8 ? "Thinking..." : `Loading model... (${elapsed}s)`}
+        </span>
+      )}
     </div>
   );
 }

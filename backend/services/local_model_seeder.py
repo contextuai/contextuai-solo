@@ -102,7 +102,7 @@ def _catalog_to_model_doc(entry: Dict, file_path: str) -> Dict[str, Any]:
         "id": model_id,
         "name": f"{entry['name']} (Local)",
         "provider": "Local",
-        "model": entry["id"],
+        "model": f"local:{entry['id']}",
         "max_tokens": 4096,
         "enabled": True,
         "description": entry["description"],

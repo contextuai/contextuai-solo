@@ -44,15 +44,35 @@ export default function ChatPage() {
   // Abort controller for stopping stream
   const abortRef = useRef(false);
 
-  // ── Load initial data ──────────────────────────────────────────
+  // ── Load initial data (wait for backend to be ready) ──────────
   useEffect(() => {
-    // Sync any downloaded local models into DB first, then load models
-    import("@/lib/api/local-models-client")
-      .then((m) => m.syncLocalModels())
-      .catch(() => {})
-      .finally(() => loadModels());
-    loadPersonas();
-    loadSessions();
+    let cancelled = false;
+
+    async function waitForBackend() {
+      // Poll /health until the backend responds (handles cold-start delay)
+      for (let i = 0; i < 60; i++) {
+        if (cancelled) return;
+        try {
+          const resp = await fetch("http://127.0.0.1:18741/health");
+          if (resp.ok) break;
+        } catch {
+          // backend not ready yet
+        }
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+      if (cancelled) return;
+
+      // Backend is ready — load all data
+      import("@/lib/api/local-models-client")
+        .then((m) => m.syncLocalModels())
+        .catch(() => {})
+        .finally(() => loadModels());
+      loadPersonas();
+      loadSessions();
+    }
+
+    waitForBackend();
+    return () => { cancelled = true; };
   }, []);
 
   // Re-fetch models when AI mode changes

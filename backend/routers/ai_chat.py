@@ -299,14 +299,13 @@ async def ai_chat(request: ChatRequest, http_request: Request = None):
 
             model_config = None
 
-            # Try lookup by MongoDB ObjectId first (24 hex chars)
-            if len(model_id) == 24:
-                try:
-                    model_config = await model_repo.get_by_id(model_id)
-                    if model_config:
-                        logger.info(f"✅ Found model by MongoDB ID: {model_id}")
-                except Exception:
-                    pass
+            # Try direct _id lookup first (works for local:* IDs and MongoDB ObjectIds)
+            try:
+                model_config = await model_repo.get_by_id(model_id)
+                if model_config:
+                    logger.info(f"✅ Found model by _id: {model_id}")
+            except Exception:
+                pass
 
             # If not found by ID, try by model field (Bedrock model ID)
             if not model_config:

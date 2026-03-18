@@ -88,14 +88,27 @@ export async function* streamRequest(
   const baseUrl = isTauri ? `http://127.0.0.1:${await getSidecarPort()}` : DEV_API_URL.replace("/api/v1", "");
   const fullUrl = `${baseUrl}/api/v1${path}`;
 
-  const response = await fetch(fullUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  let response: Response | null = null;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      response = await fetch(fullUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      break;
+    } catch (err) {
+      if (attempt < 4 && isTauri) {
+        await sleep(1500 * (attempt + 1));
+        continue;
+      }
+      yield { type: "error", data: `Connection failed: ${err}` };
+      return;
+    }
+  }
 
-  if (!response.ok) {
-    yield { type: "error", data: `HTTP ${response.status}: ${response.statusText}` };
+  if (!response || !response.ok) {
+    yield { type: "error", data: `HTTP ${response?.status}: ${response?.statusText}` };
     return;
   }
 
