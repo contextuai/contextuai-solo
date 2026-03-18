@@ -54,6 +54,10 @@ class AgentBlueprint(BaseModel):
         default=True,
         description="Whether the agent is currently enabled"
     )
+    system_prompt: Optional[str] = Field(
+        None,
+        description="Full system prompt / instructions for the agent"
+    )
     source: Optional[str] = Field(
         None,
         description="Agent source: system, library, custom, admin_edit"

@@ -116,9 +116,16 @@ export default function AgentsPage() {
     return counts;
   }, [agents]);
 
-  const handleOpenDetail = (agent: WorkspaceAgent) => {
+  const handleOpenDetail = async (agent: WorkspaceAgent) => {
     setSelectedAgent(agent);
     setDetailOpen(true);
+    // Fetch full agent (with system_prompt) for the detail panel
+    try {
+      const full = await workspaceApi.getAgent(agent.agent_id);
+      setSelectedAgent(full);
+    } catch {
+      // Keep the summary version if full fetch fails
+    }
   };
 
   const handleDetailSaved = () => {
