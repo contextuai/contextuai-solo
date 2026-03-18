@@ -38,6 +38,7 @@ CATEGORY_TO_ROLE: Dict[str, CrewAgentRole] = {
     "data_analytics": CrewAgentRole.ANALYST,
     "product_management": CrewAgentRole.STRATEGIST,
     "c_suite": CrewAgentRole.COORDINATOR,
+    "social_engagement": CrewAgentRole.ANALYST,
 }
 
 

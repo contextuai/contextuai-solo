@@ -153,6 +153,7 @@ CATEGORY_ICONS: Dict[str, str] = {
     "legal_compliance": "scale",
     "it_security": "shield",
     "data_analytics": "bar-chart-2",
+    "social_engagement": "message-circle",
     "specialized": "star",
     "engineering": "cpu",
 }
@@ -301,6 +302,7 @@ def generate_system_prompt(
         "legal_compliance": "Legal & Compliance",
         "it_security": "IT & Security",
         "data_analytics": "Data & Analytics",
+        "social_engagement": "Social Engagement",
         "specialized": "Specialized",
         "engineering": "Engineering",
     }

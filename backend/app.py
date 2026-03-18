@@ -262,6 +262,7 @@ _CATEGORY_ICONS = {
     "legal_compliance": "scale",
     "marketing_sales": "megaphone",
     "product_management": "layout",
+    "social_engagement": "message-circle",
     "specialized": "star",
     "startup_venture": "rocket",
 }
