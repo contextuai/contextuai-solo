@@ -27,6 +27,13 @@ import {
   disconnectOAuth,
   type OAuthStatus,
 } from "@/lib/api/oauth-client";
+import {
+  listTriggers,
+  createTrigger,
+  updateTrigger,
+  deleteTrigger,
+  type Trigger,
+} from "@/lib/api/triggers-client";
 
 // ─── Types ──────────────────────────────────────────────────────
 
@@ -263,6 +270,7 @@ export default function ConnectionsPage() {
   const [testing, setTesting] = useState<ConnectionId | null>(null);
   const [oauthStatuses, setOauthStatuses] = useState<Record<string, OAuthStatus>>({});
   const [oauthLoading, setOauthLoading] = useState<ConnectionId | null>(null);
+  const [triggers, setTriggers] = useState<Trigger[]>([]);
 
   const getConnection = (id: ConnectionId) => connections.find((c) => c.id === id);
 
@@ -301,12 +309,34 @@ export default function ConnectionsPage() {
 
   useEffect(() => {
     refreshOAuthStatuses();
+    listTriggers().then(setTriggers).catch(() => {});
 
     // Poll every 3s while an OAuth flow might be in progress
-    // (user is in the browser authorizing)
     const interval = setInterval(refreshOAuthStatuses, 3000);
     return () => clearInterval(interval);
   }, [refreshOAuthStatuses]);
+
+  const getTriggerForChannel = (channelType: string) =>
+    triggers.find((t) => t.channel_type === channelType);
+
+  const handleToggleAutoReply = async (channelType: string, currentTrigger?: Trigger) => {
+    if (currentTrigger) {
+      await updateTrigger(currentTrigger.trigger_id, { enabled: !currentTrigger.enabled });
+    } else {
+      await createTrigger({ channel_type: channelType, enabled: true });
+    }
+    const updated = await listTriggers();
+    setTriggers(updated);
+  };
+
+  const handleToggleApproval = async (trigger: Trigger) => {
+    await updateTrigger(trigger.trigger_id, { approval_required: !trigger.approval_required });
+    const updated = await listTriggers();
+    setTriggers(updated);
+  };
+
+  // handleDeleteTrigger available if needed
+  void deleteTrigger;
 
   const handleEdit = (conn: ConnectionConfig) => {
     const saved = getConnection(conn.id);
@@ -769,6 +799,64 @@ export default function ConnectionsPage() {
                     </div>
                   </div>
                 )}
+
+                {/* Auto-Reply Trigger Config (shown for connected inbound channels) */}
+                {isConnected && conn.supportsInbound && !isEditing && (() => {
+                  const trigger = getTriggerForChannel(conn.id);
+                  return (
+                    <div className="px-5 pb-4 pt-0 border-t border-neutral-100 dark:border-neutral-800">
+                      <div className="pt-3 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-medium text-neutral-600 dark:text-neutral-400">
+                            Auto-Reply
+                          </span>
+                          {trigger?.enabled && (
+                            <span className="text-[10px] font-medium text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-500/20 px-2 py-0.5 rounded-full">
+                              ON
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-3">
+                          {trigger?.enabled && (
+                            <label className="flex items-center gap-1.5 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={trigger.approval_required}
+                                onChange={() => handleToggleApproval(trigger)}
+                                className="rounded border-neutral-300 text-primary-500 focus:ring-primary-500 w-3.5 h-3.5"
+                              />
+                              <span className="text-[11px] text-neutral-500">Require approval</span>
+                            </label>
+                          )}
+                          <button
+                            onClick={() => handleToggleAutoReply(conn.id, trigger)}
+                            className={cn(
+                              "relative inline-flex h-5 w-9 items-center rounded-full transition-colors",
+                              trigger?.enabled
+                                ? "bg-green-500"
+                                : "bg-neutral-300 dark:bg-neutral-600"
+                            )}
+                          >
+                            <span
+                              className={cn(
+                                "inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform",
+                                trigger?.enabled ? "translate-x-[18px]" : "translate-x-[3px]"
+                              )}
+                            />
+                          </button>
+                        </div>
+                      </div>
+                      {trigger?.enabled && (
+                        <p className="text-[11px] text-neutral-400 mt-1">
+                          Incoming messages will be answered by AI.
+                          {trigger.approval_required
+                            ? " Replies go to the Approval Queue first."
+                            : " Replies are sent immediately."}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             );
           })}

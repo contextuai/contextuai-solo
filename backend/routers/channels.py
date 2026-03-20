@@ -204,13 +204,29 @@ async def telegram_webhook(
     if msg is None:
         return {"status": "ok", "detail": "Non-text message or unsupported update"}
 
+    # Store inbound message
+    await svc._store_channel_message(
+        session_id=(await svc.get_or_create_session(
+            msg.channel_type.value, msg.channel_id, msg.sender_id
+        ))["session_id"],
+        role="user",
+        content=msg.text,
+    )
+
     result = await svc.handle_message(msg)
 
-    # Reply via Telegram
-    try:
-        await svc.telegram_bot.send_message(msg.channel_id, result["response"])
-    except Exception as e:
-        logger.error(f"Failed to reply via Telegram: {e}")
+    # Reply via Telegram (skip if pending approval)
+    if result.get("status") != "pending_approval":
+        try:
+            await svc.telegram_bot.send_message(msg.channel_id, result["response"])
+            # Store outbound message
+            await svc._store_channel_message(
+                session_id=result["session_id"],
+                role="assistant",
+                content=result["response"],
+            )
+        except Exception as e:
+            logger.error(f"Failed to reply via Telegram: {e}")
 
     return {"status": "success", "data": result}
 

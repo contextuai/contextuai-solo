@@ -39,6 +39,8 @@ from routers.desktop_oauth import router as desktop_oauth_router
 from routers.models import router as models_router
 from routers.local_models import router as local_models_router
 from routers.openai_compat import router as openai_compat_router
+from routers.triggers import router as triggers_router
+from routers.approvals import router as approvals_router
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -84,6 +86,8 @@ app.include_router(desktop_oauth_router)
 app.include_router(models_router)
 app.include_router(local_models_router)
 app.include_router(openai_compat_router)
+app.include_router(triggers_router)
+app.include_router(approvals_router)
 
 
 # ---------------------------------------------------------------------------

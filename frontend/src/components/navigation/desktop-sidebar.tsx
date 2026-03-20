@@ -8,6 +8,7 @@ import {
   Users,
   FlaskConical,
   Cable,
+  ClipboardCheck,
   Settings,
   ChevronLeft,
   ChevronRight,
@@ -34,6 +35,7 @@ const navItems: NavItem[] = [
   { label: "Crews", path: "/crews", icon: Users },
   { label: "Workshop", path: "/workspace", icon: FlaskConical },
   { label: "Connections", path: "/connections", icon: Cable },
+  { label: "Approvals", path: "/approvals", icon: ClipboardCheck },
   { label: "Settings", path: "/settings", icon: Settings },
 ];
 
