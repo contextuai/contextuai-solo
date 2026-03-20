@@ -17,13 +17,14 @@ export interface ChatMessage {
   message_id: string;
   session_id: string;
   content: string;
+  reasoning?: string;
   message_type: "user" | "assistant" | "system";
   timestamp: string;
   metadata?: Record<string, unknown>;
 }
 
 export interface StreamChunk {
-  type: "chunk" | "tool" | "metadata" | "error";
+  type: "chunk" | "thinking" | "tool" | "metadata" | "error";
   data: string;
   metadata?: {
     model_used?: string;

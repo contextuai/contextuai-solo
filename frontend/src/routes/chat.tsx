@@ -39,6 +39,7 @@ export default function ChatPage() {
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingContent, setStreamingContent] = useState("");
+  const [streamingThinking, setStreamingThinking] = useState("");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   // Abort controller for stopping stream
@@ -141,6 +142,7 @@ export default function ChatPage() {
     setActiveSessionId(sessionId);
     setMessages([]);
     setStreamingContent("");
+    setStreamingThinking("");
     setInput("");
 
     // Find session in list for title/model/persona
@@ -169,6 +171,7 @@ export default function ChatPage() {
     setActiveSessionId(null);
     setMessages([]);
     setStreamingContent("");
+    setStreamingThinking("");
     setSessionTitle("New Chat");
     setInput("");
   }, []);
@@ -223,8 +226,10 @@ export default function ChatPage() {
     // Start streaming
     setIsStreaming(true);
     setStreamingContent("");
+    setStreamingThinking("");
 
     let fullResponse = "";
+    let fullThinking = "";
 
     try {
       for await (const chunk of sendMessageStream(
@@ -235,7 +240,10 @@ export default function ChatPage() {
       )) {
         if (abortRef.current) break;
 
-        if (chunk.type === "chunk") {
+        if (chunk.type === "thinking") {
+          fullThinking += chunk.data;
+          setStreamingThinking(fullThinking);
+        } else if (chunk.type === "chunk") {
           fullResponse += chunk.data;
           setStreamingContent(fullResponse);
         } else if (chunk.type === "error") {
@@ -253,11 +261,12 @@ export default function ChatPage() {
     }
 
     // Finalize: add assistant message
-    if (fullResponse) {
+    if (fullResponse || fullThinking) {
       const assistantMsg: ChatMessage = {
         message_id: `msg_${Date.now()}_assistant`,
         session_id: sessionId,
         content: fullResponse,
+        reasoning: fullThinking || undefined,
         message_type: "assistant",
         timestamp: new Date().toISOString(),
       };
@@ -266,6 +275,7 @@ export default function ChatPage() {
 
     setIsStreaming(false);
     setStreamingContent("");
+    setStreamingThinking("");
 
     // Refresh session list to update message counts
     loadSessions();
@@ -359,6 +369,7 @@ export default function ChatPage() {
         <MessageList
           messages={messages}
           streamingContent={streamingContent}
+          streamingThinking={streamingThinking}
           isStreaming={isStreaming}
         />
 

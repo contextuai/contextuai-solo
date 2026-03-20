@@ -137,7 +137,10 @@ export async function* streamRequest(
         if (content === "[DONE]") continue;
         try {
           const parsed = JSON.parse(content);
-          if (parsed.chunk !== undefined) {
+          if (parsed.thinking) {
+            yield { type: "thinking", data: parsed.thinking };
+          }
+          if (parsed.chunk) {
             yield { type: "chunk", data: parsed.chunk };
           } else if (parsed.is_final) {
             yield { type: "metadata", data: JSON.stringify(parsed.metadata || {}) };

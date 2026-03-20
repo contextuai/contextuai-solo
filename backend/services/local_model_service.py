@@ -13,6 +13,8 @@ import pathlib
 from typing import Dict, Any, List, Optional, Union, AsyncGenerator
 from functools import partial
 
+from services.think_tag_parser import parse_think_tags, StreamingThinkParser
+
 logger = logging.getLogger(__name__)
 
 try:
@@ -308,8 +310,11 @@ class LocalModelService:
         content = message.get("content") or ""
         usage = response.get("usage", {})
 
+        # Strip <think> tags and extract reasoning
+        parsed = parse_think_tags(content)
+
         result: Dict[str, Any] = {
-            "content": content,
+            "content": parsed.content,
             "model_id": model_id,
             "tokens_used": {
                 "input_tokens": usage.get("prompt_tokens", 0),
@@ -318,6 +323,9 @@ class LocalModelService:
             },
             "stop_reason": "end_turn",
         }
+
+        if parsed.reasoning:
+            result["reasoning"] = parsed.reasoning
 
         # Attach tool calls if the model produced any
         tool_calls = message.get("tool_calls")
@@ -353,7 +361,7 @@ class LocalModelService:
             partial(self._model.create_chat_completion, **create_kwargs),
         )
 
-        accumulated_text = ""
+        think_parser = StreamingThinkParser()
 
         def _next_chunk(it):
             """Pull one chunk from the blocking iterator (runs in executor)."""
@@ -365,7 +373,16 @@ class LocalModelService:
         while True:
             chunk = await loop.run_in_executor(None, _next_chunk, stream_iter)
             if chunk is None:
-                # Stream exhausted – emit final frame
+                # Flush remaining buffered text
+                for kind, segment_text in think_parser.finish():
+                    if segment_text:
+                        yield {
+                            "chunk": segment_text if kind == "content" else "",
+                            "thinking": segment_text if kind == "thinking" else "",
+                            "model_id": model_id,
+                            "is_final": False,
+                            "status": "streaming",
+                        }
                 yield {
                     "chunk": "",
                     "model_id": model_id,
@@ -378,22 +395,34 @@ class LocalModelService:
             text = delta.get("content") or ""
             finish_reason = chunk.get("choices", [{}])[0].get("finish_reason")
 
+            if text:
+                for kind, segment_text in think_parser.feed(text):
+                    if segment_text:
+                        yield {
+                            "chunk": segment_text if kind == "content" else "",
+                            "thinking": segment_text if kind == "thinking" else "",
+                            "model_id": model_id,
+                            "is_final": False,
+                            "status": "streaming",
+                        }
+
             if finish_reason:
+                for kind, segment_text in think_parser.finish():
+                    if segment_text:
+                        yield {
+                            "chunk": segment_text if kind == "content" else "",
+                            "thinking": segment_text if kind == "thinking" else "",
+                            "model_id": model_id,
+                            "is_final": False,
+                            "status": "streaming",
+                        }
                 yield {
-                    "chunk": text,
+                    "chunk": "",
                     "model_id": model_id,
                     "is_final": True,
                     "status": "complete",
                 }
                 return
-            elif text:
-                accumulated_text += text
-                yield {
-                    "chunk": text,
-                    "model_id": model_id,
-                    "is_final": False,
-                    "status": "streaming",
-                }
 
 
     async def generate(self, model_id: str, prompt: str, max_tokens: int = 2048) -> str:

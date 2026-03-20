@@ -147,6 +147,8 @@ export async function* sendMessageStream(
     // streamRequest already parses SSE into { type, data }
     if (raw.type === "error") {
       yield { type: "error", data: raw.data };
+    } else if (raw.type === "thinking") {
+      yield { type: "thinking", data: raw.data };
     } else if (raw.type === "metadata") {
       try {
         const meta = JSON.parse(raw.data);

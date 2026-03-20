@@ -38,6 +38,7 @@ from routers.distribution import router as distribution_router
 from routers.desktop_oauth import router as desktop_oauth_router
 from routers.models import router as models_router
 from routers.local_models import router as local_models_router
+from routers.openai_compat import router as openai_compat_router
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -82,6 +83,7 @@ app.include_router(distribution_router)
 app.include_router(desktop_oauth_router)
 app.include_router(models_router)
 app.include_router(local_models_router)
+app.include_router(openai_compat_router)
 
 
 # ---------------------------------------------------------------------------

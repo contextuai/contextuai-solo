@@ -419,9 +419,16 @@ async def ai_chat(request: ChatRequest, http_request: Request = None):
                         )
                         async for chunk in gen:
                             text = chunk.get("chunk", "")
-                            if text:
-                                collected_response.append(text)
-                                yield f"data: {json.dumps({'chunk': text})}\n\n"
+                            thinking = chunk.get("thinking", "")
+                            if text or thinking:
+                                if text:
+                                    collected_response.append(text)
+                                payload: dict = {}
+                                if text:
+                                    payload["chunk"] = text
+                                if thinking:
+                                    payload["thinking"] = thinking
+                                yield f"data: {json.dumps(payload)}\n\n"
                     except (GeneratorExit, asyncio.CancelledError):
                         disconnected = True
                         logger.info("Client disconnected during local model streaming")
