@@ -199,6 +199,21 @@ async def telegram_webhook(
         raise HTTPException(503, "Telegram bot not configured")
 
     body = await request.json()
+
+    # Validate webhook payload structure
+    from services.channel_guardrails import validate_telegram_webhook
+    if not validate_telegram_webhook(body, ""):
+        logger.warning("Invalid Telegram webhook payload rejected")
+        raise HTTPException(400, "Invalid webhook payload")
+
+    # Verify secret token if configured (Telegram setWebhook secret_token param)
+    expected_secret = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
+    import os
+    configured_secret = os.environ.get("TELEGRAM_WEBHOOK_SECRET", "")
+    if configured_secret and expected_secret != configured_secret:
+        logger.warning("Telegram webhook secret token mismatch")
+        raise HTTPException(403, "Invalid secret token")
+
     msg = svc.telegram_bot.parse_update(body)
 
     if msg is None:

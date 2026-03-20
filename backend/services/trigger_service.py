@@ -174,6 +174,7 @@ class TriggerService:
         """Run a single agent and return its output."""
         from services.local_model_service import local_model_service, LLAMA_CPP_AVAILABLE
         from services.default_model_service import DefaultModelService
+        from services.channel_guardrails import get_safe_system_prompt
 
         # Load agent
         coll = self.db["workspace_agents"]
@@ -183,7 +184,9 @@ class TriggerService:
         if not agent:
             return f"Agent '{agent_id}' not found."
 
-        system_prompt = agent.get("system_prompt", "You are a helpful assistant.")
+        raw_prompt = agent.get("system_prompt", "You are a helpful assistant.")
+        # Wrap agent prompt with safety guardrails
+        system_prompt = get_safe_system_prompt(raw_prompt)
 
         default_svc = DefaultModelService(self.db)
         ai_mode = await default_svc.get_ai_mode_preference()

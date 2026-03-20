@@ -504,11 +504,59 @@ class ChannelService:
         """
         Process an inbound channel message.
 
-        Looks up/creates session, dispatches to AI for a response,
-        and returns the result.  If a trigger is configured for the
-        channel it will be used (see TriggerService); otherwise the
-        default local model generates a direct reply.
+        Applies guardrails (sanitization, rate limiting, prompt injection
+        detection), then dispatches to AI for a response.
         """
+        from services.channel_guardrails import (
+            sanitize_message,
+            check_prompt_injection,
+            check_rate_limit,
+        )
+
+        # --- Guardrails ---
+        # 1. Rate limit
+        allowed, rejection = check_rate_limit(msg.sender_id)
+        if not allowed:
+            return {
+                "session_id": "",
+                "channel_type": msg.channel_type.value,
+                "sender": msg.sender_name,
+                "text": msg.text[:100],
+                "message_id": msg.message_id,
+                "status": "rate_limited",
+                "response": rejection,
+            }
+
+        # 2. Sanitize input
+        msg.text = sanitize_message(msg.text)
+        if not msg.text:
+            return {
+                "session_id": "",
+                "channel_type": msg.channel_type.value,
+                "sender": msg.sender_name,
+                "text": "",
+                "message_id": msg.message_id,
+                "status": "empty",
+                "response": "",
+            }
+
+        # 3. Prompt injection detection
+        is_safe, matched = check_prompt_injection(msg.text)
+        if not is_safe:
+            logger.warning(
+                "Blocked prompt injection from %s (%s): %s",
+                msg.sender_name, msg.sender_id, matched,
+            )
+            return {
+                "session_id": "",
+                "channel_type": msg.channel_type.value,
+                "sender": msg.sender_name,
+                "text": msg.text[:100],
+                "message_id": msg.message_id,
+                "status": "blocked",
+                "response": "I'm here to help with legitimate questions. How can I assist you?",
+            }
+
         session = await self.get_or_create_session(
             msg.channel_type.value, msg.channel_id, msg.sender_id
         )
@@ -562,10 +610,15 @@ class ChannelService:
         user_text: str,
         session: Dict[str, Any],
     ) -> str:
-        """Generate an AI response using the default local model."""
+        """Generate an AI response using the default local model.
+
+        Always applies the channel safety system prompt to prevent
+        information leakage and prompt injection.
+        """
         try:
             from services.default_model_service import DefaultModelService
             from services.local_model_service import local_model_service, LLAMA_CPP_AVAILABLE
+            from services.channel_guardrails import get_safe_system_prompt
 
             default_svc = DefaultModelService(self.db)
             ai_mode = await default_svc.get_ai_mode_preference()
@@ -577,6 +630,9 @@ class ChannelService:
             # Build lightweight conversation history from this channel session
             history = await self._get_channel_history(session["session_id"], limit=10)
 
+            # Always wrap with safety guardrails
+            safe_prompt = get_safe_system_prompt()
+
             # Local model path
             if LLAMA_CPP_AVAILABLE and (
                 ai_mode == "local"
@@ -587,6 +643,7 @@ class ChannelService:
                 result = await local_model_service.call_model(
                     prompt=user_text,
                     model_id=model_id,
+                    persona_context={"system_prompt": safe_prompt},
                     conversation_history=history,
                     max_tokens=1024,
                     temperature=0.7,
