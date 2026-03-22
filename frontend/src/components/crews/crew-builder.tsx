@@ -2,6 +2,10 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { crewsApi, type CrewAgent, type LibraryAgent } from "@/lib/api/crews-client";
 import {
+  BlueprintSelector,
+  type BlueprintSelection,
+} from "@/components/blueprints/blueprint-selector";
+import {
   Users,
   Plus,
   Trash2,
@@ -351,6 +355,8 @@ export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderP
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [libraryOpen, setLibraryOpen] = useState(false);
+  const [blueprintSelectorOpen, setBlueprintSelectorOpen] = useState(false);
+  const [selectedBlueprint, setSelectedBlueprint] = useState<BlueprintSelection | null>(null);
 
   const handleLibrarySelect = (agent: LibraryAgent) => {
     setAgents((prev) => [
@@ -449,6 +455,17 @@ export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderP
           onSelect={handleLibrarySelect}
         />
 
+        {/* Blueprint Selector */}
+        <BlueprintSelector
+          open={blueprintSelectorOpen}
+          onClose={() => setBlueprintSelectorOpen(false)}
+          onSelect={(bp) => {
+            setSelectedBlueprint(bp);
+            setDescription(bp.content);
+            setBlueprintSelectorOpen(false);
+          }}
+        />
+
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-200 dark:border-neutral-800">
           <div className="flex items-center gap-3">
@@ -502,9 +519,37 @@ export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderP
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
-                Description
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">
+                  Description
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setBlueprintSelectorOpen(true)}
+                  className="flex items-center gap-1.5 text-xs font-medium text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 transition-colors"
+                >
+                  <BookOpen className="w-3.5 h-3.5" />
+                  Use Blueprint
+                </button>
+              </div>
+              {selectedBlueprint && (
+                <div className="flex items-center gap-2 mb-2 px-3 py-1.5 rounded-lg bg-primary-50 dark:bg-primary-500/10 border border-primary-200 dark:border-primary-800">
+                  <BookOpen className="w-3.5 h-3.5 text-primary-500 flex-shrink-0" />
+                  <span className="text-xs text-primary-700 dark:text-primary-300 font-medium truncate">
+                    {selectedBlueprint.name}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedBlueprint(null);
+                      setDescription("");
+                    }}
+                    className="ml-auto p-0.5 rounded hover:bg-primary-100 dark:hover:bg-primary-500/20 transition-colors"
+                  >
+                    <X className="w-3 h-3 text-primary-500" />
+                  </button>
+                </div>
+              )}
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}

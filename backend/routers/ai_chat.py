@@ -375,8 +375,38 @@ async def ai_chat(request: ChatRequest, http_request: Request = None):
         # ── Local GGUF model intercept ─────────────────────────────────
         # If the resolved model config is a local GGUF model, use
         # LocalModelService (llama-cpp-python) directly.
+        # Also detect by model_id prefix when model_config lookup failed.
         from services.local_model_service import LocalModelService, local_model_service
-        if model_config and LocalModelService.is_local_model(model_config):
+        _is_local = (model_config and LocalModelService.is_local_model(model_config)) or \
+            str(model_id).startswith("local:") or str(model_id).startswith("local-")
+        if _is_local:
+            # If model_config is missing (sync not yet run), build a minimal
+            # config from the catalog so LocalModelService can resolve the file.
+            if not model_config:
+                from services.model_catalog import get_model as get_catalog_model
+                catalog_id = model_id.replace("local:", "").replace("local-", "")
+                catalog_entry = get_catalog_model(catalog_id)
+                if catalog_entry:
+                    model_config = {
+                        "id": model_id,
+                        "name": catalog_entry.get("name", model_id),
+                        "provider": "local",
+                        "model_metadata": {
+                            "runtime": "llama-cpp",
+                            "hf_filename": catalog_entry.get("hf_filename"),
+                            "gguf_path": None,
+                        },
+                    }
+                    logger.info(f"🖥️ Built model_config from catalog for {model_id}")
+                else:
+                    # No catalog entry — still try with minimal config
+                    model_config = {
+                        "id": model_id,
+                        "name": model_id,
+                        "provider": "local",
+                        "model_metadata": {"runtime": "llama-cpp"},
+                    }
+                    logger.warning(f"⚠️ No catalog entry for {catalog_id}, using minimal config")
             logger.info(f"🖥️ ROUTING: Local model detected ({model_config.get('name')}), using LocalModelService")
 
             # Store user message
