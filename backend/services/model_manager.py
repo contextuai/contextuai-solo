@@ -212,6 +212,7 @@ class ModelManager:
         self, model_id: str
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Download a GGUF model from HuggingFace. Yields SSE progress dicts."""
+        import queue as _queue
         from .model_catalog import get_model
 
         entry = get_model(model_id)
@@ -240,11 +241,38 @@ class ModelManager:
             "percent": 0.0,
         }
 
+        # Thread-safe queue for progress updates from the blocking download
+        progress_queue: _queue.Queue = _queue.Queue()
+
         try:
-            result = await asyncio.to_thread(
+            loop = asyncio.get_event_loop()
+            download_future = loop.run_in_executor(
+                None,
                 self._download_with_progress,
-                repo_id, filename, dest_path, model_id,
+                repo_id, filename, dest_path, model_id, progress_queue,
             )
+
+            # Poll progress queue while download runs
+            while not download_future.done():
+                await asyncio.sleep(0.3)
+                # Drain all queued progress updates
+                while True:
+                    try:
+                        update = progress_queue.get_nowait()
+                        yield update
+                    except _queue.Empty:
+                        break
+
+            # Get final result
+            result = download_future.result()
+
+            # Drain remaining progress
+            while True:
+                try:
+                    update = progress_queue.get_nowait()
+                    yield update
+                except _queue.Empty:
+                    break
 
             if self._active_downloads.get(model_id):
                 if os.path.isfile(dest_path):
@@ -267,17 +295,27 @@ class ModelManager:
             self._active_downloads.pop(model_id, None)
 
     def _download_with_progress(
-        self, repo_id: str, filename: str, dest_path: str, model_id: str
+        self, repo_id: str, filename: str, dest_path: str, model_id: str,
+        progress_queue=None,
     ) -> Dict[str, Any]:
-        """Blocking download using huggingface_hub (runs in thread)."""
+        """Blocking download using huggingface_hub (runs in thread).
+
+        If *progress_queue* is supplied, intermediate progress dicts are
+        pushed so the async caller can yield them as SSE events.
+        """
         try:
             from huggingface_hub import hf_hub_download
+
+            tqdm_cls = None
+            if progress_queue is not None:
+                tqdm_cls = self._make_progress_tqdm(progress_queue, model_id)
 
             downloaded_path = hf_hub_download(
                 repo_id=repo_id,
                 filename=filename,
                 local_dir=self.models_dir,
                 local_dir_use_symlinks=False,
+                tqdm_class=tqdm_cls,
             )
 
             size = os.path.getsize(downloaded_path)
@@ -287,6 +325,40 @@ class ModelManager:
         except Exception as exc:
             logger.exception("HuggingFace download error")
             return {"error": str(exc)}
+
+    @staticmethod
+    def _make_progress_tqdm(progress_queue, model_id: str):
+        """Create a tqdm-compatible class that pushes progress into a queue."""
+        import tqdm as _tqdm
+
+        class _QueueTqdm(_tqdm.tqdm):
+            """Custom tqdm that reports progress via a thread-safe queue."""
+
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                self._last_reported = 0.0
+
+            def update(self, n=1):
+                super().update(n)
+                if self.total and self.total > 0:
+                    percent = (self.n / self.total) * 100
+                    # Throttle: only emit if progress changed by >= 0.5%
+                    if percent - self._last_reported >= 0.5 or percent >= 100:
+                        self._last_reported = percent
+                        completed_mb = self.n / (1024 * 1024)
+                        total_mb = self.total / (1024 * 1024)
+                        progress_queue.put({
+                            "status": "downloading",
+                            "model_id": model_id,
+                            "completed": self.n,
+                            "total": self.total,
+                            "percent": round(percent, 1),
+                            "completed_mb": round(completed_mb, 1),
+                            "total_mb": round(total_mb, 1),
+                            "speed": self.format_dict.get("rate", 0),
+                        })
+
+        return _QueueTqdm
 
     def cancel_download(self, model_id: str) -> bool:
         """Request cancellation of an active download."""
