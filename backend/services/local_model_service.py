@@ -135,13 +135,60 @@ class LocalModelService:
             self.unload_model()
 
         logger.info("Loading GGUF model from %s …", model_path)
-        self._model = Llama(
-            model_path=model_path,
-            n_ctx=4096,
-            n_threads=os.cpu_count() or 4,
-        )
+
+        # Determine context size — smaller for very large models to save RAM
+        file_size_gb = os.path.getsize(model_path) / (1024 ** 3)
+        if file_size_gb > 15:
+            n_ctx = 2048
+            logger.info("Large model (%.1f GB) — using n_ctx=%d to save RAM", file_size_gb, n_ctx)
+        elif file_size_gb > 8:
+            n_ctx = 4096
+        else:
+            n_ctx = 4096
+
+        try:
+            self._model = Llama(
+                model_path=model_path,
+                n_ctx=n_ctx,
+                n_threads=os.cpu_count() or 4,
+                use_mmap=True,
+                verbose=False,
+            )
+        except Exception as e:
+            error_msg = str(e)
+            logger.error("Failed to load model %s: %s", model_path, error_msg)
+
+            # Check for unsupported architecture
+            if "unknown model architecture" in error_msg:
+                import llama_cpp as _lc
+                version = getattr(_lc, "__version__", "unknown")
+                raise RuntimeError(
+                    f"This model requires a newer version of llama-cpp-python. "
+                    f"Current version: {version}. "
+                    f"Run: pip install --upgrade llama-cpp-python"
+                ) from e
+
+            # Retry with minimal context if it failed for other reasons
+            if n_ctx > 512:
+                logger.info("Retrying with n_ctx=512...")
+                try:
+                    self._model = Llama(
+                        model_path=model_path,
+                        n_ctx=512,
+                        n_threads=os.cpu_count() or 4,
+                        use_mmap=True,
+                        verbose=False,
+                    )
+                except Exception as retry_err:
+                    raise RuntimeError(
+                        f"Failed to load model: {error_msg}. "
+                        f"Retry with n_ctx=512 also failed: {retry_err}"
+                    ) from retry_err
+            else:
+                raise
+
         self._loaded_model_path = model_path
-        logger.info("Model loaded successfully: %s", model_path)
+        logger.info("Model loaded successfully: %s (%.1f GB, n_ctx=%d)", model_path, file_size_gb, n_ctx)
         return self._model
 
     def load_model(self, model_path: str, model_id: str = None) -> None:
