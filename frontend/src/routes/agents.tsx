@@ -121,7 +121,7 @@ export default function AgentsPage() {
     setDetailOpen(true);
     // Fetch full agent (with system_prompt) for the detail panel
     try {
-      const full = await workspaceApi.getAgent(agent.agent_id);
+      const full = await workspaceApi.getAgent(agent.agent_id ?? agent.id);
       setSelectedAgent(full);
     } catch {
       // Keep the summary version if full fetch fails
