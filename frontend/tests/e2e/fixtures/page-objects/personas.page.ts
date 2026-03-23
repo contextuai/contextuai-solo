@@ -173,7 +173,7 @@ export class PersonasPage {
     await card.scrollIntoViewIfNeeded();
 
     const editBtn = card.locator("button").first();
-    await editBtn.dispatchEvent("click");
+    await editBtn.click({ force: true });
     await expect(this.formName).toBeVisible({ timeout: 5_000 });
 
     if (data.name !== undefined) {
@@ -201,7 +201,7 @@ export class PersonasPage {
     await card.scrollIntoViewIfNeeded();
 
     const deleteBtn = card.locator("button").last();
-    await deleteBtn.dispatchEvent("click");
+    await deleteBtn.click({ force: true });
 
     await expect(this.deleteDialog).toBeVisible({ timeout: 5_000 });
     await this.confirmDeleteButton.click();

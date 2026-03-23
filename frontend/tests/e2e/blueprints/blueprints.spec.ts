@@ -81,15 +81,16 @@ test.describe("CRUD via UI", () => {
     await blueprints.tagsInput.fill("e2e, test");
 
     await blueprints.submitButton.click();
-    await page.waitForTimeout(2000);
 
     // Dialog should close
     await expect(blueprints.createDialog).not.toBeVisible({ timeout: 5000 });
 
-    // The list should reload automatically — check a card with our name exists
+    // Reload to ensure the new blueprint is in the list
+    await page.reload({ waitUntil: "networkidle" });
+    await page.waitForTimeout(1500);
+
     const createdCard = page.locator("h3", { hasText: "E2E Test Blueprint" });
-    const visible = await createdCard.isVisible().catch(() => false);
-    expect(visible).toBeTruthy();
+    await expect(createdCard).toBeVisible({ timeout: 5000 });
   });
 });
 

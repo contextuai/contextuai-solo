@@ -22,10 +22,11 @@ export async function listApprovals(
   status: string = "pending",
   limit: number = 50
 ): Promise<Approval[]> {
-  const { data } = await api.get<{ approvals: Approval[] }>(
+  const { data, ok } = await api.get<{ approvals: Approval[] }>(
     `/approvals/?status=${status}&limit=${limit}`
   );
-  return data.approvals;
+  if (!ok) return [];
+  return data.approvals ?? [];
 }
 
 export async function countPending(): Promise<number> {

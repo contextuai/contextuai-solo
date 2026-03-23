@@ -288,7 +288,7 @@ test.describe("Negative Workflows", () => {
     const card = personas.personaCards.filter({ hasText: name }).first();
     await card.scrollIntoViewIfNeeded();
     const deleteBtn = card.locator("button").last();
-    await deleteBtn.dispatchEvent("click");
+    await deleteBtn.click({ force: true });
 
     await expect(personas.deleteDialog).toBeVisible();
     await personas.deleteDialog.getByRole("button", { name: "Cancel" }).click();

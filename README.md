@@ -22,8 +22,9 @@ ContextuAI Solo is the community edition of the [ContextuAI](https://contextuai.
 - **BYOK (Bring Your Own Key)** — Use your existing API keys from Anthropic, OpenAI, Google, or AWS Bedrock
 - **Local AI Models (Free)** — Run AI completely offline with built-in GGUF models (Gemma 3 1B, Qwen 2.5 1.5B, Phi-3 Mini) — no API key required
 - **81 Pre-Built Business Agents** — Ready-to-use AI agents across 12 departments: C-Suite, Marketing & Sales, Finance & Operations, Legal & Compliance, HR & People, Design & UX, Data & Analytics, IT & Security, Product Management, Startup & Venture, Specialized, and Operations
-- **Multi-Agent Crews** — Assemble teams of agents that collaborate autonomously — sequential, parallel, pipeline, or fully autonomous execution modes
-- **12 Persona Types** — Nexus Agent, Web Researcher, database connectors (PostgreSQL, MySQL, MSSQL, Snowflake, MongoDB), MCP Server, API Connector, File Operations, Slack, and Twitter/X
+- **Multi-Agent Crews** — Assemble teams of agents via a 5-step wizard with blueprint templates, AI model selection, and social channel bindings — sequential, parallel, pipeline, or fully autonomous execution modes
+- **10 Blueprint Templates** — Pre-built workflow templates across strategy, content, marketing, product, and research categories — skip the setup and start working
+- **10 Persona Types** — Nexus Agent, Web Researcher, database connectors (PostgreSQL, MySQL, MSSQL, Snowflake, MongoDB), MCP Server, API Connector, File Operations
 - **Workshop Mode** — Run multi-agent brainstorming sessions with structured outputs and artifact generation
 - **6 Platform Connections** — Integrate with Telegram, Discord, LinkedIn, Twitter/X, Instagram, and Facebook for automated messaging and publishing workflows
 - **100% Local** — Your data never leaves your machine. SQLite database + localStorage. No cloud required. No telemetry.
@@ -145,7 +146,7 @@ The built app will be in `frontend/src-tauri/target/release/`.
 |---------|:-----------:|:----------:|
 | AI Chat with Streaming | Yes | Yes |
 | 81 Business Agents | Yes | Yes |
-| 12 Persona Types | Yes | Yes |
+| 10 Persona Types | Yes | Yes |
 | Multi-Agent Crews | Yes | Yes |
 | Workshop (Brainstorming) | Yes | Yes |
 | BYOK (Bring Your Own Key) | Yes | Yes |

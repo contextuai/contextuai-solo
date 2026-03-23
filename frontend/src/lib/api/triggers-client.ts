@@ -35,8 +35,9 @@ export interface UpdateTriggerPayload {
 
 export async function listTriggers(channelType?: string): Promise<Trigger[]> {
   const params = channelType ? `?channel_type=${channelType}` : "";
-  const { data } = await api.get<{ triggers: Trigger[] }>(`/triggers/${params}`);
-  return data.triggers;
+  const { data, ok } = await api.get<{ triggers: Trigger[] }>(`/triggers/${params}`);
+  if (!ok) return [];
+  return data.triggers ?? [];
 }
 
 export async function createTrigger(payload: CreateTriggerPayload): Promise<Trigger> {

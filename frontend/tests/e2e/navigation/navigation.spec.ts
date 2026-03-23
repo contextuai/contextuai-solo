@@ -39,7 +39,7 @@ test("DC-NAV-02: navigate to each page and verify heading", async ({ page }) => 
     { label: "Blueprints", heading: "Blueprints" },
     { label: "Workshop", heading: "Workshop" },
     { label: "Connections", heading: "Connections" },
-    { label: "Approvals", heading: "Approvals" },
+    { label: "Approvals", heading: "Approval Queue" },
     { label: "Settings", heading: "Settings" },
   ];
 

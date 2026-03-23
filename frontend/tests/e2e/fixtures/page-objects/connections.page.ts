@@ -88,6 +88,7 @@ export class ConnectionsPage {
   async goto(): Promise<void> {
     await this.page.goto("/connections");
     await this.page.waitForLoadState("networkidle");
+    await this.page.waitForTimeout(1500);
   }
 
   /**

@@ -122,6 +122,7 @@ interface LocalModelInfo {
   downloaded: boolean;
   size_bytes: number;
   tier: string;
+  ram_required_gb?: number;
 }
 
 function LocalAIConfig() {
@@ -132,9 +133,19 @@ function LocalAIConfig() {
   const loadModels = async () => {
     try {
       const baseUrl = import.meta.env.VITE_API_URL || "http://127.0.0.1:18741/api/v1";
-      const res = await fetch(`${baseUrl}/local-models/available`);
+      const res = await fetch(`${baseUrl}/local-models/catalog`);
       if (res.ok) {
-        setModels(await res.json());
+        const data = await res.json();
+        const mapped: LocalModelInfo[] = (data.models || []).map((m: Record<string, unknown>) => ({
+          id: m.id as string,
+          name: m.name as string,
+          file: (m.id as string) + ".gguf",
+          downloaded: !!m.installed,
+          size_bytes: ((m.size_gb as number) || 0) * 1e9,
+          tier: m.parameter_size as string || "",
+          ram_required_gb: m.ram_required_gb as number,
+        }));
+        setModels(mapped);
       }
     } catch {
       // ignore
@@ -157,14 +168,14 @@ function LocalAIConfig() {
       // Poll progress
       const poll = setInterval(async () => {
         try {
-          const res = await fetch(`${baseUrl}/local-models/available`);
+          const res = await fetch(`${baseUrl}/local-models/catalog`);
           if (res.ok) {
-            const data: LocalModelInfo[] = await res.json();
-            const m = data.find((x) => x.id === modelId);
-            if (m?.downloaded) {
+            const catalog = await res.json();
+            const catalogModel = (catalog.models || []).find((x: Record<string, unknown>) => x.id === modelId);
+            if (catalogModel?.installed) {
               clearInterval(poll);
               setDownloading(null);
-              setModels(data);
+              loadModels();
               // Sync to DB so model appears in chat dropdown
               fetch(`${baseUrl}/local-models/sync`, { method: "POST" }).catch(() => {});
             }
@@ -213,6 +224,7 @@ function LocalAIConfig() {
             <p className="text-sm font-medium text-neutral-900 dark:text-white">{m.name}</p>
             <p className="text-xs text-neutral-500 mt-0.5">
               {(m.size_bytes / 1e9).toFixed(1)} GB
+              {m.ram_required_gb != null && <span className="ml-2">RAM: {m.ram_required_gb} GB</span>}
               {m.tier && <span className="ml-2 text-neutral-400">({m.tier})</span>}
             </p>
           </div>
