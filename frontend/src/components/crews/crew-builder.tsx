@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { crewsApi, type CrewAgent, type LibraryAgent, type ChannelBinding } from "@/lib/api/crews-client";
+import { getModels, type ModelConfig } from "@/lib/api/models-client";
 import {
   BlueprintSelector,
   type BlueprintSelection,
@@ -30,6 +31,7 @@ import {
   Cable,
   MessageSquare,
   Send,
+  Cpu,
 } from "lucide-react";
 
 type ExecutionMode = "sequential" | "parallel" | "pipeline" | "autonomous";
@@ -424,6 +426,19 @@ export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderP
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [blueprintSelectorOpen, setBlueprintSelectorOpen] = useState(false);
   const [selectedBlueprint, setSelectedBlueprint] = useState<BlueprintSelection | null>(null);
+  const [models, setModels] = useState<ModelConfig[]>([]);
+  const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
+
+  // Fetch available models when dialog opens
+  useEffect(() => {
+    if (open) {
+      getModels()
+        .then((list) => {
+          setModels(list.filter((m) => m.enabled));
+        })
+        .catch(() => setModels([]));
+    }
+  }, [open]);
 
   // Reset on open
   useEffect(() => {
@@ -438,6 +453,7 @@ export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderP
         setBudgetLimit(1.0);
         setChannelBindings([]);
         setSelectedBlueprint(null);
+        setSelectedModelId(null);
         setError(null);
       }
     }
@@ -561,6 +577,7 @@ export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderP
           name: a.name.trim(),
           instructions: a.instructions.trim(),
           order: i,
+          ...(selectedModelId && { model_id: selectedModelId }),
         }));
       }
 
@@ -705,6 +722,29 @@ export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderP
                   maxLength={2000}
                   className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white text-sm focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 outline-none transition-colors resize-none"
                 />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
+                  <span className="flex items-center gap-1.5">
+                    <Cpu className="w-3.5 h-3.5" />
+                    AI Model
+                  </span>
+                </label>
+                <select
+                  value={selectedModelId ?? ""}
+                  onChange={(e) => setSelectedModelId(e.target.value || null)}
+                  className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white text-sm focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 outline-none transition-colors"
+                >
+                  <option value="">Auto (uses default model)</option>
+                  {models.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name}{m.provider ? ` · ${m.provider}` : ""}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1 text-xs text-neutral-400">
+                  All agents in this crew will use the selected model.
+                </p>
               </div>
             </div>
           )}
@@ -1089,6 +1129,18 @@ export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderP
                       {executionMode}
                     </p>
                   </div>
+                </div>
+
+                <div>
+                  <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-1">
+                    AI Model
+                  </p>
+                  <p className="text-sm text-neutral-900 dark:text-white font-medium flex items-center gap-1.5">
+                    <Cpu className="w-3.5 h-3.5 text-primary-500" />
+                    {selectedModelId
+                      ? models.find((m) => m.id === selectedModelId)?.name ?? selectedModelId
+                      : "Auto (default model)"}
+                  </p>
                 </div>
 
                 {description && (

@@ -417,18 +417,17 @@ class CrewOrchestrator:
         self, agent_cfg: Dict[str, Any], prompt: str, model_id: str
     ) -> Dict[str, Any]:
         """Invoke agent via local GGUF model (text generation only)."""
-        from services.local_model_service import LocalModelService
+        from services.local_model_service import local_model_service
 
         agent_name = agent_cfg.get("name", "Agent")
         logger.info(f"Running crew agent '{agent_name}' via local model: {model_id}")
 
-        local_svc = LocalModelService()
-        catalog_id = model_id.replace("local-", "")
+        catalog_id = model_id.replace("local:", "").replace("local-", "")
 
         system_prompt = await self._resolve_instructions(agent_cfg)
         full_prompt = f"{system_prompt}\n\n{prompt}"
 
-        output = await local_svc.generate(model_id=catalog_id, prompt=full_prompt, max_tokens=4096)
+        output = await local_model_service.generate(model_id=catalog_id, prompt=full_prompt, max_tokens=4096)
 
         tokens_used = len(full_prompt.split()) + len(output.split())
         logger.info(f"Crew agent '{agent_name}' completed via local model (tokens~{tokens_used})")
