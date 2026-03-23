@@ -204,7 +204,11 @@ export class CrewsPage {
     await this.nextButton.click();
     await this.page.waitForTimeout(300);
 
-    // Next → Step 4 (Review)
+    // Next → Step 4 (Connections)
+    await this.nextButton.click();
+    await this.page.waitForTimeout(300);
+
+    // Next → Step 5 (Review)
     await this.nextButton.click();
     await this.page.waitForTimeout(300);
 

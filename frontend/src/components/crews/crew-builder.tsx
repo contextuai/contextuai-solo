@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { cn } from "@/lib/utils";
-import { crewsApi, type CrewAgent, type LibraryAgent } from "@/lib/api/crews-client";
+import { crewsApi, type CrewAgent, type LibraryAgent, type ChannelBinding } from "@/lib/api/crews-client";
 import {
   BlueprintSelector,
   type BlueprintSelection,
@@ -27,10 +27,25 @@ import {
   ChevronDown,
   Check,
   Eye,
+  Cable,
+  MessageSquare,
+  Send,
 } from "lucide-react";
 
 type ExecutionMode = "sequential" | "parallel" | "pipeline" | "autonomous";
-type WizardStep = 1 | 2 | 3 | 4;
+type WizardStep = 1 | 2 | 3 | 4 | 5;
+
+// ---------------------------------------------------------------------------
+// Available connection types with metadata
+// ---------------------------------------------------------------------------
+const CONNECTION_TYPES = [
+  { id: "telegram", name: "Telegram", icon: "paper-plane", description: "Chat bot for Telegram groups and DMs", color: "bg-sky-500" },
+  { id: "discord", name: "Discord", icon: "gamepad", description: "Bot for Discord servers and channels", color: "bg-indigo-500" },
+  { id: "linkedin", name: "LinkedIn", icon: "briefcase", description: "Post content and engage on LinkedIn", color: "bg-blue-600" },
+  { id: "twitter", name: "Twitter / X", icon: "bird", description: "Post and engage on Twitter/X", color: "bg-neutral-800 dark:bg-neutral-600" },
+  { id: "instagram", name: "Instagram", icon: "camera", description: "Share content on Instagram", color: "bg-pink-500" },
+  { id: "facebook", name: "Facebook", icon: "thumbs-up", description: "Manage Facebook page content", color: "bg-blue-500" },
+] as const;
 
 interface AgentForm {
   name: string;
@@ -357,7 +372,8 @@ const STEP_TITLES: Record<WizardStep, { title: string; subtitle: string }> = {
   1: { title: "Crew Details", subtitle: "Name your crew and describe its purpose" },
   2: { title: "Execution Mode", subtitle: "Choose how agents collaborate" },
   3: { title: "Agent Team", subtitle: "Build your agent pipeline" },
-  4: { title: "Review & Create", subtitle: "Review your crew configuration" },
+  4: { title: "Connections", subtitle: "Choose which channels this crew handles" },
+  5: { title: "Review & Create", subtitle: "Review your crew configuration" },
 };
 
 // ---------------------------------------------------------------------------
@@ -374,6 +390,7 @@ interface CrewBuilderProps {
     description?: string;
     execution_config?: { mode: ExecutionMode; max_agent_invocations?: number; budget_limit_usd?: number };
     agents?: CrewAgent[];
+    channel_bindings?: ChannelBinding[];
   };
 }
 
@@ -399,6 +416,9 @@ export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderP
   const [budgetLimit, setBudgetLimit] = useState(
     editCrew?.execution_config?.budget_limit_usd ?? 1.0
   );
+  const [channelBindings, setChannelBindings] = useState<ChannelBinding[]>(
+    editCrew?.channel_bindings ?? []
+  );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [libraryOpen, setLibraryOpen] = useState(false);
@@ -416,6 +436,7 @@ export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderP
         setAgents([emptyAgent()]);
         setMaxInvocations(10);
         setBudgetLimit(1.0);
+        setChannelBindings([]);
         setSelectedBlueprint(null);
         setError(null);
       }
@@ -446,17 +467,19 @@ export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderP
       case 1: return !!name.trim();
       case 2: return true; // always valid, mode has a default
       case 3: return isAutonomous || agents.every((a) => a.name.trim() && a.instructions.trim());
-      case 4: return !!canSubmit;
+      case 4: return true; // connections are optional
+      case 5: return !!canSubmit;
       default: return false;
     }
   };
 
-  const totalSteps = isAutonomous ? 3 : 4; // Skip agent step for autonomous
-  const maxStep = (isAutonomous ? 3 : 4) as WizardStep;
+  // Steps: 1-Details, 2-Mode, 3-Agents (skip if autonomous), 4-Connections, 5-Review
+  const totalSteps = isAutonomous ? 4 : 5;
+  const maxStep = (isAutonomous ? 4 : 5) as WizardStep;
 
   function nextStep() {
     if (step === 2 && isAutonomous) {
-      setStep(4); // Skip agent step
+      setStep(4); // Skip agent step for autonomous
     } else if (step < maxStep) {
       setStep((step + 1) as WizardStep);
     }
@@ -464,10 +487,29 @@ export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderP
 
   function prevStep() {
     if (step === 4 && isAutonomous) {
-      setStep(2); // Skip back over agent step
+      setStep(2); // Skip back over agent step for autonomous
     } else if (step > 1) {
       setStep((step - 1) as WizardStep);
     }
+  }
+
+  // Toggle a channel binding
+  function toggleChannel(channelType: string) {
+    setChannelBindings((prev) => {
+      const existing = prev.find((b) => b.channel_type === channelType);
+      if (existing) {
+        return prev.filter((b) => b.channel_type !== channelType);
+      }
+      return [...prev, { channel_type: channelType, enabled: true, approval_required: false }];
+    });
+  }
+
+  function toggleChannelApproval(channelType: string) {
+    setChannelBindings((prev) =>
+      prev.map((b) =>
+        b.channel_type === channelType ? { ...b, approval_required: !b.approval_required } : b
+      )
+    );
   }
 
   const updateAgent = (index: number, field: keyof AgentForm, value: string) => {
@@ -522,6 +564,10 @@ export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderP
         }));
       }
 
+      if (channelBindings.length > 0) {
+        payload.channel_bindings = channelBindings;
+      }
+
       if (isEdit && editCrew) {
         await crewsApi.update(editCrew.crew_id, payload);
       } else {
@@ -539,7 +585,8 @@ export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderP
   if (!open) return null;
 
   // For step indicator display: map to visual step number
-  const visualStep = step === 4 && isAutonomous ? 3 : step;
+  // Autonomous skips step 3 (agents), so steps 4,5 become visual 3,4
+  const visualStep = isAutonomous && step >= 4 ? step - 1 : step;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
@@ -909,8 +956,115 @@ export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderP
             </div>
           )}
 
-          {/* ─── Step 4: Review ─── */}
+          {/* ─── Step 4: Connections ─── */}
           {step === 4 && (
+            <div className="space-y-4">
+              <div className="bg-neutral-50 dark:bg-neutral-800/50 rounded-xl border border-neutral-200 dark:border-neutral-700 p-5 space-y-4">
+                <h3 className="text-sm font-medium text-neutral-900 dark:text-white flex items-center gap-2">
+                  <Cable className="w-4 h-4 text-primary-500" />
+                  Channel Connections
+                </h3>
+                <p className="text-xs text-neutral-500 dark:text-neutral-400 -mt-2">
+                  Select which social channels this crew should handle. The crew will process
+                  inbound messages and can publish content to these platforms.
+                </p>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  {CONNECTION_TYPES.map((conn) => {
+                    const isSelected = channelBindings.some((b) => b.channel_type === conn.id);
+                    const binding = channelBindings.find((b) => b.channel_type === conn.id);
+                    return (
+                      <div
+                        key={conn.id}
+                        className={cn(
+                          "relative rounded-xl border-2 transition-all overflow-hidden",
+                          isSelected
+                            ? "border-primary-500 bg-primary-50/50 dark:bg-primary-500/5"
+                            : "border-neutral-200 dark:border-neutral-700 hover:border-neutral-300 dark:hover:border-neutral-600"
+                        )}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => toggleChannel(conn.id)}
+                          className="w-full p-4 text-left"
+                        >
+                          <div className="flex items-center gap-3 mb-2">
+                            <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center text-white", conn.color)}>
+                              <MessageSquare className="w-4 h-4" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-neutral-900 dark:text-white">
+                                {conn.name}
+                              </p>
+                            </div>
+                            {isSelected && (
+                              <div className="w-5 h-5 rounded-full bg-primary-500 flex items-center justify-center flex-shrink-0">
+                                <Check className="w-3 h-3 text-white" />
+                              </div>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-neutral-500 dark:text-neutral-400 line-clamp-2">
+                            {conn.description}
+                          </p>
+                        </button>
+
+                        {/* Approval toggle (shown when selected) */}
+                        {isSelected && (
+                          <div className="px-4 pb-3 pt-0">
+                            <label className="flex items-center gap-2 text-xs text-neutral-600 dark:text-neutral-400 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={binding?.approval_required ?? false}
+                                onChange={() => toggleChannelApproval(conn.id)}
+                                className="rounded border-neutral-300 dark:border-neutral-600 text-primary-500 focus:ring-primary-500/50 w-3.5 h-3.5"
+                              />
+                              Require approval before sending
+                            </label>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {channelBindings.length === 0 && (
+                  <p className="text-xs text-neutral-400 dark:text-neutral-500 italic">
+                    No channels selected. You can add connections later from the crew settings.
+                  </p>
+                )}
+              </div>
+
+              {channelBindings.length > 0 && (
+                <div className="bg-neutral-50 dark:bg-neutral-800/50 rounded-xl border border-neutral-200 dark:border-neutral-700 p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Send className="w-3.5 h-3.5 text-primary-500" />
+                    <span className="text-xs font-medium text-neutral-700 dark:text-neutral-300">
+                      {channelBindings.length} channel{channelBindings.length !== 1 ? "s" : ""} selected
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {channelBindings.map((b) => {
+                      const conn = CONNECTION_TYPES.find((c) => c.id === b.channel_type);
+                      return (
+                        <span
+                          key={b.channel_type}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-primary-100 dark:bg-primary-500/20 text-primary-700 dark:text-primary-300 border border-primary-200 dark:border-primary-800"
+                        >
+                          {conn?.name ?? b.channel_type}
+                          {b.approval_required && (
+                            <Shield className="w-3 h-3 text-amber-500" />
+                          )}
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ─── Step 5: Review ─── */}
+          {step === 5 && (
             <div className="space-y-4">
               <div className="bg-neutral-50 dark:bg-neutral-800/50 rounded-xl border border-neutral-200 dark:border-neutral-700 p-5 space-y-3">
                 <h3 className="text-sm font-medium text-neutral-900 dark:text-white flex items-center gap-2">
@@ -977,8 +1131,6 @@ export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderP
                     <Brain className="w-4 h-4 text-primary-500" />
                     Agent Team ({agents.length} agent{agents.length !== 1 ? "s" : ""})
                   </h3>
-
-                  {/* Pipeline visualization */}
                   <div className="flex items-center gap-1 overflow-x-auto">
                     {agents.map((agent, i) => (
                       <div key={i} className="flex items-center gap-1 flex-shrink-0">
@@ -991,32 +1143,51 @@ export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderP
                       </div>
                     ))}
                   </div>
-
-                  {/* Agent details */}
                   <div className="space-y-2">
                     {agents.map((agent, i) => (
                       <div
                         key={i}
                         className="flex items-start gap-3 p-3 rounded-lg bg-white dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700"
                       >
-                        <span className="text-xs font-bold text-primary-500 mt-0.5">
-                          {i + 1}
-                        </span>
+                        <span className="text-xs font-bold text-primary-500 mt-0.5">{i + 1}</span>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
-                            <span className="text-sm font-medium text-neutral-900 dark:text-white">
-                              {agent.name}
-                            </span>
-                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-neutral-700 text-neutral-500 dark:text-neutral-400 capitalize">
-                              {agent.role}
-                            </span>
+                            <span className="text-sm font-medium text-neutral-900 dark:text-white">{agent.name}</span>
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-neutral-700 text-neutral-500 dark:text-neutral-400 capitalize">{agent.role}</span>
                           </div>
-                          <p className="text-xs text-neutral-500 dark:text-neutral-400 line-clamp-1 mt-0.5">
-                            {agent.instructions}
-                          </p>
+                          <p className="text-xs text-neutral-500 dark:text-neutral-400 line-clamp-1 mt-0.5">{agent.instructions}</p>
                         </div>
                       </div>
                     ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Connections summary */}
+              {channelBindings.length > 0 && (
+                <div className="bg-neutral-50 dark:bg-neutral-800/50 rounded-xl border border-neutral-200 dark:border-neutral-700 p-5 space-y-3">
+                  <h3 className="text-sm font-medium text-neutral-900 dark:text-white flex items-center gap-2">
+                    <Cable className="w-4 h-4 text-primary-500" />
+                    Connections ({channelBindings.length})
+                  </h3>
+                  <div className="flex flex-wrap gap-2">
+                    {channelBindings.map((b) => {
+                      const conn = CONNECTION_TYPES.find((c) => c.id === b.channel_type);
+                      return (
+                        <span
+                          key={b.channel_type}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-700 dark:text-neutral-300"
+                        >
+                          <div className={cn("w-4 h-4 rounded flex items-center justify-center text-white", conn?.color ?? "bg-neutral-500")}>
+                            <MessageSquare className="w-2.5 h-2.5" />
+                          </div>
+                          {conn?.name ?? b.channel_type}
+                          {b.approval_required && (
+                            <span className="text-[10px] text-amber-500 font-medium">(approval)</span>
+                          )}
+                        </span>
+                      );
+                    })}
                   </div>
                 </div>
               )}

@@ -149,12 +149,54 @@ test.describe("Wizard Flow", () => {
     await crews.nextButton.click();
     await page.waitForTimeout(300);
 
-    // Step 4: Review
+    // Step 4: Connections
+    await expect(page.locator("text=Channel Connections").first()).toBeVisible();
+    await crews.nextButton.click();
+    await page.waitForTimeout(300);
+
+    // Step 5: Review
     await expect(page.locator("text=Review Configuration").first()).toBeVisible();
   });
 
-  // DC-CREW-WIZ-05: Back button navigates backwards
-  test("DC-CREW-WIZ-05: back button navigates backwards", async ({ page }) => {
+  // DC-CREW-WIZ-05: Connections step shows channel cards
+  test("DC-CREW-WIZ-05: connections step shows channel cards", async ({ page }) => {
+    await crews.openBuilder();
+
+    // Navigate to step 4 (Connections)
+    await crews.crewNameInput.fill("Connections Test");
+    await crews.nextButton.click(); // → Step 2
+    await page.waitForTimeout(200);
+    await crews.nextButton.click(); // → Step 3
+    await page.waitForTimeout(200);
+
+    // Fill agent data to proceed
+    const agentName = crews.agentNameInputs.first();
+    const agentInstructions = crews.agentInstructionTextareas.first();
+    await agentName.fill("Bot Agent");
+    await agentInstructions.fill("Handle messages");
+    await crews.nextButton.click(); // → Step 4 (Connections)
+    await page.waitForTimeout(300);
+
+    // Should show Channel Connections heading
+    await expect(page.locator("text=Channel Connections").first()).toBeVisible();
+
+    // Should have connection cards (Telegram, Discord, LinkedIn, Twitter, Instagram, Facebook)
+    const connectionCards = page.locator(".grid button").filter({
+      has: page.locator("p.text-sm.font-medium"),
+    });
+    const count = await connectionCards.count();
+    expect(count).toBeGreaterThanOrEqual(6);
+
+    // Click Telegram to select it
+    await page.locator("text=Telegram").first().click();
+    await page.waitForTimeout(200);
+
+    // Should show selected count
+    await expect(page.locator("text=1 channel selected")).toBeVisible();
+  });
+
+  // DC-CREW-WIZ-06: Back button navigates backwards
+  test("DC-CREW-WIZ-06: back button navigates backwards", async ({ page }) => {
     await crews.openBuilder();
 
     // Go to step 2

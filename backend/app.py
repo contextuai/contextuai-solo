@@ -197,25 +197,9 @@ _DEFAULT_PERSONA_TYPES = [
             {"name": "basePath", "label": "Base Directory Path", "placeholder": "/path/to/files", "type": "text", "required": False},
         ],
     },
-    {
-        "id": "slack", "name": "Slack", "description": "Slack messaging platform",
-        "category": "communication", "icon": "💬", "enabled": True, "status": "active",
-        "credentialFields": [
-            {"name": "botToken", "label": "Bot User OAuth Token", "placeholder": "xoxb-...", "type": "password", "required": True},
-            {"name": "channel", "label": "Default Channel", "placeholder": "#general", "type": "text", "required": False},
-            {"name": "workspace", "label": "Workspace", "type": "text", "required": False},
-        ],
-    },
-    {
-        "id": "twitter", "name": "Twitter / X", "description": "Post and manage content on Twitter/X",
-        "category": "communication", "icon": "🐦", "enabled": True, "status": "active",
-        "credentialFields": [
-            {"name": "apiKey", "label": "API Key", "type": "password", "required": True},
-            {"name": "apiSecret", "label": "API Secret", "type": "password", "required": True},
-            {"name": "accessToken", "label": "Access Token", "type": "password", "required": True},
-            {"name": "accessTokenSecret", "label": "Access Token Secret", "type": "password", "required": True},
-        ],
-    },
+    # NOTE: Slack and Twitter/X were removed — social channels are managed
+    # via Connections (routes/connections.tsx) and crew channel bindings,
+    # not as persona types.
 ]
 
 

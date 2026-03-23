@@ -7,9 +7,7 @@ import { type Page, type Locator, expect } from "@playwright/test";
  * - Header with persona count and Create Persona button
  * - Search input and category filter pills (All, General, Technical, Creative, Business, Custom)
  * - Persona cards grid with edit (pencil) and delete (trash) buttons
- * - Wizard-style Create/Edit dialog:
- *   - Step 1: Select persona type (card grid with search)
- *   - Step 2: Configure details (name, description, category, credentials, system prompt)
+ * - Create/Edit modal with name, description, type, category, system_prompt fields
  * - Delete confirmation dialog
  */
 export class PersonasPage {
@@ -52,73 +50,51 @@ export class PersonasPage {
     });
   }
 
-  // ── Wizard locators ───────────────────────────────────────────
+  // Form fields (visible when modal is open)
 
-  /** The wizard dialog overlay. */
-  get wizardDialog(): Locator {
-    return this.page.locator(".fixed.inset-0.z-50").filter({
-      has: this.page.locator("text=Add New Persona, text=Edit Persona"),
-    });
-  }
-
-  /** Type search input on Step 1 of the wizard. */
-  get typeSearchInput(): Locator {
-    return this.page.locator('input[placeholder="Search persona types..."]');
-  }
-
-  /** Type cards on Step 1 of the wizard. */
-  get typeCards(): Locator {
-    return this.page.locator(".fixed.inset-0 .grid button").filter({
-      has: this.page.locator("p.text-sm.font-medium"),
-    });
-  }
-
-  /** Name input in step 2 of the wizard. */
+  /** Name input in the create/edit modal. */
   get formName(): Locator {
     return this.page.locator('input[placeholder="e.g., My Production DB"]');
   }
 
-  /** Description input in step 2 of the wizard. */
+  /** Description input in the create/edit modal. */
   get formDescription(): Locator {
     return this.page.locator(
       'input[placeholder="A short description of what this persona does"]'
     );
   }
 
-  /** Category select dropdown in step 2 of the wizard. */
+  /** Type select dropdown in the create/edit modal. */
+  get formType(): Locator {
+    return this.page
+      .locator("select")
+      .filter({ has: this.page.locator('option[value="generic"]') });
+  }
+
+  /** Category select dropdown in the create/edit modal. */
   get formCategory(): Locator {
     return this.page
       .locator("select")
       .filter({ has: this.page.locator('option[value="General"]') });
   }
 
-  /** System prompt textarea in step 2 of the wizard. */
+  /** System prompt textarea in the create/edit modal. */
   get formSystemPrompt(): Locator {
     return this.page.locator(
       'textarea[placeholder*="Optional instructions that define how this persona behaves"]'
     );
   }
 
-  /** The wizard save/create button (step 2). */
+  /** The modal save/create button. */
   get formSaveButton(): Locator {
     return this.page
       .locator(".fixed button")
       .filter({ hasText: /^(Create|Update|Saving\.\.\.)$/ });
   }
 
-  /** The wizard cancel button. */
+  /** The modal cancel button. */
   get formCancelButton(): Locator {
     return this.page.locator(".fixed button").filter({ hasText: "Cancel" });
-  }
-
-  /** The wizard "Next" button (step 1). */
-  get nextButton(): Locator {
-    return this.page.locator(".fixed button").filter({ hasText: "Next" });
-  }
-
-  /** The wizard "Back" button (step 2). */
-  get backButton(): Locator {
-    return this.page.locator(".fixed button").filter({ hasText: "Back" });
   }
 
   /** Delete confirmation dialog. */
@@ -140,9 +116,7 @@ export class PersonasPage {
   }
 
   /**
-   * Create a new persona via the wizard.
-   * Step 1: Select type (clicks "Next" to proceed)
-   * Step 2: Fill in details and click "Create"
+   * Create a new persona via the modal form.
    */
   async createPersona(data: {
     name: string;
@@ -152,29 +126,15 @@ export class PersonasPage {
     systemPrompt?: string;
   }): Promise<void> {
     await this.createButton.click();
-
-    // Step 1: Wait for type grid to be visible, then proceed
-    await expect(this.typeSearchInput).toBeVisible({ timeout: 5_000 });
-
-    // If a specific type is requested, click its card
-    if (data.type) {
-      const typeCard = this.page.locator(".fixed.inset-0 .grid button").filter({
-        has: this.page.locator(`option[value="${data.type}"]`),
-      });
-      if (await typeCard.isVisible().catch(() => false)) {
-        await typeCard.click();
-      }
-    }
-
-    // Click Next to go to step 2
-    await this.nextButton.click();
     await expect(this.formName).toBeVisible({ timeout: 5_000 });
 
-    // Step 2: Fill details
     await this.formName.fill(data.name);
 
     if (data.description) {
       await this.formDescription.fill(data.description);
+    }
+    if (data.type) {
+      await this.formType.selectOption(data.type);
     }
     if (data.category) {
       await this.formCategory.selectOption(data.category);
@@ -185,13 +145,12 @@ export class PersonasPage {
 
     await this.formSaveButton.click();
 
-    // Wait for wizard to close
+    // Wait for modal to close
     await expect(this.formName).toBeHidden({ timeout: 10_000 });
   }
 
   /**
    * Edit an existing persona by hovering over its card to reveal the edit button.
-   * The edit wizard opens directly on Step 2.
    */
   async editPersona(
     currentName: string,
@@ -206,11 +165,9 @@ export class PersonasPage {
     const card = this.personaCards.filter({ hasText: currentName }).first();
     await card.scrollIntoViewIfNeeded();
 
-    // Click the pencil (edit) button
+    // Click the pencil (edit) button — use dispatchEvent to bypass opacity:0
     const editBtn = card.locator("button").first();
     await editBtn.dispatchEvent("click");
-
-    // Edit mode opens directly on step 2
     await expect(this.formName).toBeVisible({ timeout: 5_000 });
 
     if (data.name !== undefined) {
@@ -220,6 +177,9 @@ export class PersonasPage {
     if (data.description !== undefined) {
       await this.formDescription.clear();
       await this.formDescription.fill(data.description);
+    }
+    if (data.type) {
+      await this.formType.selectOption(data.type);
     }
     if (data.category) {
       await this.formCategory.selectOption(data.category);
@@ -241,12 +201,14 @@ export class PersonasPage {
     const card = this.personaCards.filter({ hasText: name }).first();
     await card.scrollIntoViewIfNeeded();
 
+    // Click the trash (delete) button — use dispatchEvent to bypass opacity:0
     const deleteBtn = card.locator("button").last();
     await deleteBtn.dispatchEvent("click");
 
     await expect(this.deleteDialog).toBeVisible({ timeout: 5_000 });
     await this.confirmDeleteButton.click();
 
+    // Wait for dialog to close
     await expect(this.deleteDialog).toBeHidden({ timeout: 10_000 });
   }
 
@@ -254,6 +216,7 @@ export class PersonasPage {
   async searchPersonas(query: string): Promise<void> {
     await this.searchInput.clear();
     await this.searchInput.fill(query);
+    // Allow filtering to take effect
     await this.page.waitForTimeout(300);
   }
 

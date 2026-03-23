@@ -109,96 +109,6 @@ test.describe("CRUD via UI", () => {
 });
 
 // ==========================================================================
-// Wizard Flow
-// ==========================================================================
-
-test.describe("Wizard Flow", () => {
-  // DC-PERSONA-WIZ-01: Wizard shows step indicator (1-2)
-  test("DC-PERSONA-WIZ-01: wizard shows step indicator", async ({ page }) => {
-    await personas.createButton.click();
-    await expect(personas.typeSearchInput).toBeVisible({ timeout: 5_000 });
-
-    // Step indicator should show step 1 and step 2 circles
-    const stepIndicators = page.locator(".fixed.inset-0 .rounded-full.w-7.h-7");
-    await expect(stepIndicators).toHaveCount(2);
-  });
-
-  // DC-PERSONA-WIZ-02: Step 1 shows type selection grid
-  test("DC-PERSONA-WIZ-02: step 1 shows type selection grid", async ({ page }) => {
-    await personas.createButton.click();
-    await expect(personas.typeSearchInput).toBeVisible({ timeout: 5_000 });
-
-    // Should see "Select Persona Type" heading
-    await expect(page.locator("text=Select Persona Type")).toBeVisible();
-
-    // Should have type cards
-    const typeCards = page.locator(".fixed.inset-0 .grid button");
-    const count = await typeCards.count();
-    expect(count).toBeGreaterThanOrEqual(1);
-  });
-
-  // DC-PERSONA-WIZ-03: Clicking a type card goes to step 2
-  test("DC-PERSONA-WIZ-03: clicking type card goes to step 2", async ({ page }) => {
-    await personas.createButton.click();
-    await expect(personas.typeSearchInput).toBeVisible({ timeout: 5_000 });
-
-    // Click first type card
-    const typeCards = page.locator(".fixed.inset-0 .grid button");
-    const count = await typeCards.count();
-    if (count > 0) {
-      await typeCards.first().click();
-      await page.waitForTimeout(300);
-
-      // Should now be on step 2 with name input visible
-      await expect(personas.formName).toBeVisible({ timeout: 3_000 });
-    }
-  });
-
-  // DC-PERSONA-WIZ-04: Next button on step 1 goes to step 2
-  test("DC-PERSONA-WIZ-04: next button goes to step 2", async ({ page }) => {
-    await personas.createButton.click();
-    await expect(personas.typeSearchInput).toBeVisible({ timeout: 5_000 });
-
-    await personas.nextButton.click();
-    await page.waitForTimeout(300);
-
-    await expect(personas.formName).toBeVisible({ timeout: 3_000 });
-  });
-
-  // DC-PERSONA-WIZ-05: Back button on step 2 returns to step 1
-  test("DC-PERSONA-WIZ-05: back button returns to step 1", async ({ page }) => {
-    await personas.createButton.click();
-    await expect(personas.typeSearchInput).toBeVisible({ timeout: 5_000 });
-
-    // Go to step 2
-    await personas.nextButton.click();
-    await expect(personas.formName).toBeVisible({ timeout: 3_000 });
-
-    // Go back to step 1
-    await personas.backButton.click();
-    await page.waitForTimeout(300);
-
-    await expect(personas.typeSearchInput).toBeVisible({ timeout: 3_000 });
-  });
-
-  // DC-PERSONA-WIZ-06: Type search filters type cards
-  test("DC-PERSONA-WIZ-06: type search filters type cards", async ({ page }) => {
-    await personas.createButton.click();
-    await expect(personas.typeSearchInput).toBeVisible({ timeout: 5_000 });
-
-    const typeCards = page.locator(".fixed.inset-0 .grid button");
-    const initialCount = await typeCards.count();
-
-    // Search for something specific
-    await personas.typeSearchInput.fill("zzz_no_match_zzz");
-    await page.waitForTimeout(300);
-
-    const filteredCount = await typeCards.count();
-    expect(filteredCount).toBeLessThan(initialCount);
-  });
-});
-
-// ==========================================================================
 // Positive Workflows
 // ==========================================================================
 
@@ -239,15 +149,14 @@ test.describe("Positive Workflows", () => {
     expect(totalCount).toBeGreaterThanOrEqual(techCount);
   });
 
-  // DC-PERSONA-08: Wizard step 1 loads persona types from backend
-  test("DC-PERSONA-08: wizard step 1 loads persona types from backend", async ({ page }) => {
+  // DC-PERSONA-08: Persona type dropdown loads 12 types from backend
+  test("DC-PERSONA-08: persona type dropdown loads types from backend", async ({ page }) => {
     await personas.createButton.click();
-    await expect(personas.typeSearchInput).toBeVisible({ timeout: 5_000 });
+    await expect(personas.formName).toBeVisible({ timeout: 5_000 });
 
-    // Should have at least 6 type cards (fallback types)
-    const typeCards = page.locator(".fixed.inset-0 .grid button");
-    const count = await typeCards.count();
-    expect(count).toBeGreaterThanOrEqual(6);
+    const options = await personas.formType.locator("option").all();
+    // At least 6 (fallback types), ideally 12 (seeded types)
+    expect(options.length).toBeGreaterThanOrEqual(6);
   });
 
   // DC-PERSONA-09: Created persona appears in chat persona selector
@@ -295,10 +204,6 @@ test.describe("Negative Workflows", () => {
   // DC-PERSONA-11: Cannot create persona without name (button disabled)
   test("DC-PERSONA-11: cannot create persona without name", async ({ page }) => {
     await personas.createButton.click();
-    await expect(personas.typeSearchInput).toBeVisible({ timeout: 5_000 });
-
-    // Go to step 2
-    await personas.nextButton.click();
     await expect(personas.formName).toBeVisible({ timeout: 5_000 });
 
     const nameValue = await personas.formName.inputValue();
@@ -311,16 +216,13 @@ test.describe("Negative Workflows", () => {
     await expect(personas.formSaveButton).toBeDisabled();
   });
 
-  // DC-PERSONA-12: Cancel create wizard discards changes
-  test("DC-PERSONA-12: cancel create wizard discards changes", async ({ page }) => {
+  // DC-PERSONA-12: Cancel create dialog discards changes
+  test("DC-PERSONA-12: cancel create dialog discards changes", async ({ page }) => {
     const beforeCount = await personas.personaCards.count();
 
     await personas.createButton.click();
-    await expect(personas.typeSearchInput).toBeVisible({ timeout: 5_000 });
-
-    // Go to step 2 and fill data
-    await personas.nextButton.click();
     await expect(personas.formName).toBeVisible({ timeout: 5_000 });
+
     await personas.formName.fill("Should Not Be Created");
     await personas.formDescription.fill("This should be discarded");
 

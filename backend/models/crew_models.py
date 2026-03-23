@@ -102,6 +102,13 @@ class CrewSchedule(BaseModel):
     next_run_at: Optional[str] = None
 
 
+class ChannelBinding(BaseModel):
+    """Binds a crew to a social/messaging connection for inbound/outbound use."""
+    channel_type: str = Field(..., description="e.g. telegram, discord, linkedin, twitter, instagram, facebook")
+    enabled: bool = True
+    approval_required: bool = False
+
+
 class DistributionChannel(BaseModel):
     """Output distribution channel for crew results."""
     channel_type: str = Field(..., description="e.g. slack, email, webhook, s3")
@@ -120,6 +127,7 @@ class CreateCrewRequest(BaseModel):
     agents: List[CrewAgentConfig] = Field(default_factory=list, max_length=20)
     execution_config: CrewExecutionConfig = Field(default_factory=CrewExecutionConfig)
     schedule: Optional[CrewSchedule] = None
+    channel_bindings: List[ChannelBinding] = Field(default_factory=list)
     distribution_channels: List[DistributionChannel] = Field(default_factory=list)
     memory_enabled: bool = True
     tags: List[str] = Field(default_factory=list)
@@ -167,6 +175,7 @@ class UpdateCrewRequest(BaseModel):
     agents: Optional[List[CrewAgentConfig]] = None
     execution_config: Optional[CrewExecutionConfig] = None
     schedule: Optional[CrewSchedule] = None
+    channel_bindings: Optional[List[ChannelBinding]] = None
     distribution_channels: Optional[List[DistributionChannel]] = None
     memory_enabled: Optional[bool] = None
     tags: Optional[List[str]] = None
@@ -195,6 +204,7 @@ class CrewResponse(BaseModel):
     agents: List[CrewAgentConfig] = Field(default_factory=list)
     execution_config: CrewExecutionConfig = Field(default_factory=CrewExecutionConfig)
     schedule: Optional[CrewSchedule] = None
+    channel_bindings: List[ChannelBinding] = Field(default_factory=list)
     distribution_channels: List[DistributionChannel] = Field(default_factory=list)
     memory_enabled: bool = True
     tags: List[str] = Field(default_factory=list)
