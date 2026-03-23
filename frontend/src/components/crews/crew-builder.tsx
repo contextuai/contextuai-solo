@@ -592,8 +592,16 @@ export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderP
       }
       onCreated();
       onClose();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save crew");
+    } catch (err: unknown) {
+      // Extract validation detail from 422 responses
+      const axiosErr = err as { response?: { data?: { detail?: unknown } } };
+      const detail = axiosErr?.response?.data?.detail;
+      if (Array.isArray(detail)) {
+        setError(detail.map((d: { msg?: string; loc?: string[] }) =>
+          `${d.loc?.slice(-1)?.[0] ?? "field"}: ${d.msg}`).join("; "));
+      } else {
+        setError(err instanceof Error ? err.message : "Failed to save crew");
+      }
     } finally {
       setSubmitting(false);
     }
