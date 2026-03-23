@@ -123,7 +123,7 @@ class DistributionChannel(BaseModel):
 class CreateCrewRequest(BaseModel):
     """Request to create a new crew."""
     name: str = Field(..., min_length=1, max_length=200)
-    description: Optional[str] = Field(None, max_length=2000)
+    description: Optional[str] = Field(None, max_length=10000)
     agents: List[CrewAgentConfig] = Field(default_factory=list, max_length=20)
     execution_config: CrewExecutionConfig = Field(default_factory=CrewExecutionConfig)
     schedule: Optional[CrewSchedule] = None
@@ -171,7 +171,7 @@ class CreateCrewRequest(BaseModel):
 class UpdateCrewRequest(BaseModel):
     """Request to update an existing crew."""
     name: Optional[str] = Field(None, min_length=1, max_length=200)
-    description: Optional[str] = Field(None, max_length=2000)
+    description: Optional[str] = Field(None, max_length=10000)
     agents: Optional[List[CrewAgentConfig]] = None
     execution_config: Optional[CrewExecutionConfig] = None
     schedule: Optional[CrewSchedule] = None
