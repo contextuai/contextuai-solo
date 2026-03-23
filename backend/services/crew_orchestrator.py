@@ -392,10 +392,8 @@ class CrewOrchestrator:
                 model_id = ""
 
         if model_id and self._is_local_model(model_id):
-            try:
-                return await self._invoke_via_local(agent_cfg, prompt, model_id)
-            except Exception as e:
-                logger.warning(f"Local model failed for crew agent: {e}")
+            # Local model selected — do NOT fall through to Bedrock on failure
+            return await self._invoke_via_local(agent_cfg, prompt, model_id)
 
         if CLAUDE_SDK_AVAILABLE:
             try:
