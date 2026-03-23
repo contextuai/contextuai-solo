@@ -51,8 +51,9 @@ Tauri Shell (Rust)  →  React SPA (port 1420)  →  FastAPI Sidecar (port 18741
 ### Frontend-Backend Communication
 - **Tauri mode**: React → Tauri IPC (`api_request` command) → HTTP to sidecar
 - **Dev mode**: React → direct HTTP fetch to `http://127.0.0.1:18741/api/v1`
-- **Streaming**: Always SSE over HTTP (not IPC), consumed via `streamRequest()` in `transport.ts`
+- **Streaming**: Always SSE over HTTP (not IPC), consumed via `streamRequest()` in `transport.ts`. Supports `AbortSignal` for cancelling mid-stream.
 - Retry logic: 5 attempts with exponential backoff
+- **Stream abort**: Frontend uses `AbortController` to cancel HTTP fetch on stop. Backend `LocalModelService` has `asyncio.Lock` to prevent concurrent model access — second request waits for first to finish/abort.
 
 ### Database: SQLite with MongoDB-Compatible API
 The backend was ported from MongoDB. A compatibility layer preserves the Motor API:
@@ -79,7 +80,17 @@ GGUF models downloaded from HuggingFace, stored in `~/.contextuai-solo/models/`.
 81 business agents as markdown files organized by category (c-suite, marketing-sales, finance-operations, etc.). Engineering category is excluded from desktop mode. Each markdown file contains a system prompt, recommended model, and tool configs. Auto-seeded into `workspace_agents` collection on first startup. Re-seed via `POST /api/v1/desktop/reseed`.
 
 ### Crew System
-Multi-agent teams with persistent memory. Crew builder (`components/crews/crew-builder.tsx`) supports both manual agent creation and browsing from the 81-agent library via `GET /api/v1/crews/library-agents`. Execution modes: sequential, parallel, pipeline, autonomous.
+Multi-agent teams with persistent memory. Crew builder (`components/crews/crew-builder.tsx`) is a 5-step wizard:
+1. **Details** — name, description, blueprint, AI model selection
+2. **Execution Mode** — sequential, parallel, pipeline, autonomous
+3. **Agent Team** — add agents from 81-agent library or manually (skipped for autonomous)
+4. **Connections** — bind crew to social channels (Telegram, Discord, LinkedIn, Twitter/X, Instagram, Facebook)
+5. **Review** — configuration summary before create
+
+Channel bindings stored as `channel_bindings[]` on the crew document (`ChannelBinding` model: `channel_type`, `enabled`, `approval_required`). Crew-level model selection applies to all agents in the crew.
+
+### Blueprint Library (`blueprints/`)
+10 pre-built workflow templates across 5 categories (strategy, content, marketing, product, research). Markdown files auto-seeded into `blueprints` collection on startup. Integrated into crew builder and workspace project dialog via `BlueprintSelector` component. API: `GET /api/v1/blueprints/`, `GET /api/v1/blueprints/{id}`.
 
 ### Connections (`routes/connections.tsx`)
 External platform integrations: Telegram, Discord, LinkedIn (OAuth), Twitter/X, Instagram (OAuth), Facebook (OAuth). Token-paste flow for Telegram/Discord/Twitter; OAuth2 flow for LinkedIn/Instagram/Facebook with provider-specific setup instructions.
@@ -88,7 +99,7 @@ External platform integrations: Telegram, Discord, LinkedIn (OAuth), Twitter/X, 
 Desktop mode uses a static admin user — no login required. Auth is bypassed via dependency overrides in `app.py`. The `auth_service.py` has Cognito JWT support for the enterprise edition.
 
 ### Persona Types
-Desktop mode seeds 12 persona types: Nexus Agent, Web Researcher, PostgreSQL, MySQL, MSSQL, Snowflake, MongoDB, MCP Server, API Connector, File Operations, Slack, Twitter/X. No code/engineering personas — desktop users are expected to use IDEs for that.
+Desktop mode seeds 10 persona types: Nexus Agent, Web Researcher, PostgreSQL, MySQL, MSSQL, Snowflake, MongoDB, MCP Server, API Connector, File Operations. Social platforms (Slack, Twitter/X) are NOT persona types — they belong in Connections. Persona creation uses a 2-step wizard: Step 1 = type selection card grid with search, Step 2 = configure details (name, credentials, system prompt).
 
 ### Key Configuration
 - `backend/settings.py` — Centralized env-var config with defaults (port 18741)
