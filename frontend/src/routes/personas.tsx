@@ -22,8 +22,6 @@ import {
   ArrowRight,
   Cloud,
   Server,
-  Terminal,
-  MessageCircle,
 } from "lucide-react";
 import {
   getPersonas,
@@ -39,7 +37,7 @@ import {
 } from "@/lib/api/personas-client";
 
 // ---------------------------------------------------------------------------
-// Icon mapping for persona types
+// Icon mapping for the 12 seeded persona types (from backend)
 // ---------------------------------------------------------------------------
 const PERSONA_TYPE_ICONS: Record<string, React.ElementType> = {
   generic: Bot,
@@ -56,10 +54,8 @@ const PERSONA_TYPE_ICONS: Record<string, React.ElementType> = {
   api_integration: Plug,
   api_connector: Plug,
   file_operations: FileText,
-  slack: MessageCircle,
+  slack: MessageSquare,
   twitter: MessageSquare,
-  code: Code,
-  terminal: Terminal,
   default: Bot,
 };
 
@@ -101,8 +97,8 @@ const TYPE_COLORS: Record<string, { bg: string; text: string; border: string }> 
   api_integration: { bg: "bg-indigo-50 dark:bg-indigo-500/10", text: "text-indigo-600 dark:text-indigo-400", border: "border-indigo-200 dark:border-indigo-800" },
   api_connector: { bg: "bg-indigo-50 dark:bg-indigo-500/10", text: "text-indigo-600 dark:text-indigo-400", border: "border-indigo-200 dark:border-indigo-800" },
   file_operations: { bg: "bg-amber-50 dark:bg-amber-500/10", text: "text-amber-600 dark:text-amber-400", border: "border-amber-200 dark:border-amber-800" },
-  slack: { bg: "bg-pink-50 dark:bg-pink-500/10", text: "text-pink-600 dark:text-pink-400", border: "border-pink-200 dark:border-pink-800" },
-  twitter: { bg: "bg-sky-50 dark:bg-sky-500/10", text: "text-sky-600 dark:text-sky-400", border: "border-sky-200 dark:border-sky-800" },
+  slack: { bg: "bg-violet-50 dark:bg-violet-500/10", text: "text-violet-600 dark:text-violet-400", border: "border-violet-200 dark:border-violet-800" },
+  twitter: { bg: "bg-neutral-50 dark:bg-neutral-500/10", text: "text-neutral-600 dark:text-neutral-400", border: "border-neutral-200 dark:border-neutral-800" },
 };
 
 function getTypeColors(typeId: string) {
