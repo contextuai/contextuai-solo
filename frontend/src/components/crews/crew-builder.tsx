@@ -1,6 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { cn } from "@/lib/utils";
-import { crewsApi, type CrewAgent, type LibraryAgent } from "@/lib/api/crews-client";
+import { crewsApi, type CrewAgent, type LibraryAgent, type ChannelBinding } from "@/lib/api/crews-client";
+import { getModels, type ModelConfig } from "@/lib/api/models-client";
+import {
+  BlueprintSelector,
+  type BlueprintSelection,
+} from "@/components/blueprints/blueprint-selector";
 import {
   Users,
   Plus,
@@ -17,12 +22,32 @@ import {
   X,
   GripVertical,
   ArrowRight,
+  ArrowLeft,
   BookOpen,
   Search,
   ChevronDown,
+  Check,
+  Eye,
+  Cable,
+  MessageSquare,
+  Send,
+  Cpu,
 } from "lucide-react";
 
 type ExecutionMode = "sequential" | "parallel" | "pipeline" | "autonomous";
+type WizardStep = 1 | 2 | 3 | 4 | 5;
+
+// ---------------------------------------------------------------------------
+// Available connection types with metadata
+// ---------------------------------------------------------------------------
+const CONNECTION_TYPES = [
+  { id: "telegram", name: "Telegram", icon: "paper-plane", description: "Chat bot for Telegram groups and DMs", color: "bg-sky-500" },
+  { id: "discord", name: "Discord", icon: "gamepad", description: "Bot for Discord servers and channels", color: "bg-indigo-500" },
+  { id: "linkedin", name: "LinkedIn", icon: "briefcase", description: "Post content and engage on LinkedIn", color: "bg-blue-600" },
+  { id: "twitter", name: "Twitter / X", icon: "bird", description: "Post and engage on Twitter/X", color: "bg-neutral-800 dark:bg-neutral-600" },
+  { id: "instagram", name: "Instagram", icon: "camera", description: "Share content on Instagram", color: "bg-pink-500" },
+  { id: "facebook", name: "Facebook", icon: "thumbs-up", description: "Manage Facebook page content", color: "bg-blue-500" },
+] as const;
 
 interface AgentForm {
   name: string;
@@ -130,7 +155,6 @@ function LibraryPanel({
         });
         setAgents(res.agents);
         setTotalCount(res.total_count);
-        // Build category list from first full fetch
         if (!cat && !searchTerm && p === 1 && res.agents.length > 0) {
           setCategories((prev) => {
             const cats = new Set(prev);
@@ -147,7 +171,6 @@ function LibraryPanel({
     []
   );
 
-  // Fetch on open
   useEffect(() => {
     if (open) {
       setPage(1);
@@ -156,10 +179,8 @@ function LibraryPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  // Fetch all categories on first open
   useEffect(() => {
     if (open && categories.length === 0) {
-      // Fetch a large page to discover categories
       crewsApi
         .listLibraryAgents({ page: 1, page_size: 100 })
         .then((res) => {
@@ -196,7 +217,6 @@ function LibraryPanel({
 
   return (
     <div className="absolute inset-0 z-10 flex flex-col bg-white dark:bg-neutral-900 rounded-2xl overflow-hidden">
-      {/* Header */}
       <div className="flex items-center justify-between px-5 py-3 border-b border-neutral-200 dark:border-neutral-800">
         <div className="flex items-center gap-2">
           <BookOpen className="w-4 h-4 text-primary-500" />
@@ -213,7 +233,6 @@ function LibraryPanel({
         </button>
       </div>
 
-      {/* Search + Filter */}
       <div className="flex items-center gap-2 px-5 py-3 border-b border-neutral-100 dark:border-neutral-800">
         <div className="relative flex-1">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-neutral-400" />
@@ -242,7 +261,6 @@ function LibraryPanel({
         </div>
       </div>
 
-      {/* Agent list */}
       <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
         {loading && agents.length === 0 ? (
           <div className="flex items-center justify-center py-12">
@@ -281,7 +299,6 @@ function LibraryPanel({
         )}
       </div>
 
-      {/* Pagination */}
       {totalPages > 1 && (
         <div className="flex items-center justify-center gap-2 px-5 py-3 border-t border-neutral-200 dark:border-neutral-800">
           <button
@@ -310,26 +327,79 @@ function LibraryPanel({
 }
 
 // ---------------------------------------------------------------------------
-// CrewBuilder
+// Step indicator component
+// ---------------------------------------------------------------------------
+function StepIndicator({ currentStep, totalSteps }: { currentStep: number; totalSteps: number }) {
+  return (
+    <div className="flex items-center gap-2">
+      {Array.from({ length: totalSteps }, (_, i) => {
+        const stepNum = i + 1;
+        return (
+          <div key={stepNum} className="flex items-center gap-2">
+            <div
+              className={cn(
+                "w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-colors",
+                stepNum <= currentStep
+                  ? "bg-primary-500 text-white"
+                  : "bg-neutral-200 dark:bg-neutral-700 text-neutral-500"
+              )}
+            >
+              {stepNum < currentStep ? (
+                <Check className="w-3.5 h-3.5" />
+              ) : (
+                stepNum
+              )}
+            </div>
+            {i < totalSteps - 1 && (
+              <div className="w-8 h-0.5 bg-neutral-200 dark:bg-neutral-700">
+                <div
+                  className={cn(
+                    "h-full transition-all",
+                    stepNum < currentStep ? "w-full bg-primary-500" : "w-0"
+                  )}
+                />
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Step titles
+// ---------------------------------------------------------------------------
+const STEP_TITLES: Record<WizardStep, { title: string; subtitle: string }> = {
+  1: { title: "Crew Details", subtitle: "Name your crew and describe its purpose" },
+  2: { title: "Execution Mode", subtitle: "Choose how agents collaborate" },
+  3: { title: "Agent Team", subtitle: "Build your agent pipeline" },
+  4: { title: "Connections", subtitle: "Choose which channels this crew handles" },
+  5: { title: "Review & Create", subtitle: "Review your crew configuration" },
+};
+
+// ---------------------------------------------------------------------------
+// CrewBuilder — Wizard-style
 // ---------------------------------------------------------------------------
 
 interface CrewBuilderProps {
   open: boolean;
   onClose: () => void;
   onCreated: () => void;
-  /** When provided the builder is in edit mode */
   editCrew?: {
     crew_id: string;
     name: string;
     description?: string;
     execution_config?: { mode: ExecutionMode; max_agent_invocations?: number; budget_limit_usd?: number };
     agents?: CrewAgent[];
+    channel_bindings?: ChannelBinding[];
   };
 }
 
 export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderProps) {
   const isEdit = !!editCrew;
 
+  const [step, setStep] = useState<WizardStep>(1);
   const [name, setName] = useState(editCrew?.name ?? "");
   const [description, setDescription] = useState(editCrew?.description ?? "");
   const [executionMode, setExecutionMode] = useState<ExecutionMode>(
@@ -348,9 +418,46 @@ export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderP
   const [budgetLimit, setBudgetLimit] = useState(
     editCrew?.execution_config?.budget_limit_usd ?? 1.0
   );
+  const [channelBindings, setChannelBindings] = useState<ChannelBinding[]>(
+    editCrew?.channel_bindings ?? []
+  );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [libraryOpen, setLibraryOpen] = useState(false);
+  const [blueprintSelectorOpen, setBlueprintSelectorOpen] = useState(false);
+  const [selectedBlueprint, setSelectedBlueprint] = useState<BlueprintSelection | null>(null);
+  const [models, setModels] = useState<ModelConfig[]>([]);
+  const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
+
+  // Fetch available models when dialog opens
+  useEffect(() => {
+    if (open) {
+      getModels()
+        .then((list) => {
+          setModels(list.filter((m) => m.enabled));
+        })
+        .catch(() => setModels([]));
+    }
+  }, [open]);
+
+  // Reset on open
+  useEffect(() => {
+    if (open) {
+      setStep(1);
+      if (!isEdit) {
+        setName("");
+        setDescription("");
+        setExecutionMode("sequential");
+        setAgents([emptyAgent()]);
+        setMaxInvocations(10);
+        setBudgetLimit(1.0);
+        setChannelBindings([]);
+        setSelectedBlueprint(null);
+        setSelectedModelId(null);
+        setError(null);
+      }
+    }
+  }, [open, isEdit]);
 
   const handleLibrarySelect = (agent: LibraryAgent) => {
     setAgents((prev) => [
@@ -369,6 +476,57 @@ export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderP
   const canSubmit = isAutonomous
     ? !!name.trim()
     : name.trim() && agents.every((a) => a.name.trim() && a.instructions.trim());
+
+  // Step validation
+  const canProceed = (s: WizardStep): boolean => {
+    switch (s) {
+      case 1: return !!name.trim();
+      case 2: return true; // always valid, mode has a default
+      case 3: return isAutonomous || agents.every((a) => a.name.trim() && a.instructions.trim());
+      case 4: return true; // connections are optional
+      case 5: return !!canSubmit;
+      default: return false;
+    }
+  };
+
+  // Steps: 1-Details, 2-Mode, 3-Agents (skip if autonomous), 4-Connections, 5-Review
+  const totalSteps = isAutonomous ? 4 : 5;
+  const maxStep = (isAutonomous ? 4 : 5) as WizardStep;
+
+  function nextStep() {
+    if (step === 2 && isAutonomous) {
+      setStep(4); // Skip agent step for autonomous
+    } else if (step < maxStep) {
+      setStep((step + 1) as WizardStep);
+    }
+  }
+
+  function prevStep() {
+    if (step === 4 && isAutonomous) {
+      setStep(2); // Skip back over agent step for autonomous
+    } else if (step > 1) {
+      setStep((step - 1) as WizardStep);
+    }
+  }
+
+  // Toggle a channel binding
+  function toggleChannel(channelType: string) {
+    setChannelBindings((prev) => {
+      const existing = prev.find((b) => b.channel_type === channelType);
+      if (existing) {
+        return prev.filter((b) => b.channel_type !== channelType);
+      }
+      return [...prev, { channel_type: channelType, enabled: true, approval_required: false }];
+    });
+  }
+
+  function toggleChannelApproval(channelType: string) {
+    setChannelBindings((prev) =>
+      prev.map((b) =>
+        b.channel_type === channelType ? { ...b, approval_required: !b.approval_required } : b
+      )
+    );
+  }
 
   const updateAgent = (index: number, field: keyof AgentForm, value: string) => {
     setAgents((prev) => prev.map((a, i) => (i === index ? { ...a, [field]: value } : a)));
@@ -391,8 +549,7 @@ export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderP
     });
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async () => {
     if (!canSubmit) return;
 
     setSubmitting(true);
@@ -420,7 +577,12 @@ export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderP
           name: a.name.trim(),
           instructions: a.instructions.trim(),
           order: i,
+          ...(selectedModelId && { model_id: selectedModelId }),
         }));
+      }
+
+      if (channelBindings.length > 0) {
+        payload.channel_bindings = channelBindings;
       }
 
       if (isEdit && editCrew) {
@@ -430,14 +592,26 @@ export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderP
       }
       onCreated();
       onClose();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save crew");
+    } catch (err: unknown) {
+      // Extract validation detail from 422 responses
+      const axiosErr = err as { response?: { data?: { detail?: unknown } } };
+      const detail = axiosErr?.response?.data?.detail;
+      if (Array.isArray(detail)) {
+        setError(detail.map((d: { msg?: string; loc?: string[] }) =>
+          `${d.loc?.slice(-1)?.[0] ?? "field"}: ${d.msg}`).join("; "));
+      } else {
+        setError(err instanceof Error ? err.message : "Failed to save crew");
+      }
     } finally {
       setSubmitting(false);
     }
   };
 
   if (!open) return null;
+
+  // For step indicator display: map to visual step number
+  // Autonomous skips step 3 (agents), so steps 4,5 become visual 3,4
+  const visualStep = isAutonomous && step >= 4 ? step - 1 : step;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
@@ -447,6 +621,17 @@ export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderP
           open={libraryOpen}
           onClose={() => setLibraryOpen(false)}
           onSelect={handleLibrarySelect}
+        />
+
+        {/* Blueprint Selector */}
+        <BlueprintSelector
+          open={blueprintSelectorOpen}
+          onClose={() => setBlueprintSelectorOpen(false)}
+          onSelect={(bp) => {
+            setSelectedBlueprint(bp);
+            setDescription(bp.content);
+            setBlueprintSelectorOpen(false);
+          }}
         />
 
         {/* Header */}
@@ -460,20 +645,23 @@ export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderP
                 {isEdit ? "Edit Crew" : "Create New Crew"}
               </h2>
               <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                Configure a multi-agent team with roles and instructions
+                {STEP_TITLES[step].subtitle}
               </p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
-          >
-            <X className="w-5 h-5 text-neutral-500" />
-          </button>
+          <div className="flex items-center gap-4">
+            <StepIndicator currentStep={visualStep} totalSteps={totalSteps} />
+            <button
+              onClick={onClose}
+              className="p-2 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+            >
+              <X className="w-5 h-5 text-neutral-500" />
+            </button>
+          </div>
         </div>
 
         {/* Body */}
-        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-6">
+        <div className="flex-1 overflow-y-auto p-6 space-y-6">
           {/* Error */}
           {error && (
             <div className="flex items-center gap-2 p-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 text-sm">
@@ -482,143 +670,200 @@ export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderP
             </div>
           )}
 
-          {/* Name & Description */}
-          <div className="bg-neutral-50 dark:bg-neutral-800/50 rounded-xl border border-neutral-200 dark:border-neutral-700 p-5 space-y-4">
-            <h3 className="text-sm font-medium text-neutral-900 dark:text-white flex items-center gap-2">
-              <Users className="w-4 h-4 text-primary-500" />
-              Crew Details
-            </h3>
-            <div>
-              <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
-                Crew Name <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="e.g., Research & Analysis Team"
-                maxLength={200}
-                className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white text-sm focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 outline-none transition-colors"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
-                Description
-              </label>
-              <textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="What does this crew do?"
-                rows={2}
-                maxLength={2000}
-                className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white text-sm focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 outline-none transition-colors resize-none"
-              />
-            </div>
-          </div>
-
-          {/* Execution Mode */}
-          <div className="bg-neutral-50 dark:bg-neutral-800/50 rounded-xl border border-neutral-200 dark:border-neutral-700 p-5 space-y-4">
-            <h3 className="text-sm font-medium text-neutral-900 dark:text-white flex items-center gap-2">
-              <Layers className="w-4 h-4 text-primary-500" />
-              Execution Mode
-            </h3>
-            <div className="grid grid-cols-2 gap-3">
-              {EXECUTION_MODES.map(({ mode, label, description: desc, icon: Icon }) => (
-                <button
-                  key={mode}
-                  type="button"
-                  onClick={() => setExecutionMode(mode)}
-                  className={cn(
-                    "relative p-4 rounded-xl border-2 text-left transition-all",
-                    executionMode === mode
-                      ? "border-primary-500 bg-primary-50 dark:bg-primary-500/5"
-                      : "border-neutral-200 dark:border-neutral-700 hover:border-neutral-300 dark:hover:border-neutral-600"
-                  )}
-                >
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <Icon
-                      className={cn(
-                        "w-4 h-4",
-                        executionMode === mode ? "text-primary-500" : "text-neutral-400"
-                      )}
-                    />
-                    <span
-                      className={cn(
-                        "text-sm font-medium",
-                        executionMode === mode
-                          ? "text-primary-500"
-                          : "text-neutral-900 dark:text-white"
-                      )}
-                    >
-                      {label}
-                    </span>
-                  </div>
-                  <p className="text-xs text-neutral-500 dark:text-neutral-400">{desc}</p>
-                  {executionMode === mode && (
-                    <div className="absolute top-2 right-2 w-2 h-2 rounded-full bg-primary-500" />
-                  )}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Autonomous Safety Limits */}
-          {isAutonomous && (
+          {/* ─── Step 1: Crew Details ─── */}
+          {step === 1 && (
             <div className="bg-neutral-50 dark:bg-neutral-800/50 rounded-xl border border-neutral-200 dark:border-neutral-700 p-5 space-y-4">
               <h3 className="text-sm font-medium text-neutral-900 dark:text-white flex items-center gap-2">
-                <Shield className="w-4 h-4 text-primary-500" />
-                Autonomous Safety Limits
+                <Users className="w-4 h-4 text-primary-500" />
+                Crew Details
               </h3>
-              <p className="text-xs text-neutral-500 dark:text-neutral-400 -mt-2">
-                The coordinator agent will dynamically discover and invoke specialist agents.
-                These limits prevent runaway costs.
-              </p>
-              <div className="grid grid-cols-2 gap-6">
-                <div>
-                  <label className="flex items-center gap-1.5 text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
-                    <Brain className="w-3.5 h-3.5" />
-                    Max Agent Invocations
+              <div>
+                <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
+                  Crew Name <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="e.g., Research & Analysis Team"
+                  maxLength={200}
+                  className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white text-sm focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 outline-none transition-colors"
+                />
+              </div>
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">
+                    Description
                   </label>
-                  <input
-                    type="number"
-                    value={maxInvocations}
-                    onChange={(e) =>
-                      setMaxInvocations(
-                        Math.max(1, Math.min(50, parseInt(e.target.value) || 1))
-                      )
-                    }
-                    min={1}
-                    max={50}
-                    className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white text-sm focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 outline-none transition-colors"
-                  />
-                  <p className="text-xs text-neutral-400 mt-1">1-50 agents per run</p>
+                  <button
+                    type="button"
+                    onClick={() => setBlueprintSelectorOpen(true)}
+                    className="flex items-center gap-1.5 text-xs font-medium text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 transition-colors"
+                  >
+                    <BookOpen className="w-3.5 h-3.5" />
+                    Use Blueprint
+                  </button>
                 </div>
-                <div>
-                  <label className="flex items-center gap-1.5 text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
-                    <DollarSign className="w-3.5 h-3.5" />
-                    Budget Limit (USD)
-                  </label>
-                  <input
-                    type="number"
-                    value={budgetLimit}
-                    onChange={(e) =>
-                      setBudgetLimit(
-                        Math.max(0.01, Math.min(100, parseFloat(e.target.value) || 0.01))
-                      )
-                    }
-                    min={0.01}
-                    max={100}
-                    step={0.01}
-                    className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white text-sm focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 outline-none transition-colors"
-                  />
-                  <p className="text-xs text-neutral-400 mt-1">$0.01 - $100.00 per run</p>
-                </div>
+                {selectedBlueprint && (
+                  <div className="flex items-center gap-2 mb-2 px-3 py-1.5 rounded-lg bg-primary-50 dark:bg-primary-500/10 border border-primary-200 dark:border-primary-800">
+                    <BookOpen className="w-3.5 h-3.5 text-primary-500 flex-shrink-0" />
+                    <span className="text-xs text-primary-700 dark:text-primary-300 font-medium truncate">
+                      {selectedBlueprint.name}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedBlueprint(null);
+                        setDescription("");
+                      }}
+                      className="ml-auto p-0.5 rounded hover:bg-primary-100 dark:hover:bg-primary-500/20 transition-colors"
+                    >
+                      <X className="w-3 h-3 text-primary-500" />
+                    </button>
+                  </div>
+                )}
+                <textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="What does this crew do?"
+                  rows={3}
+                  maxLength={10000}
+                  className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white text-sm focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 outline-none transition-colors resize-none"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
+                  <span className="flex items-center gap-1.5">
+                    <Cpu className="w-3.5 h-3.5" />
+                    AI Model
+                  </span>
+                </label>
+                <select
+                  value={selectedModelId ?? ""}
+                  onChange={(e) => setSelectedModelId(e.target.value || null)}
+                  className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white text-sm focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 outline-none transition-colors"
+                >
+                  <option value="">Auto (uses default model)</option>
+                  {models.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name}{m.provider ? ` · ${m.provider}` : ""}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1 text-xs text-neutral-400">
+                  All agents in this crew will use the selected model.
+                </p>
               </div>
             </div>
           )}
 
-          {/* Agents (non-autonomous) */}
-          {!isAutonomous && (
+          {/* ─── Step 2: Execution Mode ─── */}
+          {step === 2 && (
+            <>
+              <div className="bg-neutral-50 dark:bg-neutral-800/50 rounded-xl border border-neutral-200 dark:border-neutral-700 p-5 space-y-4">
+                <h3 className="text-sm font-medium text-neutral-900 dark:text-white flex items-center gap-2">
+                  <Layers className="w-4 h-4 text-primary-500" />
+                  Execution Mode
+                </h3>
+                <div className="grid grid-cols-2 gap-3">
+                  {EXECUTION_MODES.map(({ mode, label, description: desc, icon: Icon }) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => setExecutionMode(mode)}
+                      className={cn(
+                        "relative p-4 rounded-xl border-2 text-left transition-all",
+                        executionMode === mode
+                          ? "border-primary-500 bg-primary-50 dark:bg-primary-500/5"
+                          : "border-neutral-200 dark:border-neutral-700 hover:border-neutral-300 dark:hover:border-neutral-600"
+                      )}
+                    >
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <Icon
+                          className={cn(
+                            "w-4 h-4",
+                            executionMode === mode ? "text-primary-500" : "text-neutral-400"
+                          )}
+                        />
+                        <span
+                          className={cn(
+                            "text-sm font-medium",
+                            executionMode === mode
+                              ? "text-primary-500"
+                              : "text-neutral-900 dark:text-white"
+                          )}
+                        >
+                          {label}
+                        </span>
+                      </div>
+                      <p className="text-xs text-neutral-500 dark:text-neutral-400">{desc}</p>
+                      {executionMode === mode && (
+                        <div className="absolute top-2 right-2 w-2 h-2 rounded-full bg-primary-500" />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Autonomous Safety Limits */}
+              {isAutonomous && (
+                <div className="bg-neutral-50 dark:bg-neutral-800/50 rounded-xl border border-neutral-200 dark:border-neutral-700 p-5 space-y-4">
+                  <h3 className="text-sm font-medium text-neutral-900 dark:text-white flex items-center gap-2">
+                    <Shield className="w-4 h-4 text-primary-500" />
+                    Autonomous Safety Limits
+                  </h3>
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400 -mt-2">
+                    The coordinator agent will dynamically discover and invoke specialist agents.
+                    These limits prevent runaway costs.
+                  </p>
+                  <div className="grid grid-cols-2 gap-6">
+                    <div>
+                      <label className="flex items-center gap-1.5 text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
+                        <Brain className="w-3.5 h-3.5" />
+                        Max Agent Invocations
+                      </label>
+                      <input
+                        type="number"
+                        value={maxInvocations}
+                        onChange={(e) =>
+                          setMaxInvocations(
+                            Math.max(1, Math.min(50, parseInt(e.target.value) || 1))
+                          )
+                        }
+                        min={1}
+                        max={50}
+                        className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white text-sm focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 outline-none transition-colors"
+                      />
+                      <p className="text-xs text-neutral-400 mt-1">1-50 agents per run</p>
+                    </div>
+                    <div>
+                      <label className="flex items-center gap-1.5 text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
+                        <DollarSign className="w-3.5 h-3.5" />
+                        Budget Limit (USD)
+                      </label>
+                      <input
+                        type="number"
+                        value={budgetLimit}
+                        onChange={(e) =>
+                          setBudgetLimit(
+                            Math.max(0.01, Math.min(100, parseFloat(e.target.value) || 0.01))
+                          )
+                        }
+                        min={0.01}
+                        max={100}
+                        step={0.01}
+                        className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white text-sm focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 outline-none transition-colors"
+                      />
+                      <p className="text-xs text-neutral-400 mt-1">$0.01 - $100.00 per run</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* ─── Step 3: Agent Team ─── */}
+          {step === 3 && !isAutonomous && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-medium text-neutral-900 dark:text-white flex items-center gap-2">
@@ -758,29 +1003,305 @@ export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderP
               ))}
             </div>
           )}
-        </form>
+
+          {/* ─── Step 4: Connections ─── */}
+          {step === 4 && (
+            <div className="space-y-4">
+              <div className="bg-neutral-50 dark:bg-neutral-800/50 rounded-xl border border-neutral-200 dark:border-neutral-700 p-5 space-y-4">
+                <h3 className="text-sm font-medium text-neutral-900 dark:text-white flex items-center gap-2">
+                  <Cable className="w-4 h-4 text-primary-500" />
+                  Channel Connections
+                </h3>
+                <p className="text-xs text-neutral-500 dark:text-neutral-400 -mt-2">
+                  Select which social channels this crew should handle. The crew will process
+                  inbound messages and can publish content to these platforms.
+                </p>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  {CONNECTION_TYPES.map((conn) => {
+                    const isSelected = channelBindings.some((b) => b.channel_type === conn.id);
+                    const binding = channelBindings.find((b) => b.channel_type === conn.id);
+                    return (
+                      <div
+                        key={conn.id}
+                        className={cn(
+                          "relative rounded-xl border-2 transition-all overflow-hidden",
+                          isSelected
+                            ? "border-primary-500 bg-primary-50/50 dark:bg-primary-500/5"
+                            : "border-neutral-200 dark:border-neutral-700 hover:border-neutral-300 dark:hover:border-neutral-600"
+                        )}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => toggleChannel(conn.id)}
+                          className="w-full p-4 text-left"
+                        >
+                          <div className="flex items-center gap-3 mb-2">
+                            <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center text-white", conn.color)}>
+                              <MessageSquare className="w-4 h-4" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-neutral-900 dark:text-white">
+                                {conn.name}
+                              </p>
+                            </div>
+                            {isSelected && (
+                              <div className="w-5 h-5 rounded-full bg-primary-500 flex items-center justify-center flex-shrink-0">
+                                <Check className="w-3 h-3 text-white" />
+                              </div>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-neutral-500 dark:text-neutral-400 line-clamp-2">
+                            {conn.description}
+                          </p>
+                        </button>
+
+                        {/* Approval toggle (shown when selected) */}
+                        {isSelected && (
+                          <div className="px-4 pb-3 pt-0">
+                            <label className="flex items-center gap-2 text-xs text-neutral-600 dark:text-neutral-400 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={binding?.approval_required ?? false}
+                                onChange={() => toggleChannelApproval(conn.id)}
+                                className="rounded border-neutral-300 dark:border-neutral-600 text-primary-500 focus:ring-primary-500/50 w-3.5 h-3.5"
+                              />
+                              Require approval before sending
+                            </label>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {channelBindings.length === 0 && (
+                  <p className="text-xs text-neutral-400 dark:text-neutral-500 italic">
+                    No channels selected. You can add connections later from the crew settings.
+                  </p>
+                )}
+              </div>
+
+              {channelBindings.length > 0 && (
+                <div className="bg-neutral-50 dark:bg-neutral-800/50 rounded-xl border border-neutral-200 dark:border-neutral-700 p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Send className="w-3.5 h-3.5 text-primary-500" />
+                    <span className="text-xs font-medium text-neutral-700 dark:text-neutral-300">
+                      {channelBindings.length} channel{channelBindings.length !== 1 ? "s" : ""} selected
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {channelBindings.map((b) => {
+                      const conn = CONNECTION_TYPES.find((c) => c.id === b.channel_type);
+                      return (
+                        <span
+                          key={b.channel_type}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-primary-100 dark:bg-primary-500/20 text-primary-700 dark:text-primary-300 border border-primary-200 dark:border-primary-800"
+                        >
+                          {conn?.name ?? b.channel_type}
+                          {b.approval_required && (
+                            <Shield className="w-3 h-3 text-amber-500" />
+                          )}
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ─── Step 5: Review ─── */}
+          {step === 5 && (
+            <div className="space-y-4">
+              <div className="bg-neutral-50 dark:bg-neutral-800/50 rounded-xl border border-neutral-200 dark:border-neutral-700 p-5 space-y-3">
+                <h3 className="text-sm font-medium text-neutral-900 dark:text-white flex items-center gap-2">
+                  <Eye className="w-4 h-4 text-primary-500" />
+                  Review Configuration
+                </h3>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-1">
+                      Crew Name
+                    </p>
+                    <p className="text-sm text-neutral-900 dark:text-white font-medium">
+                      {name}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-1">
+                      Execution Mode
+                    </p>
+                    <p className="text-sm text-neutral-900 dark:text-white font-medium capitalize">
+                      {executionMode}
+                    </p>
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-1">
+                    AI Model
+                  </p>
+                  <p className="text-sm text-neutral-900 dark:text-white font-medium flex items-center gap-1.5">
+                    <Cpu className="w-3.5 h-3.5 text-primary-500" />
+                    {selectedModelId
+                      ? models.find((m) => m.id === selectedModelId)?.name ?? selectedModelId
+                      : "Auto (default model)"}
+                  </p>
+                </div>
+
+                {description && (
+                  <div>
+                    <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-1">
+                      Description
+                    </p>
+                    <p className="text-sm text-neutral-700 dark:text-neutral-300 line-clamp-3">
+                      {description}
+                    </p>
+                  </div>
+                )}
+
+                {isAutonomous && (
+                  <div className="grid grid-cols-2 gap-4 pt-2 border-t border-neutral-200 dark:border-neutral-700">
+                    <div>
+                      <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-1">
+                        Max Invocations
+                      </p>
+                      <p className="text-sm text-neutral-900 dark:text-white font-medium">
+                        {maxInvocations}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-1">
+                        Budget Limit
+                      </p>
+                      <p className="text-sm text-neutral-900 dark:text-white font-medium">
+                        ${budgetLimit.toFixed(2)}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Agent summary */}
+              {!isAutonomous && agents.length > 0 && (
+                <div className="bg-neutral-50 dark:bg-neutral-800/50 rounded-xl border border-neutral-200 dark:border-neutral-700 p-5 space-y-3">
+                  <h3 className="text-sm font-medium text-neutral-900 dark:text-white flex items-center gap-2">
+                    <Brain className="w-4 h-4 text-primary-500" />
+                    Agent Team ({agents.length} agent{agents.length !== 1 ? "s" : ""})
+                  </h3>
+                  <div className="flex items-center gap-1 overflow-x-auto">
+                    {agents.map((agent, i) => (
+                      <div key={i} className="flex items-center gap-1 flex-shrink-0">
+                        <div className="px-3 py-1.5 rounded-lg text-xs font-medium border border-primary-200 dark:border-primary-800 bg-primary-50 dark:bg-primary-500/10 text-primary-700 dark:text-primary-400">
+                          {agent.name}
+                        </div>
+                        {i < agents.length - 1 && (
+                          <ArrowRight className="w-3.5 h-3.5 text-neutral-300 dark:text-neutral-600 flex-shrink-0" />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  <div className="space-y-2">
+                    {agents.map((agent, i) => (
+                      <div
+                        key={i}
+                        className="flex items-start gap-3 p-3 rounded-lg bg-white dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700"
+                      >
+                        <span className="text-xs font-bold text-primary-500 mt-0.5">{i + 1}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium text-neutral-900 dark:text-white">{agent.name}</span>
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-neutral-700 text-neutral-500 dark:text-neutral-400 capitalize">{agent.role}</span>
+                          </div>
+                          <p className="text-xs text-neutral-500 dark:text-neutral-400 line-clamp-1 mt-0.5">{agent.instructions}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Connections summary */}
+              {channelBindings.length > 0 && (
+                <div className="bg-neutral-50 dark:bg-neutral-800/50 rounded-xl border border-neutral-200 dark:border-neutral-700 p-5 space-y-3">
+                  <h3 className="text-sm font-medium text-neutral-900 dark:text-white flex items-center gap-2">
+                    <Cable className="w-4 h-4 text-primary-500" />
+                    Connections ({channelBindings.length})
+                  </h3>
+                  <div className="flex flex-wrap gap-2">
+                    {channelBindings.map((b) => {
+                      const conn = CONNECTION_TYPES.find((c) => c.id === b.channel_type);
+                      return (
+                        <span
+                          key={b.channel_type}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-700 dark:text-neutral-300"
+                        >
+                          <div className={cn("w-4 h-4 rounded flex items-center justify-center text-white", conn?.color ?? "bg-neutral-500")}>
+                            <MessageSquare className="w-2.5 h-2.5" />
+                          </div>
+                          {conn?.name ?? b.channel_type}
+                          {b.approval_required && (
+                            <span className="text-[10px] text-amber-500 font-medium">(approval)</span>
+                          )}
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-neutral-200 dark:border-neutral-800">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 rounded-lg text-sm font-medium text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSubmit as unknown as React.MouseEventHandler}
-            disabled={!canSubmit || submitting}
-            className="flex items-center gap-2 px-5 py-2 rounded-lg bg-primary-500 text-white hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
-          >
-            {submitting ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Plus className="w-4 h-4" />
+        <div className="flex items-center justify-between px-6 py-4 border-t border-neutral-200 dark:border-neutral-800">
+          <div>
+            {step > 1 && (
+              <button
+                type="button"
+                onClick={prevStep}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                Back
+              </button>
             )}
-            {isEdit ? "Save Changes" : "Create Crew"}
-          </button>
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 rounded-lg text-sm font-medium text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+            >
+              Cancel
+            </button>
+            {step < maxStep ? (
+              <button
+                type="button"
+                onClick={nextStep}
+                disabled={!canProceed(step)}
+                className="flex items-center gap-2 px-5 py-2 rounded-lg bg-primary-500 text-white hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
+              >
+                Next
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            ) : (
+              <button
+                onClick={handleSubmit}
+                disabled={!canSubmit || submitting}
+                className="flex items-center gap-2 px-5 py-2 rounded-lg bg-primary-500 text-white hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
+              >
+                {submitting ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Check className="w-4 h-4" />
+                )}
+                {isEdit ? "Save Changes" : "Create Crew"}
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>

@@ -55,6 +55,7 @@ class AgentLibraryService:
         "data-analytics": "data_analytics",
         "it-security": "it_security",
         "hr-people": "hr_people",
+        "social-engagement": "social_engagement",
         "specialized": "specialized",
     }
 
@@ -74,6 +75,7 @@ class AgentLibraryService:
         "data_analytics": "Data & Analytics",
         "it_security": "IT & Security",
         "hr_people": "HR & People",
+        "social_engagement": "Social Engagement",
         "specialized": "Specialized",
     }
 
@@ -607,6 +609,7 @@ class AgentLibraryService:
             "data_analytics": "bar-chart-2",
             "it_security": "lock",
             "hr_people": "users",
+            "social_engagement": "message-circle",
             "specialized": "star",
         }
         return icon_map.get(category, "bot")

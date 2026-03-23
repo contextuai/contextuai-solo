@@ -18,6 +18,10 @@ import {
   Loader2,
   Check,
   AlertCircle,
+  ArrowLeft,
+  ArrowRight,
+  Cloud,
+  Server,
 } from "lucide-react";
 import {
   getPersonas,
@@ -48,6 +52,51 @@ function getPersonaIcon(type: string) {
   return PERSONA_ICONS[type] || PERSONA_ICONS.default;
 }
 
+// Icon mapping for persona type cards (Step 1 grid)
+const PERSONA_TYPE_ICONS: Record<string, React.ElementType> = {
+  generic: Bot,
+  nexus_agent: Bot,
+  web_search: Globe,
+  web_researcher: Globe,
+  postgresql: Database,
+  mysql: Database,
+  mssql: Database,
+  snowflake: Cloud,
+  mongodb: Database,
+  mcp: Server,
+  mcp_server: Server,
+  api_integration: Plug,
+  api_connector: Plug,
+  file_operations: FileText,
+  default: Bot,
+};
+
+function getPersonaTypeIcon(typeId: string) {
+  return PERSONA_TYPE_ICONS[typeId] || PERSONA_TYPE_ICONS.default;
+}
+
+// Color mapping for type cards
+const TYPE_COLORS: Record<string, { bg: string; text: string }> = {
+  generic: { bg: "bg-sky-50 dark:bg-sky-500/10", text: "text-sky-600 dark:text-sky-400" },
+  nexus_agent: { bg: "bg-sky-50 dark:bg-sky-500/10", text: "text-sky-600 dark:text-sky-400" },
+  web_search: { bg: "bg-emerald-50 dark:bg-emerald-500/10", text: "text-emerald-600 dark:text-emerald-400" },
+  web_researcher: { bg: "bg-emerald-50 dark:bg-emerald-500/10", text: "text-emerald-600 dark:text-emerald-400" },
+  postgresql: { bg: "bg-blue-50 dark:bg-blue-500/10", text: "text-blue-600 dark:text-blue-400" },
+  mysql: { bg: "bg-orange-50 dark:bg-orange-500/10", text: "text-orange-600 dark:text-orange-400" },
+  mssql: { bg: "bg-red-50 dark:bg-red-500/10", text: "text-red-600 dark:text-red-400" },
+  snowflake: { bg: "bg-cyan-50 dark:bg-cyan-500/10", text: "text-cyan-600 dark:text-cyan-400" },
+  mongodb: { bg: "bg-green-50 dark:bg-green-500/10", text: "text-green-600 dark:text-green-400" },
+  mcp: { bg: "bg-purple-50 dark:bg-purple-500/10", text: "text-purple-600 dark:text-purple-400" },
+  mcp_server: { bg: "bg-purple-50 dark:bg-purple-500/10", text: "text-purple-600 dark:text-purple-400" },
+  api_integration: { bg: "bg-indigo-50 dark:bg-indigo-500/10", text: "text-indigo-600 dark:text-indigo-400" },
+  api_connector: { bg: "bg-indigo-50 dark:bg-indigo-500/10", text: "text-indigo-600 dark:text-indigo-400" },
+  file_operations: { bg: "bg-amber-50 dark:bg-amber-500/10", text: "text-amber-600 dark:text-amber-400" },
+};
+
+function getTypeColors(typeId: string) {
+  return TYPE_COLORS[typeId] ?? { bg: "bg-neutral-50 dark:bg-neutral-800", text: "text-neutral-600 dark:text-neutral-400" };
+}
+
 interface PersonaFormData {
   name: string;
   description: string;
@@ -71,7 +120,9 @@ export default function PersonasPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState("All");
-  const [showForm, setShowForm] = useState(false);
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [wizardStep, setWizardStep] = useState<1 | 2>(1);
+  const [typeSearch, setTypeSearch] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<PersonaFormData>(emptyForm);
   const [saving, setSaving] = useState(false);
@@ -115,7 +166,10 @@ export default function PersonasPage() {
   function openCreate() {
     setForm(emptyForm);
     setEditingId(null);
-    setShowForm(true);
+    setWizardStep(1);
+    setTypeSearch("");
+    setTestResult(null);
+    setWizardOpen(true);
   }
 
   function openEdit(persona: Persona) {
@@ -128,7 +182,9 @@ export default function PersonasPage() {
       credentials: ((persona as unknown as Record<string, unknown>).credentials as Record<string, string>) || {},
     });
     setEditingId(persona.id);
-    setShowForm(true);
+    setWizardStep(2); // Edit opens directly on step 2
+    setTestResult(null);
+    setWizardOpen(true);
   }
 
   async function handleSave() {
@@ -150,7 +206,7 @@ export default function PersonasPage() {
       } else {
         await createPersona(payload);
       }
-      setShowForm(false);
+      setWizardOpen(false);
       await loadPersonas();
     } catch (err) {
       console.error("Failed to save persona:", err);
@@ -345,10 +401,24 @@ export default function PersonasPage() {
         </div>
       )}
 
-      {/* Create/Edit modal */}
-      {showForm && (() => {
+      {/* Create/Edit Wizard */}
+      {wizardOpen && (() => {
         const selectedType = personaTypes.find((pt) => pt.id === form.type);
         const credFields = selectedType?.credentialFields ?? [];
+        const isEdit = !!editingId;
+
+        const filteredTypes = personaTypes.filter(
+          (pt) =>
+            !typeSearch ||
+            pt.name.toLowerCase().includes(typeSearch.toLowerCase()) ||
+            pt.description?.toLowerCase().includes(typeSearch.toLowerCase())
+        );
+
+        function selectType(typeId: string) {
+          setForm((prev) => ({ ...prev, type: typeId, credentials: {} }));
+          setTestResult(null);
+          setWizardStep(2);
+        }
 
         function updateCredential(fieldName: string, value: string) {
           setForm((prev) => ({
@@ -362,234 +432,253 @@ export default function PersonasPage() {
           const val = form.credentials[field.name] ?? "";
 
           if (field.type === "textarea") {
-            return (
-              <textarea
-                value={val}
-                onChange={(e) => updateCredential(field.name, e.target.value)}
-                rows={4}
-                placeholder={field.placeholder}
-                className={cn(inputClass, "resize-none font-mono")}
-              />
-            );
+            return <textarea value={val} onChange={(e) => updateCredential(field.name, e.target.value)} rows={4} placeholder={field.placeholder} className={cn(inputClass, "resize-none font-mono")} />;
           }
-
           if (field.type === "select" && field.options) {
             return (
-              <select
-                value={val}
-                onChange={(e) => updateCredential(field.name, e.target.value)}
-                className={inputClass}
-              >
+              <select value={val} onChange={(e) => updateCredential(field.name, e.target.value)} className={inputClass}>
                 <option value="">Select...</option>
-                {field.options.map((opt) => (
-                  <option key={opt} value={opt}>{opt}</option>
-                ))}
+                {field.options.map((opt) => (<option key={opt} value={opt}>{opt}</option>))}
               </select>
             );
           }
-
           if (field.type === "boolean") {
             return (
               <label className="flex items-center gap-2 text-sm text-neutral-700 dark:text-neutral-300">
-                <input
-                  type="checkbox"
-                  checked={val === "true"}
-                  onChange={(e) => updateCredential(field.name, e.target.checked ? "true" : "false")}
-                  className="rounded border-neutral-300 dark:border-neutral-600 text-primary-500 focus:ring-primary-500/50"
-                />
+                <input type="checkbox" checked={val === "true"} onChange={(e) => updateCredential(field.name, e.target.checked ? "true" : "false")} className="rounded border-neutral-300 dark:border-neutral-600 text-primary-500 focus:ring-primary-500/50" />
                 {field.label}
               </label>
             );
           }
-
           const inputType = field.type === "number" ? "number" : field.type === "password" ? "password" : field.type === "email" ? "email" : field.type === "url" ? "url" : "text";
-
-          return (
-            <input
-              type={inputType}
-              value={val}
-              onChange={(e) => updateCredential(field.name, e.target.value)}
-              placeholder={field.placeholder}
-              className={inputClass}
-            />
-          );
+          return <input type={inputType} value={val} onChange={(e) => updateCredential(field.name, e.target.value)} placeholder={field.placeholder} className={inputClass} />;
         }
 
         return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-white dark:bg-neutral-800 rounded-xl w-full max-w-lg mx-4 shadow-xl max-h-[90vh] flex flex-col">
-            <div className="flex items-center justify-between p-5 border-b border-neutral-200 dark:border-neutral-700 shrink-0">
-              <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
-                {editingId ? "Edit Persona" : "Create Persona"}
-              </h3>
-              <button
-                onClick={() => setShowForm(false)}
-                className="p-1 rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-700 text-neutral-400 transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="p-5 space-y-4 overflow-y-auto">
-              <div>
-                <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
-                  Name
-                </label>
-                <input
-                  type="text"
-                  value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  placeholder="e.g., My Production DB"
-                  className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-sm text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-primary-500/50"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
-                  Description
-                </label>
-                <input
-                  type="text"
-                  value={form.description}
-                  onChange={(e) => setForm({ ...form, description: e.target.value })}
-                  placeholder="A short description of what this persona does"
-                  className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-sm text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-primary-500/50"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
-                    Type
-                  </label>
-                  <select
-                    value={form.type}
-                    onChange={(e) => { setForm({ ...form, type: e.target.value, credentials: {} }); setTestResult(null); }}
-                    className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-sm text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-primary-500/50"
-                  >
-                    {personaTypes.length > 0 ? (
-                      personaTypes.map((pt) => (
-                        <option key={pt.id} value={pt.id}>
-                          {pt.icon ? `${pt.icon} ` : ""}{pt.name}
-                        </option>
-                      ))
-                    ) : (
-                      <>
-                        <option value="generic">Nexus Agent</option>
-                        <option value="web_search">Web Researcher</option>
-                        <option value="postgresql">PostgreSQL</option>
-                        <option value="mysql">MySQL</option>
-                        <option value="api_integration">API Connector</option>
-                      </>
-                    )}
-                  </select>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="bg-white dark:bg-neutral-900 rounded-2xl w-full max-w-4xl mx-4 shadow-2xl border border-neutral-200 dark:border-neutral-700 max-h-[90vh] flex flex-col overflow-hidden">
+            {/* Header with step indicator */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-200 dark:border-neutral-800 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-primary-50 dark:bg-primary-500/10">
+                  <Sparkles className="w-5 h-5 text-primary-500" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
-                    Category
-                  </label>
-                  <select
-                    value={form.category}
-                    onChange={(e) => setForm({ ...form, category: e.target.value })}
-                    className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-sm text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-primary-500/50"
-                  >
-                    {PERSONA_CATEGORIES.filter((c) => c !== "All").map((cat) => (
-                      <option key={cat} value={cat}>
-                        {cat}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* Type-specific credential fields */}
-              {credFields.length > 0 && (() => {
-                const testableTypes = ["postgresql", "mysql", "mssql", "snowflake", "mongodb", "mcp", "slack"];
-                const canTest = testableTypes.includes(form.type);
-
-                async function handleTestConnection() {
-                  setTesting(true);
-                  setTestResult(null);
-                  try {
-                    const result = await testConnection(form.type, form.credentials);
-                    setTestResult({
-                      success: result.success,
-                      message: result.success
-                        ? result.message || "Connection successful"
-                        : result.error || "Connection failed",
-                    });
-                  } catch {
-                    setTestResult({ success: false, message: "Connection test failed" });
-                  } finally {
-                    setTesting(false);
-                  }
-                }
-
-                return (
-                <div className="space-y-3 pt-2 border-t border-neutral-200 dark:border-neutral-700">
-                  <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wider">
-                    {selectedType?.name} Configuration
+                  <h2 className="text-lg font-semibold text-neutral-900 dark:text-white">
+                    {isEdit ? "Edit Persona" : "Add New Persona"}
+                  </h2>
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                    {wizardStep === 1 ? "Choose the type of persona you want to create" : `Configure your ${selectedType?.name ?? "persona"}`}
                   </p>
-                  {credFields.map((field) => (
-                    <div key={field.name}>
-                      {field.type !== "boolean" && (
-                        <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
-                          {field.label}
-                          {field.required && <span className="text-red-500 ml-0.5">*</span>}
-                        </label>
-                      )}
-                      {renderCredentialField(field)}
-                    </div>
-                  ))}
+                </div>
+              </div>
+              <div className="flex items-center gap-4">
+                {/* Step indicator */}
+                <div className="flex items-center gap-2">
+                  <div className={cn("w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-colors", wizardStep >= 1 ? "bg-primary-500 text-white" : "bg-neutral-200 dark:bg-neutral-700 text-neutral-500")}>
+                    {wizardStep > 1 ? <Check className="w-3.5 h-3.5" /> : "1"}
+                  </div>
+                  <div className="w-8 h-0.5 bg-neutral-200 dark:bg-neutral-700">
+                    <div className={cn("h-full transition-all", wizardStep >= 2 ? "w-full bg-primary-500" : "w-0")} />
+                  </div>
+                  <div className={cn("w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-colors", wizardStep >= 2 ? "bg-primary-500 text-white" : "bg-neutral-200 dark:bg-neutral-700 text-neutral-500")}>
+                    2
+                  </div>
+                </div>
+                <button onClick={() => setWizardOpen(false)} className="p-2 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors">
+                  <X className="w-5 h-5 text-neutral-500" />
+                </button>
+              </div>
+            </div>
 
-                  {canTest && (
-                    <div className="flex items-center gap-3 pt-1">
-                      <button
-                        type="button"
-                        onClick={handleTestConnection}
-                        disabled={testing}
-                        className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 disabled:opacity-50 transition-colors"
-                      >
-                        {testing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plug className="w-3.5 h-3.5" />}
-                        {testing ? "Testing..." : "Test Connection"}
-                      </button>
-                      {testResult && (
-                        <span className={cn("flex items-center gap-1 text-xs font-medium", testResult.success ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400")}>
-                          {testResult.success ? <Check className="w-3.5 h-3.5" /> : <AlertCircle className="w-3.5 h-3.5" />}
-                          {testResult.message}
-                        </span>
-                      )}
-                    </div>
+            {/* Body */}
+            <div className="flex-1 overflow-y-auto">
+              {/* ─── Step 1: Select Persona Type ─── */}
+              {wizardStep === 1 && (
+                <div className="p-6 space-y-4">
+                  <div>
+                    <h3 className="text-lg font-semibold text-neutral-900 dark:text-white mb-1">
+                      Select Persona Type
+                    </h3>
+                    <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                      Choose the type of persona you want to create
+                    </p>
+                  </div>
+
+                  {/* Search */}
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
+                    <input
+                      type="text"
+                      value={typeSearch}
+                      onChange={(e) => setTypeSearch(e.target.value)}
+                      placeholder="Search persona types..."
+                      className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-sm text-neutral-900 dark:text-neutral-100 placeholder-neutral-400 focus:outline-none focus:ring-2 focus:ring-primary-500/50"
+                    />
+                  </div>
+
+                  {/* Type grid */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                    {filteredTypes.map((pt) => {
+                      const Icon = getPersonaTypeIcon(pt.id);
+                      const colors = getTypeColors(pt.id);
+                      return (
+                        <button
+                          key={pt.id}
+                          type="button"
+                          onClick={() => selectType(pt.id)}
+                          className={cn(
+                            "flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all hover:shadow-md text-center group",
+                            form.type === pt.id
+                              ? "border-primary-500 bg-primary-50 dark:bg-primary-500/10 shadow-md"
+                              : "border-neutral-200 dark:border-neutral-700 hover:border-primary-300 dark:hover:border-primary-700"
+                          )}
+                        >
+                          <div className={cn("w-10 h-10 rounded-lg flex items-center justify-center transition-colors", form.type === pt.id ? "bg-primary-100 dark:bg-primary-500/20" : colors.bg)}>
+                            <Icon className={cn("w-5 h-5 transition-colors", form.type === pt.id ? "text-primary-500" : colors.text)} />
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-neutral-900 dark:text-white leading-tight">
+                              {pt.name}
+                            </p>
+                            <p className="text-[11px] text-neutral-500 dark:text-neutral-400 line-clamp-2 mt-0.5">
+                              {pt.description}
+                            </p>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {filteredTypes.length === 0 && (
+                    <div className="text-center py-8 text-sm text-neutral-400">No persona types match your search</div>
                   )}
                 </div>
-                );
-              })()}
+              )}
 
-              {/* System prompt — always shown */}
-              <div>
-                <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
-                  System Prompt
-                </label>
-                <textarea
-                  value={form.system_prompt}
-                  onChange={(e) => setForm({ ...form, system_prompt: e.target.value })}
-                  rows={4}
-                  placeholder="Optional instructions that define how this persona behaves..."
-                  className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-sm text-neutral-900 dark:text-neutral-100 font-mono focus:outline-none focus:ring-2 focus:ring-primary-500/50 resize-none"
-                />
-              </div>
+              {/* ─── Step 2: Configure Details ─── */}
+              {wizardStep === 2 && (
+                <div className="p-6 space-y-4">
+                  {/* Selected type badge */}
+                  {selectedType && !isEdit && (
+                    <div className="flex items-center gap-2 mb-2">
+                      <button type="button" onClick={() => setWizardStep(1)} className="flex items-center gap-1.5 text-xs font-medium text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 transition-colors">
+                        <ArrowLeft className="w-3.5 h-3.5" />
+                        Change type
+                      </button>
+                      <span className="text-neutral-300 dark:text-neutral-600">|</span>
+                      <span className="text-xs font-medium text-neutral-500 dark:text-neutral-400">
+                        {selectedType.icon ? `${selectedType.icon} ` : ""}{selectedType.name}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Name + Category */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
+                        Name <span className="text-red-500">*</span>
+                      </label>
+                      <input type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g., My Production DB" className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-sm text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-primary-500/50" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">Category</label>
+                      <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-sm text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-primary-500/50">
+                        {PERSONA_CATEGORIES.filter((c) => c !== "All").map((cat) => (<option key={cat} value={cat}>{cat}</option>))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Description */}
+                  <div>
+                    <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">Description</label>
+                    <input type="text" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="A short description of what this persona does" className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-sm text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-primary-500/50" />
+                  </div>
+
+                  {/* Type-specific credential fields */}
+                  {credFields.length > 0 && (() => {
+                    const testableTypes = ["postgresql", "mysql", "mssql", "snowflake", "mongodb", "mcp"];
+                    const canTest = testableTypes.includes(form.type);
+
+                    async function handleTestConnection() {
+                      setTesting(true);
+                      setTestResult(null);
+                      try {
+                        const result = await testConnection(form.type, form.credentials);
+                        setTestResult({ success: result.success, message: result.success ? result.message || "Connection successful" : result.error || "Connection failed" });
+                      } catch {
+                        setTestResult({ success: false, message: "Connection test failed" });
+                      } finally {
+                        setTesting(false);
+                      }
+                    }
+
+                    return (
+                    <div className="space-y-3 pt-2 border-t border-neutral-200 dark:border-neutral-700">
+                      <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wider">{selectedType?.name} Configuration</p>
+                      {credFields.map((field) => (
+                        <div key={field.name}>
+                          {field.type !== "boolean" && (
+                            <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
+                              {field.label}{field.required && <span className="text-red-500 ml-0.5">*</span>}
+                            </label>
+                          )}
+                          {renderCredentialField(field)}
+                        </div>
+                      ))}
+                      {canTest && (
+                        <div className="flex items-center gap-3 pt-1">
+                          <button type="button" onClick={handleTestConnection} disabled={testing} className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 disabled:opacity-50 transition-colors">
+                            {testing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plug className="w-3.5 h-3.5" />}
+                            {testing ? "Testing..." : "Test Connection"}
+                          </button>
+                          {testResult && (
+                            <span className={cn("flex items-center gap-1 text-xs font-medium", testResult.success ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400")}>
+                              {testResult.success ? <Check className="w-3.5 h-3.5" /> : <AlertCircle className="w-3.5 h-3.5" />}
+                              {testResult.message}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    );
+                  })()}
+
+                  {/* System prompt */}
+                  <div>
+                    <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">System Prompt</label>
+                    <textarea value={form.system_prompt} onChange={(e) => setForm({ ...form, system_prompt: e.target.value })} rows={4} placeholder="Optional instructions that define how this persona behaves..." className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-sm text-neutral-900 dark:text-neutral-100 font-mono focus:outline-none focus:ring-2 focus:ring-primary-500/50 resize-none" />
+                  </div>
+                </div>
+              )}
             </div>
-            <div className="flex justify-end gap-2 p-5 border-t border-neutral-200 dark:border-neutral-700 shrink-0">
-              <button
-                onClick={() => setShowForm(false)}
-                className="px-4 py-2 rounded-lg text-sm font-medium bg-neutral-100 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-600 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSave}
-                disabled={!form.name.trim() || saving}
-                className="px-4 py-2 rounded-lg text-sm font-medium bg-primary-500 text-white hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                {saving ? "Saving..." : editingId ? "Update" : "Create"}
-              </button>
+
+            {/* Footer */}
+            <div className="flex items-center justify-between px-6 py-4 border-t border-neutral-200 dark:border-neutral-800 shrink-0">
+              <div>
+                {wizardStep === 2 && !isEdit && (
+                  <button type="button" onClick={() => setWizardStep(1)} className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors">
+                    <ArrowLeft className="w-4 h-4" />
+                    Back
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <button onClick={() => setWizardOpen(false)} className="px-4 py-2 rounded-lg text-sm font-medium bg-neutral-100 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-600 transition-colors">
+                  Cancel
+                </button>
+                {wizardStep === 1 && (
+                  <button onClick={() => setWizardStep(2)} className="flex items-center gap-2 px-5 py-2 rounded-lg bg-primary-500 text-white hover:bg-primary-600 transition-colors text-sm font-medium">
+                    Next <ArrowRight className="w-4 h-4" />
+                  </button>
+                )}
+                {wizardStep === 2 && (
+                  <button onClick={handleSave} disabled={!form.name.trim() || saving} className="flex items-center gap-2 px-5 py-2 rounded-lg bg-primary-500 text-white hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium">
+                    {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                    {saving ? "Saving..." : isEdit ? "Update" : "Create"}
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>

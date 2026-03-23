@@ -10,7 +10,11 @@ import { type Page, type Locator, expect } from "@playwright/test";
  * - Tabs: Crews | Runs
  * - Status filter and mode filter selects (crews tab only)
  * - Crew cards with Run buttons
- * - CrewBuilder modal
+ * - CrewBuilder wizard (4-step):
+ *   Step 1: Crew Details (name, description)
+ *   Step 2: Execution Mode
+ *   Step 3: Agent Team
+ *   Step 4: Review & Create
  */
 export class CrewsPage {
   readonly page: Page;
@@ -85,14 +89,44 @@ export class CrewsPage {
     return this.page.locator("svg.lucide-loader-2.animate-spin");
   }
 
-  // ── Crew Builder Dialog Locators ─────────────────────────────────
+  // ── Wizard Dialog Locators ─────────────────────────────────────
 
-  /** The crew builder dialog overlay. */
+  /** The wizard dialog overlay. */
   get builderDialog(): Locator {
     return this.page.locator(".fixed.inset-0.z-50");
   }
 
-  /** "Browse Library" button inside the crew builder. */
+  /** Crew name input (step 1). */
+  get crewNameInput(): Locator {
+    return this.builderDialog.locator('input[placeholder="e.g., Research & Analysis Team"]');
+  }
+
+  /** Crew description textarea (step 1). */
+  get crewDescriptionInput(): Locator {
+    return this.builderDialog.locator('textarea[placeholder="What does this crew do?"]');
+  }
+
+  /** Next button in the wizard. */
+  get nextButton(): Locator {
+    return this.builderDialog.getByRole("button", { name: /next/i });
+  }
+
+  /** Back button in the wizard. */
+  get backButton(): Locator {
+    return this.builderDialog.getByRole("button", { name: /back/i });
+  }
+
+  /** Create Crew submit button (step 4). */
+  get submitButton(): Locator {
+    return this.builderDialog.getByRole("button", { name: /create crew|save changes/i });
+  }
+
+  /** Step indicator dots. */
+  get stepIndicators(): Locator {
+    return this.builderDialog.locator(".rounded-full.w-7.h-7");
+  }
+
+  /** "Browse Library" button inside the crew builder (step 3). */
   get browseLibraryButton(): Locator {
     return this.builderDialog.getByRole("button", { name: /browse library/i });
   }
@@ -146,8 +180,7 @@ export class CrewsPage {
   }
 
   /**
-   * Open the Create Crew modal.
-   * The exact form depends on CrewBuilder component.
+   * Open the wizard and create a crew through all steps.
    */
   async createCrew(data: {
     name: string;
@@ -157,26 +190,33 @@ export class CrewsPage {
     await this.createButton.click();
     await this.page.waitForTimeout(500);
 
-    // Fill name (first text input in the modal)
-    const nameInput = this.page.locator('.fixed input[type="text"]').first();
-    if (await nameInput.isVisible()) {
-      await nameInput.fill(data.name);
+    // Step 1: Fill crew details
+    await this.crewNameInput.fill(data.name);
+    if (data.description) {
+      await this.crewDescriptionInput.fill(data.description);
     }
 
-    if (data.description) {
-      const descInput = this.page.locator(".fixed textarea").first();
-      if (await descInput.isVisible()) {
-        await descInput.fill(data.description);
-      }
-    }
+    // Next → Step 2 (Execution Mode)
+    await this.nextButton.click();
+    await this.page.waitForTimeout(300);
+
+    // Next → Step 3 (Agents)
+    await this.nextButton.click();
+    await this.page.waitForTimeout(300);
+
+    // Next → Step 4 (Connections)
+    await this.nextButton.click();
+    await this.page.waitForTimeout(300);
+
+    // Next → Step 5 (Review)
+    await this.nextButton.click();
+    await this.page.waitForTimeout(300);
 
     // Submit
-    const submitButton = this.page
-      .locator(".fixed button")
-      .filter({ hasText: /create/i })
-      .last();
-    if (await submitButton.isVisible()) {
-      await submitButton.click();
+    const submitBtn = this.builderDialog
+      .getByRole("button", { name: /create crew/i });
+    if (await submitBtn.isVisible()) {
+      await submitBtn.click();
     }
 
     await this.page.waitForTimeout(1000);
@@ -200,14 +240,29 @@ export class CrewsPage {
     await this.page.waitForTimeout(500);
   }
 
-  /** Open the crew builder dialog by clicking "Create Crew". */
+  /** Open the crew builder wizard by clicking "Create Crew". */
   async openBuilder(): Promise<void> {
     await this.createButton.click();
     await this.builderDialog.waitFor({ state: "visible", timeout: 5000 });
     await this.page.waitForTimeout(300);
   }
 
-  /** Open the library panel from within the crew builder dialog. */
+  /** Navigate to a specific wizard step (from step 1). */
+  async goToStep(targetStep: number): Promise<void> {
+    for (let i = 1; i < targetStep; i++) {
+      // Fill required fields if on step 1
+      if (i === 1) {
+        const nameValue = await this.crewNameInput.inputValue();
+        if (!nameValue) {
+          await this.crewNameInput.fill("Temp Crew");
+        }
+      }
+      await this.nextButton.click();
+      await this.page.waitForTimeout(300);
+    }
+  }
+
+  /** Open the library panel from within the crew builder dialog (must be on step 3). */
   async openLibraryPanel(): Promise<void> {
     await this.browseLibraryButton.click();
     await this.libraryPanel.waitFor({ state: "visible", timeout: 5000 });
@@ -218,7 +273,6 @@ export class CrewsPage {
   async searchLibraryAgents(query: string): Promise<void> {
     await this.librarySearchInput.clear();
     await this.librarySearchInput.fill(query);
-    // Wait for debounced search (300ms) plus render
     await this.page.waitForTimeout(600);
   }
 
@@ -228,14 +282,14 @@ export class CrewsPage {
     await this.page.waitForTimeout(300);
   }
 
-  /** Get all agent name inputs in the crew builder (for the agent pipeline section). */
+  /** Get all agent name inputs in step 3 of the wizard. */
   get agentNameInputs(): Locator {
     return this.builderDialog.locator(
-      '.space-y-4 input[placeholder="e.g., Researcher"]'
+      'input[placeholder="e.g., Researcher"]'
     );
   }
 
-  /** Get all agent instruction textareas in the crew builder. */
+  /** Get all agent instruction textareas in step 3 of the wizard. */
   get agentInstructionTextareas(): Locator {
     return this.builderDialog.locator(
       'textarea[placeholder*="What should this agent do"]'

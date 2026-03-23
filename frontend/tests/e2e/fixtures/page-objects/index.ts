@@ -6,3 +6,4 @@ export { CrewsPage } from "./crews.page";
 export { ConnectionsPage } from "./connections.page";
 export { SettingsPage } from "./settings.page";
 export { NavigationPage } from "./navigation.page";
+export { BlueprintsPage } from "./blueprints.page";

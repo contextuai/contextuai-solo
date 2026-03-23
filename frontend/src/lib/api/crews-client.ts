@@ -29,6 +29,12 @@ export interface CrewSchedule {
   timezone?: string;
 }
 
+export interface ChannelBinding {
+  channel_type: string;
+  enabled: boolean;
+  approval_required: boolean;
+}
+
 export interface Crew {
   id?: string;
   crew_id: string;
@@ -36,6 +42,7 @@ export interface Crew {
   description?: string;
   execution_config?: CrewExecutionConfig;
   agents?: CrewAgent[];
+  channel_bindings?: ChannelBinding[];
   phases?: unknown[];
   schedule?: CrewSchedule;
   status: "active" | "paused" | "archived" | "idle";

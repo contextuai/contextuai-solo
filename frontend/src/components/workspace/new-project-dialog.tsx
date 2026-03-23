@@ -16,8 +16,13 @@ import {
   ChevronDown,
   Users,
   Play,
+  BookOpen,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  BlueprintSelector,
+  type BlueprintSelection,
+} from "@/components/blueprints/blueprint-selector";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -66,6 +71,8 @@ export function NewProjectDialog({ isOpen, onClose, onCreated }: NewProjectDialo
   const [loadingAgents, setLoadingAgents] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [blueprintSelectorOpen, setBlueprintSelectorOpen] = useState(false);
+  const [selectedBlueprint, setSelectedBlueprint] = useState<BlueprintSelection | null>(null);
 
   // Load project types and agents when dialog opens
   useEffect(() => {
@@ -99,6 +106,7 @@ export function NewProjectDialog({ isOpen, onClose, onCreated }: NewProjectDialo
       setProjectType("");
       setSelectedAgentIds([]);
       setError(null);
+      setSelectedBlueprint(null);
     }
   }, [isOpen]);
 
@@ -265,11 +273,39 @@ export function NewProjectDialog({ isOpen, onClose, onCreated }: NewProjectDialo
                   )}
                 </div>
 
-                {/* Description */}
+                {/* Description + Blueprint */}
                 <div>
-                  <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1.5">
-                    Description
-                  </label>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">
+                      Description
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setBlueprintSelectorOpen(true)}
+                      className="flex items-center gap-1.5 text-xs font-medium text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 transition-colors"
+                    >
+                      <BookOpen className="w-3.5 h-3.5" />
+                      Use Blueprint
+                    </button>
+                  </div>
+                  {selectedBlueprint && (
+                    <div className="flex items-center gap-2 mb-2 px-3 py-1.5 rounded-lg bg-primary-50 dark:bg-primary-500/10 border border-primary-200 dark:border-primary-800">
+                      <BookOpen className="w-3.5 h-3.5 text-primary-500 flex-shrink-0" />
+                      <span className="text-xs text-primary-700 dark:text-primary-300 font-medium truncate">
+                        {selectedBlueprint.name}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedBlueprint(null);
+                          setDescription("");
+                        }}
+                        className="ml-auto p-0.5 rounded hover:bg-primary-100 dark:hover:bg-primary-500/20 transition-colors"
+                      >
+                        <X className="w-3 h-3 text-primary-500" />
+                      </button>
+                    </div>
+                  )}
                   <textarea
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
@@ -386,6 +422,17 @@ export function NewProjectDialog({ isOpen, onClose, onCreated }: NewProjectDialo
               </div>
             </div>
           </motion.div>
+
+          {/* Blueprint Selector */}
+          <BlueprintSelector
+            open={blueprintSelectorOpen}
+            onClose={() => setBlueprintSelectorOpen(false)}
+            onSelect={(bp) => {
+              setSelectedBlueprint(bp);
+              setDescription(bp.content);
+              setBlueprintSelectorOpen(false);
+            }}
+          />
         </>
       )}
     </AnimatePresence>

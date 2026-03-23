@@ -13,6 +13,8 @@ import pathlib
 from typing import Dict, Any, List, Optional, Union, AsyncGenerator
 from functools import partial
 
+from services.think_tag_parser import parse_think_tags, StreamingThinkParser
+
 logger = logging.getLogger(__name__)
 
 try:
@@ -40,6 +42,7 @@ class LocalModelService:
         self._model: Optional[Any] = None
         self._loaded_model_path: Optional[str] = None
         self._loaded_model_id: Optional[str] = None
+        self._inference_lock = asyncio.Lock()
         logger.info(
             "LocalModelService initialized – models dir: %s, llama-cpp available: %s",
             MODELS_DIR,
@@ -133,13 +136,60 @@ class LocalModelService:
             self.unload_model()
 
         logger.info("Loading GGUF model from %s …", model_path)
-        self._model = Llama(
-            model_path=model_path,
-            n_ctx=4096,
-            n_threads=os.cpu_count() or 4,
-        )
+
+        # Determine context size — smaller for very large models to save RAM
+        file_size_gb = os.path.getsize(model_path) / (1024 ** 3)
+        if file_size_gb > 15:
+            n_ctx = 2048
+            logger.info("Large model (%.1f GB) — using n_ctx=%d to save RAM", file_size_gb, n_ctx)
+        elif file_size_gb > 8:
+            n_ctx = 4096
+        else:
+            n_ctx = 4096
+
+        try:
+            self._model = Llama(
+                model_path=model_path,
+                n_ctx=n_ctx,
+                n_threads=os.cpu_count() or 4,
+                use_mmap=True,
+                verbose=False,
+            )
+        except Exception as e:
+            error_msg = str(e)
+            logger.error("Failed to load model %s: %s", model_path, error_msg)
+
+            # Check for unsupported architecture
+            if "unknown model architecture" in error_msg:
+                import llama_cpp as _lc
+                version = getattr(_lc, "__version__", "unknown")
+                raise RuntimeError(
+                    f"This model requires a newer version of llama-cpp-python. "
+                    f"Current version: {version}. "
+                    f"Run: pip install --upgrade llama-cpp-python"
+                ) from e
+
+            # Retry with minimal context if it failed for other reasons
+            if n_ctx > 512:
+                logger.info("Retrying with n_ctx=512...")
+                try:
+                    self._model = Llama(
+                        model_path=model_path,
+                        n_ctx=512,
+                        n_threads=os.cpu_count() or 4,
+                        use_mmap=True,
+                        verbose=False,
+                    )
+                except Exception as retry_err:
+                    raise RuntimeError(
+                        f"Failed to load model: {error_msg}. "
+                        f"Retry with n_ctx=512 also failed: {retry_err}"
+                    ) from retry_err
+            else:
+                raise
+
         self._loaded_model_path = model_path
-        logger.info("Model loaded successfully: %s", model_path)
+        logger.info("Model loaded successfully: %s (%.1f GB, n_ctx=%d)", model_path, file_size_gb, n_ctx)
         return self._model
 
     def load_model(self, model_path: str, model_id: str = None) -> None:
@@ -275,9 +325,23 @@ class LocalModelService:
         )
 
         if stream:
-            return self._stream_response(messages, model_id, max_tokens, temperature, tools)
+            return self._locked_stream(messages, model_id, max_tokens, temperature, tools)
         else:
-            return await self._sync_response(messages, model_id, max_tokens, temperature, tools)
+            async with self._inference_lock:
+                return await self._sync_response(messages, model_id, max_tokens, temperature, tools)
+
+    async def _locked_stream(
+        self,
+        messages: List[Dict[str, str]],
+        model_id: str,
+        max_tokens: int,
+        temperature: float,
+        tools: Optional[List[Dict[str, Any]]] = None,
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        """Wrap streaming with inference lock so concurrent requests wait."""
+        async with self._inference_lock:
+            async for chunk in self._stream_response(messages, model_id, max_tokens, temperature, tools):
+                yield chunk
 
     async def _sync_response(
         self,
@@ -308,8 +372,11 @@ class LocalModelService:
         content = message.get("content") or ""
         usage = response.get("usage", {})
 
+        # Strip <think> tags and extract reasoning
+        parsed = parse_think_tags(content)
+
         result: Dict[str, Any] = {
-            "content": content,
+            "content": parsed.content,
             "model_id": model_id,
             "tokens_used": {
                 "input_tokens": usage.get("prompt_tokens", 0),
@@ -318,6 +385,9 @@ class LocalModelService:
             },
             "stop_reason": "end_turn",
         }
+
+        if parsed.reasoning:
+            result["reasoning"] = parsed.reasoning
 
         # Attach tool calls if the model produced any
         tool_calls = message.get("tool_calls")
@@ -353,7 +423,7 @@ class LocalModelService:
             partial(self._model.create_chat_completion, **create_kwargs),
         )
 
-        accumulated_text = ""
+        think_parser = StreamingThinkParser()
 
         def _next_chunk(it):
             """Pull one chunk from the blocking iterator (runs in executor)."""
@@ -365,7 +435,16 @@ class LocalModelService:
         while True:
             chunk = await loop.run_in_executor(None, _next_chunk, stream_iter)
             if chunk is None:
-                # Stream exhausted – emit final frame
+                # Flush remaining buffered text
+                for kind, segment_text in think_parser.finish():
+                    if segment_text:
+                        yield {
+                            "chunk": segment_text if kind == "content" else "",
+                            "thinking": segment_text if kind == "thinking" else "",
+                            "model_id": model_id,
+                            "is_final": False,
+                            "status": "streaming",
+                        }
                 yield {
                     "chunk": "",
                     "model_id": model_id,
@@ -378,22 +457,34 @@ class LocalModelService:
             text = delta.get("content") or ""
             finish_reason = chunk.get("choices", [{}])[0].get("finish_reason")
 
+            if text:
+                for kind, segment_text in think_parser.feed(text):
+                    if segment_text:
+                        yield {
+                            "chunk": segment_text if kind == "content" else "",
+                            "thinking": segment_text if kind == "thinking" else "",
+                            "model_id": model_id,
+                            "is_final": False,
+                            "status": "streaming",
+                        }
+
             if finish_reason:
+                for kind, segment_text in think_parser.finish():
+                    if segment_text:
+                        yield {
+                            "chunk": segment_text if kind == "content" else "",
+                            "thinking": segment_text if kind == "thinking" else "",
+                            "model_id": model_id,
+                            "is_final": False,
+                            "status": "streaming",
+                        }
                 yield {
-                    "chunk": text,
+                    "chunk": "",
                     "model_id": model_id,
                     "is_final": True,
                     "status": "complete",
                 }
                 return
-            elif text:
-                accumulated_text += text
-                yield {
-                    "chunk": text,
-                    "model_id": model_id,
-                    "is_final": False,
-                    "status": "streaming",
-                }
 
 
     async def generate(self, model_id: str, prompt: str, max_tokens: int = 2048) -> str:

@@ -82,7 +82,8 @@ export const api = {
 // SSE streaming support for chat
 export async function* streamRequest(
   path: string,
-  body: unknown
+  body: unknown,
+  signal?: AbortSignal
 ): AsyncGenerator<{ type: string; data: string }, void, unknown> {
   // For streaming, always use fetch (even in Tauri, SSE goes through HTTP)
   const baseUrl = isTauri ? `http://127.0.0.1:${await getSidecarPort()}` : DEV_API_URL.replace("/api/v1", "");
@@ -95,9 +96,11 @@ export async function* streamRequest(
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
+        signal,
       });
       break;
     } catch (err) {
+      if (signal?.aborted) return;
       if (attempt < 4 && isTauri) {
         await sleep(1500 * (attempt + 1));
         continue;
@@ -137,7 +140,10 @@ export async function* streamRequest(
         if (content === "[DONE]") continue;
         try {
           const parsed = JSON.parse(content);
-          if (parsed.chunk !== undefined) {
+          if (parsed.thinking) {
+            yield { type: "thinking", data: parsed.thinking };
+          }
+          if (parsed.chunk) {
             yield { type: "chunk", data: parsed.chunk };
           } else if (parsed.is_final) {
             yield { type: "metadata", data: JSON.stringify(parsed.metadata || {}) };

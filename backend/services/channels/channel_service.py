@@ -504,8 +504,59 @@ class ChannelService:
         """
         Process an inbound channel message.
 
-        Looks up/creates session, dispatches to AI chat, returns response.
+        Applies guardrails (sanitization, rate limiting, prompt injection
+        detection), then dispatches to AI for a response.
         """
+        from services.channel_guardrails import (
+            sanitize_message,
+            check_prompt_injection,
+            check_rate_limit,
+        )
+
+        # --- Guardrails ---
+        # 1. Rate limit
+        allowed, rejection = check_rate_limit(msg.sender_id)
+        if not allowed:
+            return {
+                "session_id": "",
+                "channel_type": msg.channel_type.value,
+                "sender": msg.sender_name,
+                "text": msg.text[:100],
+                "message_id": msg.message_id,
+                "status": "rate_limited",
+                "response": rejection,
+            }
+
+        # 2. Sanitize input
+        msg.text = sanitize_message(msg.text)
+        if not msg.text:
+            return {
+                "session_id": "",
+                "channel_type": msg.channel_type.value,
+                "sender": msg.sender_name,
+                "text": "",
+                "message_id": msg.message_id,
+                "status": "empty",
+                "response": "",
+            }
+
+        # 3. Prompt injection detection
+        is_safe, matched = check_prompt_injection(msg.text)
+        if not is_safe:
+            logger.warning(
+                "Blocked prompt injection from %s (%s): %s",
+                msg.sender_name, msg.sender_id, matched,
+            )
+            return {
+                "session_id": "",
+                "channel_type": msg.channel_type.value,
+                "sender": msg.sender_name,
+                "text": msg.text[:100],
+                "message_id": msg.message_id,
+                "status": "blocked",
+                "response": "I'm here to help with legitimate questions. How can I assist you?",
+            }
+
         session = await self.get_or_create_session(
             msg.channel_type.value, msg.channel_id, msg.sender_id
         )
@@ -519,18 +570,131 @@ class ChannelService:
             },
         )
 
-        # For now, return a structured response indicating the message was received.
-        # In production, this would call the AI chat service.
+        # --- Check for a trigger (crew dispatch) ---
+        try:
+            from services.trigger_service import TriggerService
+            trigger_svc = TriggerService(self.db)
+            trigger_result = await trigger_svc.check_and_dispatch(msg, session)
+            if trigger_result is not None:
+                return {
+                    "session_id": session["session_id"],
+                    "channel_type": msg.channel_type.value,
+                    "sender": msg.sender_name,
+                    "text": msg.text,
+                    "message_id": msg.message_id,
+                    "status": trigger_result["status"],
+                    "response": trigger_result["response"],
+                    "trigger_id": trigger_result.get("trigger_id"),
+                    "approval_id": trigger_result.get("approval_id"),
+                }
+        except ImportError:
+            pass  # trigger_service not yet available — fall through to direct AI
+        except Exception as e:
+            logger.warning("Trigger check failed, falling through to direct AI: %s", e)
+
+        # --- Direct AI reply (default model) ---
+        response_text = await self._get_ai_response(msg.text, session)
+
         return {
             "session_id": session["session_id"],
             "channel_type": msg.channel_type.value,
             "sender": msg.sender_name,
             "text": msg.text,
             "message_id": msg.message_id,
-            "status": "received",
-            "response": f"Message received from {msg.sender_name} via {msg.channel_type.value}. "
-                        f"Session: {session['session_id'][:8]}...",
+            "status": "replied",
+            "response": response_text,
         }
+
+    async def _get_ai_response(
+        self,
+        user_text: str,
+        session: Dict[str, Any],
+    ) -> str:
+        """Generate an AI response using the default local model.
+
+        Always applies the channel safety system prompt to prevent
+        information leakage and prompt injection.
+        """
+        try:
+            from services.default_model_service import DefaultModelService
+            from services.local_model_service import local_model_service, LLAMA_CPP_AVAILABLE
+            from services.channel_guardrails import get_safe_system_prompt
+
+            default_svc = DefaultModelService(self.db)
+            ai_mode = await default_svc.get_ai_mode_preference()
+            model_id = await default_svc.get_default_model_id(ai_mode)
+
+            if not model_id:
+                return "No AI model configured. Please set up a model in Settings."
+
+            # Build lightweight conversation history from this channel session
+            history = await self._get_channel_history(session["session_id"], limit=10)
+
+            # Always wrap with safety guardrails
+            safe_prompt = get_safe_system_prompt()
+
+            # Local model path
+            if LLAMA_CPP_AVAILABLE and (
+                ai_mode == "local"
+                or model_id.startswith("local-")
+                or model_id.startswith("local:")
+            ):
+                model_config = await default_svc.get_default_model_config(ai_mode)
+                result = await local_model_service.call_model(
+                    prompt=user_text,
+                    model_id=model_id,
+                    persona_context={"system_prompt": safe_prompt},
+                    conversation_history=history,
+                    max_tokens=1024,
+                    temperature=0.7,
+                    stream=False,
+                    model_config=model_config or {},
+                )
+                return result.get("content", "I couldn't generate a response.")
+
+            return "No local model available. Please download a model from the Model Hub."
+        except Exception as e:
+            logger.error("AI response generation failed: %s", e, exc_info=True)
+            return f"Sorry, I encountered an error generating a response."
+
+    async def _get_channel_history(
+        self,
+        session_id: str,
+        limit: int = 10,
+    ) -> List[Dict[str, Any]]:
+        """Retrieve recent message history for a channel session."""
+        try:
+            coll = self.db["channel_messages"]
+            cursor = coll.find({"session_id": session_id}).sort("timestamp", -1).limit(limit)
+            messages = []
+            async for doc in cursor:
+                messages.append({
+                    "role": doc.get("role", "user"),
+                    "content": doc.get("content", ""),
+                })
+            messages.reverse()  # oldest first
+            return messages
+        except Exception:
+            return []
+
+    async def _store_channel_message(
+        self,
+        session_id: str,
+        role: str,
+        content: str,
+    ) -> None:
+        """Store a message in the channel_messages collection."""
+        try:
+            coll = self.db["channel_messages"]
+            await coll.insert_one({
+                "_id": str(uuid.uuid4()),
+                "session_id": session_id,
+                "role": role,
+                "content": content,
+                "timestamp": datetime.utcnow().isoformat(),
+            })
+        except Exception as e:
+            logger.warning("Failed to store channel message: %s", e)
 
     async def get_conversations(
         self,

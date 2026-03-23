@@ -52,18 +52,16 @@ test.describe("CRUD via UI", () => {
     expect(crewCount > 0 || emptyCrews).toBeTruthy();
   });
 
-  // DC-CREW-03: Create a crew (opens builder)
-  test("DC-CREW-03: create a crew opens builder", async ({ page }) => {
+  // DC-CREW-03: Create a crew (opens wizard)
+  test("DC-CREW-03: create a crew opens wizard", async ({ page }) => {
     await crews.createButton.click();
     await page.waitForTimeout(500);
 
-    const dialogVisible = await page
-      .locator("[class*='fixed'], [role='dialog']")
-      .first()
-      .isVisible()
-      .catch(() => false);
-
+    const dialogVisible = await crews.builderDialog.isVisible().catch(() => false);
     expect(dialogVisible).toBeTruthy();
+
+    // Should show step 1 with crew name input
+    await expect(crews.crewNameInput).toBeVisible();
   });
 
   // DC-CREW-04: Search crews by name
@@ -90,6 +88,133 @@ test.describe("CRUD via UI", () => {
     // Reset filters
     await crews.statusFilter.selectOption("all");
     await crews.modeFilter.selectOption("all");
+  });
+});
+
+// ==========================================================================
+// Wizard Flow
+// ==========================================================================
+
+test.describe("Wizard Flow", () => {
+  // DC-CREW-WIZ-01: Wizard shows step indicator
+  test("DC-CREW-WIZ-01: wizard shows step indicator", async () => {
+    await crews.openBuilder();
+
+    // Should have 4 step indicator circles
+    const indicators = crews.stepIndicators;
+    const count = await indicators.count();
+    expect(count).toBeGreaterThanOrEqual(3); // 3 for autonomous, 4 for others
+  });
+
+  // DC-CREW-WIZ-02: Step 1 shows crew name and description
+  test("DC-CREW-WIZ-02: step 1 shows crew details", async () => {
+    await crews.openBuilder();
+
+    await expect(crews.crewNameInput).toBeVisible();
+    await expect(crews.crewDescriptionInput).toBeVisible();
+  });
+
+  // DC-CREW-WIZ-03: Next button requires name on step 1
+  test("DC-CREW-WIZ-03: next button requires name", async ({ page }) => {
+    await crews.openBuilder();
+
+    // Next should be disabled without a name
+    await expect(crews.nextButton).toBeDisabled();
+
+    // Fill name
+    await crews.crewNameInput.fill("Test Crew");
+    await expect(crews.nextButton).toBeEnabled();
+  });
+
+  // DC-CREW-WIZ-04: Navigate through all wizard steps
+  test("DC-CREW-WIZ-04: navigate through all wizard steps", async ({ page }) => {
+    await crews.openBuilder();
+
+    // Step 1: Fill name
+    await crews.crewNameInput.fill("Multi-Step Test");
+    await crews.nextButton.click();
+    await page.waitForTimeout(300);
+
+    // Step 2: Execution mode cards should be visible
+    await expect(page.locator("text=Execution Mode").first()).toBeVisible();
+    await crews.nextButton.click();
+    await page.waitForTimeout(300);
+
+    // Step 3: Agent pipeline — fill in required agent fields
+    await expect(page.locator("text=Agent Pipeline").first()).toBeVisible();
+    const agentName = crews.agentNameInputs.first();
+    const agentInstructions = crews.agentInstructionTextareas.first();
+    await agentName.fill("Test Agent");
+    await agentInstructions.fill("Perform research and analysis");
+    await crews.nextButton.click();
+    await page.waitForTimeout(300);
+
+    // Step 4: Connections
+    await expect(page.locator("text=Channel Connections").first()).toBeVisible();
+    await crews.nextButton.click();
+    await page.waitForTimeout(300);
+
+    // Step 5: Review
+    await expect(page.locator("text=Review Configuration").first()).toBeVisible();
+  });
+
+  // DC-CREW-WIZ-05: Connections step shows channel cards
+  test("DC-CREW-WIZ-05: connections step shows channel cards", async ({ page }) => {
+    await crews.openBuilder();
+
+    // Navigate to step 4 (Connections)
+    await crews.crewNameInput.fill("Connections Test");
+    await crews.nextButton.click(); // → Step 2
+    await page.waitForTimeout(200);
+    await crews.nextButton.click(); // → Step 3
+    await page.waitForTimeout(200);
+
+    // Fill agent data to proceed
+    const agentName = crews.agentNameInputs.first();
+    const agentInstructions = crews.agentInstructionTextareas.first();
+    await agentName.fill("Bot Agent");
+    await agentInstructions.fill("Handle messages");
+    await crews.nextButton.click(); // → Step 4 (Connections)
+    await page.waitForTimeout(300);
+
+    // Should show Channel Connections heading
+    await expect(page.locator("text=Channel Connections").first()).toBeVisible();
+
+    // Should have connection cards (Telegram, Discord, LinkedIn, Twitter, Instagram, Facebook)
+    const connectionCards = page.locator(".grid button").filter({
+      has: page.locator("p.text-sm.font-medium"),
+    });
+    const count = await connectionCards.count();
+    expect(count).toBeGreaterThanOrEqual(6);
+
+    // Click Telegram to select it
+    await page.locator("text=Telegram").first().click();
+    await page.waitForTimeout(200);
+
+    // Should show selected count
+    await expect(page.locator("text=1 channel selected")).toBeVisible();
+  });
+
+  // DC-CREW-WIZ-06: Back button navigates backwards
+  test("DC-CREW-WIZ-06: back button navigates backwards", async ({ page }) => {
+    await crews.openBuilder();
+
+    // Go to step 2
+    await crews.crewNameInput.fill("Back Test");
+    await crews.nextButton.click();
+    await page.waitForTimeout(300);
+
+    // Verify on step 2
+    await expect(page.locator("text=Execution Mode").first()).toBeVisible();
+
+    // Go back to step 1
+    await crews.backButton.click();
+    await page.waitForTimeout(300);
+
+    // Should see crew name input again
+    await expect(crews.crewNameInput).toBeVisible();
+    const nameValue = await crews.crewNameInput.inputValue();
+    expect(nameValue).toBe("Back Test"); // preserved
   });
 });
 
@@ -170,7 +295,6 @@ test.describe("Negative Workflows", () => {
 
     const crewCount = await crews.getCrewCount();
     if (crewCount === 0) {
-      // Either shows "No crews yet" or page stays stable
       await expect(page.locator("h1", { hasText: "Crews" })).toBeVisible();
     }
   });
@@ -194,15 +318,17 @@ test.describe("Negative Workflows", () => {
 // ==========================================================================
 
 test.describe("Library Agent Browser", () => {
-  // DC-CREW-12: Browse Library button is visible in the crew builder dialog
-  test("DC-CREW-12: browse library button is visible in crew builder", async () => {
+  // DC-CREW-12: Browse Library button is visible on step 3
+  test("DC-CREW-12: browse library button is visible on step 3", async () => {
     await crews.openBuilder();
+    await crews.goToStep(3);
     await expect(crews.browseLibraryButton).toBeVisible();
   });
 
   // DC-CREW-13: Clicking Browse Library opens the library panel
   test("DC-CREW-13: clicking browse library opens the library panel", async () => {
     await crews.openBuilder();
+    await crews.goToStep(3);
     await crews.openLibraryPanel();
 
     await expect(crews.libraryPanelHeading).toBeVisible();
@@ -212,6 +338,7 @@ test.describe("Library Agent Browser", () => {
   // DC-CREW-14: Library panel shows agents
   test("DC-CREW-14: library panel shows agents", async () => {
     await crews.openBuilder();
+    await crews.goToStep(3);
     await crews.openLibraryPanel();
 
     // Wait for agents to load
@@ -224,6 +351,7 @@ test.describe("Library Agent Browser", () => {
   // DC-CREW-15: Library panel search functionality filters agents
   test("DC-CREW-15: library panel search filters agents", async ({ page }) => {
     await crews.openBuilder();
+    await crews.goToStep(3);
     await crews.openLibraryPanel();
 
     // Wait for initial load
@@ -251,6 +379,7 @@ test.describe("Library Agent Browser", () => {
   // DC-CREW-16: Selecting a library agent adds it to the crew agent list
   test("DC-CREW-16: selecting a library agent adds it to agent list", async ({ page }) => {
     await crews.openBuilder();
+    await crews.goToStep(3);
 
     // Count initial agent entries (there should be 1 empty agent by default)
     const initialAgentCount = await crews.agentNameInputs.count();

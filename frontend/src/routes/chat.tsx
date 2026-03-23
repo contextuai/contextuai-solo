@@ -39,10 +39,12 @@ export default function ChatPage() {
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingContent, setStreamingContent] = useState("");
+  const [streamingThinking, setStreamingThinking] = useState("");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   // Abort controller for stopping stream
   const abortRef = useRef(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // ── Load initial data (wait for backend to be ready) ──────────
   useEffect(() => {
@@ -141,6 +143,7 @@ export default function ChatPage() {
     setActiveSessionId(sessionId);
     setMessages([]);
     setStreamingContent("");
+    setStreamingThinking("");
     setInput("");
 
     // Find session in list for title/model/persona
@@ -169,6 +172,7 @@ export default function ChatPage() {
     setActiveSessionId(null);
     setMessages([]);
     setStreamingContent("");
+    setStreamingThinking("");
     setSessionTitle("New Chat");
     setInput("");
   }, []);
@@ -223,19 +227,28 @@ export default function ChatPage() {
     // Start streaming
     setIsStreaming(true);
     setStreamingContent("");
+    setStreamingThinking("");
+
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
 
     let fullResponse = "";
+    let fullThinking = "";
 
     try {
       for await (const chunk of sendMessageStream(
         prompt,
         sessionId,
         selectedModelId || undefined,
-        selectedPersonaId || undefined
+        selectedPersonaId || undefined,
+        controller.signal
       )) {
         if (abortRef.current) break;
 
-        if (chunk.type === "chunk") {
+        if (chunk.type === "thinking") {
+          fullThinking += chunk.data;
+          setStreamingThinking(fullThinking);
+        } else if (chunk.type === "chunk") {
           fullResponse += chunk.data;
           setStreamingContent(fullResponse);
         } else if (chunk.type === "error") {
@@ -245,19 +258,23 @@ export default function ChatPage() {
         // metadata chunks are silently consumed
       }
     } catch (err) {
-      if (!abortRef.current) {
+      // Ignore abort errors — those are intentional stops
+      const isAbort = abortRef.current || (err instanceof DOMException && err.name === "AbortError");
+      if (!isAbort) {
         fullResponse +=
           `\n\n**Error:** ${err instanceof Error ? err.message : "Unknown error"}`;
         setStreamingContent(fullResponse);
       }
     }
+    abortControllerRef.current = null;
 
     // Finalize: add assistant message
-    if (fullResponse) {
+    if (fullResponse || fullThinking) {
       const assistantMsg: ChatMessage = {
         message_id: `msg_${Date.now()}_assistant`,
         session_id: sessionId,
         content: fullResponse,
+        reasoning: fullThinking || undefined,
         message_type: "assistant",
         timestamp: new Date().toISOString(),
       };
@@ -266,6 +283,7 @@ export default function ChatPage() {
 
     setIsStreaming(false);
     setStreamingContent("");
+    setStreamingThinking("");
 
     // Refresh session list to update message counts
     loadSessions();
@@ -273,6 +291,8 @@ export default function ChatPage() {
 
   const handleStop = useCallback(() => {
     abortRef.current = true;
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
   }, []);
 
   // ── Session management ─────────────────────────────────────────
@@ -359,6 +379,7 @@ export default function ChatPage() {
         <MessageList
           messages={messages}
           streamingContent={streamingContent}
+          streamingThinking={streamingThinking}
           isStreaming={isStreaming}
         />
 

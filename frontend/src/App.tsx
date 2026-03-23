@@ -14,6 +14,8 @@ import AnalyticsPage from "@/routes/analytics";
 import ConnectionsPage from "@/routes/connections";
 import ModelsPage from "@/routes/models";
 import SettingsPage from "@/routes/settings";
+import ApprovalsPage from "@/routes/approvals";
+import BlueprintsPage from "@/routes/blueprints";
 import WizardPage from "@/routes/wizard";
 
 function isWizardComplete(): boolean {
@@ -105,9 +107,11 @@ export default function App() {
                 <Route path="/agents/:id" element={<AgentsPage />} />
                 <Route path="/crews" element={<CrewsPage />} />
                 <Route path="/crews/:id" element={<CrewDetailPage />} />
+                <Route path="/blueprints" element={<BlueprintsPage />} />
                 <Route path="/workspace" element={<WorkspacePage />} />
                 <Route path="/workspace/:id" element={<WorkspacePage />} />
                 <Route path="/connections" element={<ConnectionsPage />} />
+                <Route path="/approvals" element={<ApprovalsPage />} />
                 <Route path="/analytics" element={<AnalyticsPage />} />
                 <Route path="/settings" element={<SettingsPage />} />
               </Route>

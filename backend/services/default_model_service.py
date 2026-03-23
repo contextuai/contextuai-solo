@@ -45,7 +45,7 @@ class DefaultModelService:
             for m in models:
                 mid = m.get("_id", m.get("id", ""))
                 provider = m.get("provider", "")
-                if provider == "local" or str(mid).startswith("local-"):
+                if provider == "local" or str(mid).startswith("local-") or str(mid).startswith("local:"):
                     return str(mid)
         except Exception as e:
             logger.warning(f"Failed to query local models: {e}")

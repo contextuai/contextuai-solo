@@ -276,6 +276,7 @@ def agent_to_blueprint(agent_data: dict) -> AgentBlueprint:
         is_system=agent_data.get("is_system", False),
         created_by=agent_data.get("created_by"),
         is_enabled=agent_data.get("is_active", True),
+        system_prompt=agent_data.get("system_prompt"),
         source=agent_data.get("source"),
         created_at=agent_data.get("created_at"),
         updated_at=agent_data.get("updated_at")
