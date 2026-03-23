@@ -131,7 +131,8 @@ export async function* sendMessageStream(
   prompt: string,
   sessionId: string,
   modelId?: string,
-  personaId?: string
+  personaId?: string,
+  signal?: AbortSignal
 ): AsyncGenerator<StreamChunk, void, unknown> {
   const body = {
     model_name: modelId || "default",
@@ -143,7 +144,7 @@ export async function* sendMessageStream(
     userId: USER_ID,
   };
 
-  for await (const raw of streamRequest("/ai-chat/", body)) {
+  for await (const raw of streamRequest("/ai-chat/", body, signal)) {
     // streamRequest already parses SSE into { type, data }
     if (raw.type === "error") {
       yield { type: "error", data: raw.data };

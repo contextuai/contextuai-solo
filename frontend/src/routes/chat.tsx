@@ -44,6 +44,7 @@ export default function ChatPage() {
 
   // Abort controller for stopping stream
   const abortRef = useRef(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // ── Load initial data (wait for backend to be ready) ──────────
   useEffect(() => {
@@ -228,6 +229,9 @@ export default function ChatPage() {
     setStreamingContent("");
     setStreamingThinking("");
 
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     let fullResponse = "";
     let fullThinking = "";
 
@@ -236,7 +240,8 @@ export default function ChatPage() {
         prompt,
         sessionId,
         selectedModelId || undefined,
-        selectedPersonaId || undefined
+        selectedPersonaId || undefined,
+        controller.signal
       )) {
         if (abortRef.current) break;
 
@@ -253,12 +258,15 @@ export default function ChatPage() {
         // metadata chunks are silently consumed
       }
     } catch (err) {
-      if (!abortRef.current) {
+      // Ignore abort errors — those are intentional stops
+      const isAbort = abortRef.current || (err instanceof DOMException && err.name === "AbortError");
+      if (!isAbort) {
         fullResponse +=
           `\n\n**Error:** ${err instanceof Error ? err.message : "Unknown error"}`;
         setStreamingContent(fullResponse);
       }
     }
+    abortControllerRef.current = null;
 
     // Finalize: add assistant message
     if (fullResponse || fullThinking) {
@@ -283,6 +291,8 @@ export default function ChatPage() {
 
   const handleStop = useCallback(() => {
     abortRef.current = true;
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
   }, []);
 
   // ── Session management ─────────────────────────────────────────

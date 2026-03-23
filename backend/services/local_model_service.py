@@ -42,6 +42,7 @@ class LocalModelService:
         self._model: Optional[Any] = None
         self._loaded_model_path: Optional[str] = None
         self._loaded_model_id: Optional[str] = None
+        self._inference_lock = asyncio.Lock()
         logger.info(
             "LocalModelService initialized – models dir: %s, llama-cpp available: %s",
             MODELS_DIR,
@@ -324,9 +325,23 @@ class LocalModelService:
         )
 
         if stream:
-            return self._stream_response(messages, model_id, max_tokens, temperature, tools)
+            return self._locked_stream(messages, model_id, max_tokens, temperature, tools)
         else:
-            return await self._sync_response(messages, model_id, max_tokens, temperature, tools)
+            async with self._inference_lock:
+                return await self._sync_response(messages, model_id, max_tokens, temperature, tools)
+
+    async def _locked_stream(
+        self,
+        messages: List[Dict[str, str]],
+        model_id: str,
+        max_tokens: int,
+        temperature: float,
+        tools: Optional[List[Dict[str, Any]]] = None,
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        """Wrap streaming with inference lock so concurrent requests wait."""
+        async with self._inference_lock:
+            async for chunk in self._stream_response(messages, model_id, max_tokens, temperature, tools):
+                yield chunk
 
     async def _sync_response(
         self,
