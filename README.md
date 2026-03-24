@@ -2,7 +2,7 @@
 
 ### Your personal AI assistant desktop app — powered by your own API keys
 
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-Apache%202.0%20with%20Commons%20Clause-blue.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/version-1.0.0-brightgreen.svg)]()
 [![Tauri](https://img.shields.io/badge/Built%20with-Tauri%20v2-FFC131.svg)](https://tauri.app/)
 [![React](https://img.shields.io/badge/React-19-61DAFB.svg)](https://react.dev/)
@@ -84,7 +84,7 @@ contextuai-solo/
 ├── run.sh              # One-command backend launcher (Linux/macOS)
 ├── run-tests.ps1       # One-click test runner (backend + frontend)
 ├── docker-compose.yml  # Docker-based development setup
-└── LICENSE             # Apache 2.0
+└── LICENSE             # Apache 2.0 with Commons Clause
 ```
 
 ---
@@ -297,9 +297,9 @@ The test runner automatically starts/stops the backend and frontend dev servers 
 
 ## License
 
-ContextuAI Solo is released under the [Apache License 2.0](LICENSE).
+ContextuAI Solo is released under the [Apache License 2.0 with Commons Clause](LICENSE).
 
-You are free to use, modify, and distribute this software. See the LICENSE file for full details.
+You are free to use, modify, and contribute to this software for personal, internal business, educational, and integration purposes. You may **not** sell the software or use it to create a competing commercial product. See the [LICENSE](LICENSE) file for full details.
 
 ---
 
