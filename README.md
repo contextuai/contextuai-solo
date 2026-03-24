@@ -1,42 +1,83 @@
 # ContextuAI Solo
 
-### Your personal AI assistant desktop app — powered by your own API keys
+### Your private AI command center — run local models offline or bring your own API keys
 
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+[![Website](https://img.shields.io/badge/Website-contextuai.com%2Fsolo-FF6B35.svg)](https://contextuai.com/solo)
+[![License](https://img.shields.io/badge/License-Apache%202.0%20with%20Commons%20Clause-blue.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/version-1.0.0-brightgreen.svg)]()
 [![Tauri](https://img.shields.io/badge/Built%20with-Tauri%20v2-FFC131.svg)](https://tauri.app/)
 [![React](https://img.shields.io/badge/React-19-61DAFB.svg)](https://react.dev/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-Python%203.11+-009688.svg)](https://fastapi.tiangolo.com/)
 [![SQLite](https://img.shields.io/badge/Database-SQLite-003B57.svg)](https://sqlite.org/)
 
-**ContextuAI Solo** is a free, open-source desktop AI assistant that gives you an entire team of 81 specialized AI business agents — right on your machine. Bring your own API keys, run local AI models for free, keep your data local, and get enterprise-grade AI assistance without the enterprise price tag.
+**Your privacy is your power.** ContextuAI Solo runs AI models directly on your machine — completely offline, no cloud, no telemetry, no data leaving your device. When you need more horsepower, bring your own API keys. Either way, you stay in control.
+
+Solo gives you an entire team of 81 specialized AI business agents, multi-agent crews, and a workshop for brainstorming — all running locally on your desktop.
 
 ---
 
 ## What is ContextuAI Solo?
 
-ContextuAI Solo is the community edition of the [ContextuAI](https://contextuai.com) enterprise platform. It's a single-user desktop application that turns your computer into a command center for AI-powered business operations.
+ContextuAI Solo is the community edition of the [ContextuAI](https://contextuai.com) enterprise platform. Learn more at [contextuai.com/solo](https://contextuai.com/solo). It's a single-user desktop application that turns your computer into a private, off-grid command center for AI-powered business operations.
 
-### Why Solo?
+### Key Features
 
-- **BYOK (Bring Your Own Key)** — Use your existing API keys from Anthropic, OpenAI, Google, or AWS Bedrock
-- **Local AI Models (Free)** — Run AI completely offline with built-in GGUF models (Gemma 3 1B, Qwen 2.5 1.5B, Phi-3 Mini) — no API key required
+- **37 Local AI Models — One Click, Zero Cloud** — From tiny 0.5B models that run on any laptop to powerful 70B models for machines with more RAM — Solo auto-detects your hardware and recommends the right model. Download it. Click run. That's it. No API keys. No internet. No data leaves your machine. Ever.
+
+  | Your RAM | What You Can Run |
+  |----------|-----------------|
+  | 4 GB | Qwen 3.5 0.8B, Gemma 3 1B, Llama 3.2 1B |
+  | 8 GB | Qwen 3 8B, DeepSeek R1 7B, Mistral 7B, Qwen 2.5 Coder 7B |
+  | 16 GB | Qwen 3 14B, Phi-4 14B, DeepSeek R1 14B, Qwen 2.5 Coder 14B |
+  | 32 GB | Qwen 3 32B, DeepSeek R1 32B, Gemma 3 27B, Qwen 2.5 Coder 32B |
+  | 48+ GB | Llama 3.1 70B, DeepSeek R1 70B |
+
+  8 model families: **Qwen 3.5** / **Qwen 3** / **Qwen 2.5** / **DeepSeek R1** / **Gemma 3** / **Llama 3** / **Mistral** / **Phi-4** — covering general chat, reasoning, coding, creative writing, multilingual, and vision.
+
+- **Built-in Coding Server** — Solo exposes an **OpenAI-compatible API endpoint** (`/v1/chat/completions`) on your localhost. Point your IDE (VS Code, Cursor, Windsurf, or any tool that speaks OpenAI) at it and use Qwen 2.5 Coder or DeepSeek R1 as your local coding assistant — completely offline, completely free.
+
 - **81 Pre-Built Business Agents** — Ready-to-use AI agents across 12 departments: C-Suite, Marketing & Sales, Finance & Operations, Legal & Compliance, HR & People, Design & UX, Data & Analytics, IT & Security, Product Management, Startup & Venture, Specialized, and Operations
 - **Multi-Agent Crews** — Assemble teams of agents via a 5-step wizard with blueprint templates, AI model selection, and social channel bindings — sequential, parallel, pipeline, or fully autonomous execution modes
-- **10 Blueprint Templates** — Pre-built workflow templates across strategy, content, marketing, product, and research categories — skip the setup and start working
-- **10 Persona Types** — Nexus Agent, Web Researcher, database connectors (PostgreSQL, MySQL, MSSQL, Snowflake, MongoDB), MCP Server, API Connector, File Operations
 - **Workshop Mode** — Run multi-agent brainstorming sessions with structured outputs and artifact generation
 - **6 Platform Connections** — Integrate with Telegram, Discord, LinkedIn, Twitter/X, Instagram, and Facebook for automated messaging and publishing workflows
-- **100% Local** — Your data never leaves your machine. SQLite database + localStorage. No cloud required. No telemetry.
-- **Beautiful UI** — Dark/Light theme, brand voice customization, and a polished desktop experience built with Tauri v2
+- **BYOK (Bring Your Own Key)** — Optionally connect your API keys from Anthropic, OpenAI, Google, or AWS Bedrock when you need cloud-scale models
+- **10 Blueprint Templates** — Pre-built workflow templates across strategy, content, marketing, product, and research categories
+- **10 Persona Types** — Nexus Agent, Web Researcher, database connectors (PostgreSQL, MySQL, MSSQL, Snowflake, MongoDB), MCP Server, API Connector, File Operations
+- **100% Private** — SQLite database + localStorage. No cloud. No telemetry. No accounts. No sign-ups. Your conversations, your agents, your data — they never leave your machine.
 
 ---
 
 ## Screenshots
 
-![ContextuAI Solo](screenshots/app-overview.png)
+### AI Chat
+![AI Chat](docs/screenshots/solo-chat.png)
 
-> More screenshots and a visual walkthrough coming soon. Star this repo to get notified!
+### Agent Library (81 Agents)
+![Agents](docs/screenshots/solo-agents.png)
+
+### Multi-Agent Crews
+![Crews](docs/screenshots/solo-crews.png)
+
+### Blueprint Templates
+![Blueprints](docs/screenshots/solo-blueprints.png)
+
+### Model Hub
+![Model Hub](docs/screenshots/solo-model-hub.png)
+
+### Personas
+![Personas](docs/screenshots/solo-personas.png)
+
+### Workshop
+![Workshop](docs/screenshots/solo-workshop.png)
+
+### Connections
+![Connections](docs/screenshots/solo-connections.png)
+
+### Approval Queue
+![Approvals](docs/screenshots/solo-approvals.png)
+
+### Settings
+![Settings](docs/screenshots/solo-settings.png)
 
 ---
 
@@ -58,7 +99,7 @@ contextuai-solo/
 ├── run.sh              # One-command backend launcher (Linux/macOS)
 ├── run-tests.ps1       # One-click test runner (backend + frontend)
 ├── docker-compose.yml  # Docker-based development setup
-└── LICENSE             # Apache 2.0
+└── LICENSE             # Apache 2.0 with Commons Clause
 ```
 
 ---
@@ -166,7 +207,7 @@ The built app will be in `frontend/src-tauri/target/release/`.
 | Audit Logs & Compliance | -- | Yes |
 | Dedicated Support | -- | Yes |
 
-> Interested in enterprise features? Visit [contextuai.com](https://contextuai.com) or email hello@contextuai.com.
+> **Solo** is free forever — [contextuai.com/solo](https://contextuai.com/solo). Interested in enterprise features? Visit [contextuai.com](https://contextuai.com) or email hello@contextuai.com.
 
 ---
 
@@ -227,7 +268,7 @@ Each agent comes with a specialized system prompt, recommended model, and releva
 | **Backend** | [FastAPI](https://fastapi.tiangolo.com/) (Python 3.11+) |
 | **Database** | [SQLite](https://sqlite.org/) via async adapter |
 | **AI Providers** | Anthropic Claude, OpenAI GPT, Google Gemini, AWS Bedrock |
-| **Local AI** | GGUF models via llama-cpp-python (Gemma 3, Qwen 2.5, Phi-3) |
+| **Local AI** | 37 GGUF models via llama-cpp-python (Qwen 3.5, Qwen 3, DeepSeek R1, Gemma 3, Llama 3, Mistral, Phi-4) — 0.5B to 70B |
 | **Agent Framework** | [Strands Agents SDK](https://github.com/strands-agents/sdk-python) |
 
 ---
@@ -271,9 +312,9 @@ The test runner automatically starts/stops the backend and frontend dev servers 
 
 ## License
 
-ContextuAI Solo is released under the [Apache License 2.0](LICENSE).
+ContextuAI Solo is released under the [Apache License 2.0 with Commons Clause](LICENSE).
 
-You are free to use, modify, and distribute this software. See the LICENSE file for full details.
+You are free to use, modify, and contribute to this software for personal, internal business, educational, and integration purposes. You may **not** sell the software or use it to create a competing commercial product. See the [LICENSE](LICENSE) file for full details.
 
 ---
 
