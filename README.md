@@ -34,9 +34,35 @@ ContextuAI Solo is the community edition of the [ContextuAI](https://contextuai.
 
 ## Screenshots
 
-![ContextuAI Solo](screenshots/app-overview.png)
+### AI Chat
+![AI Chat](docs/screenshots/solo-chat.png)
 
-> More screenshots and a visual walkthrough coming soon. Star this repo to get notified!
+### Agent Library (81 Agents)
+![Agents](docs/screenshots/solo-agents.png)
+
+### Multi-Agent Crews
+![Crews](docs/screenshots/solo-crews.png)
+
+### Blueprint Templates
+![Blueprints](docs/screenshots/solo-blueprints.png)
+
+### Model Hub
+![Model Hub](docs/screenshots/solo-model-hub.png)
+
+### Personas
+![Personas](docs/screenshots/solo-personas.png)
+
+### Workshop
+![Workshop](docs/screenshots/solo-workshop.png)
+
+### Connections
+![Connections](docs/screenshots/solo-connections.png)
+
+### Approval Queue
+![Approvals](docs/screenshots/solo-approvals.png)
+
+### Settings
+![Settings](docs/screenshots/solo-settings.png)
 
 ---
 
