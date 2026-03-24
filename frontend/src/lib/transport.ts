@@ -2,10 +2,37 @@ const isTauri = typeof window !== "undefined" && "__TAURI__" in window;
 // Desktop Solo backend runs on port 18741; override via VITE_API_URL env var
 const DEV_API_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:18741/api/v1";
 
-interface ApiResponse<T = unknown> {
+export interface ApiResponse<T = unknown> {
   data: T;
   status: number;
   ok: boolean;
+}
+
+/** Error thrown when an API request returns a non-2xx status. */
+export class ApiError extends Error {
+  status: number;
+  data: unknown;
+
+  constructor(status: number, data: unknown) {
+    const detail = extractDetail(data);
+    super(detail);
+    this.name = "ApiError";
+    this.status = status;
+    this.data = data;
+  }
+}
+
+function extractDetail(data: unknown): string {
+  if (!data || typeof data !== "object") return "Request failed";
+  const raw = data as Record<string, unknown>;
+  const detail = raw.detail;
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    return (detail as { msg?: string }[]).map((d) => d.msg).filter(Boolean).join("; ") || "Validation error";
+  }
+  if (typeof raw.message === "string") return raw.message;
+  if (typeof raw.error === "string") return raw.error;
+  return "Request failed";
 }
 
 async function _singleApiRequest<T = unknown>(
@@ -14,6 +41,10 @@ async function _singleApiRequest<T = unknown>(
   body?: unknown,
   options?: { stream?: boolean; headers?: Record<string, string> }
 ): Promise<ApiResponse<T>> {
+  let data: T;
+  let status: number;
+  let ok: boolean;
+
   if (isTauri) {
     // Desktop: route through Tauri IPC
     const { invoke } = await import("@tauri-apps/api/core");
@@ -22,7 +53,9 @@ async function _singleApiRequest<T = unknown>(
       path,
       body: body ? JSON.stringify(body) : null,
     });
-    return { data: result.data, status: result.status, ok: result.status >= 200 && result.status < 300 };
+    data = result.data;
+    status = result.status;
+    ok = status >= 200 && status < 300;
   } else {
     // Dev mode: direct HTTP to backend
     const url = `${DEV_API_URL}${path}`;
@@ -34,9 +67,16 @@ async function _singleApiRequest<T = unknown>(
       },
       body: body ? JSON.stringify(body) : undefined,
     });
-    const data = await response.json() as T;
-    return { data, status: response.status, ok: response.ok };
+    data = await response.json() as T;
+    status = response.status;
+    ok = response.ok;
   }
+
+  if (!ok) {
+    throw new ApiError(status, data);
+  }
+
+  return { data, status, ok };
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));

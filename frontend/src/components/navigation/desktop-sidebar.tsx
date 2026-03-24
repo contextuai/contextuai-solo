@@ -35,7 +35,7 @@ const navItems: NavItem[] = [
   { label: "Agents", path: "/agents", icon: Bot },
   { label: "Crews", path: "/crews", icon: Users },
   { label: "Blueprints", path: "/blueprints", icon: BookOpen },
-  { label: "Workshop", path: "/workspace", icon: FlaskConical },
+  { label: "Workspace", path: "/workspace", icon: FlaskConical },
   { label: "Connections", path: "/connections", icon: Cable },
   { label: "Approvals", path: "/approvals", icon: ClipboardCheck },
   { label: "Settings", path: "/settings", icon: Settings },

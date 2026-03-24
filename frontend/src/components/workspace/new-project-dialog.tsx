@@ -8,6 +8,7 @@ import {
   type CreateProjectPayload,
 } from "@/lib/api/workspace-projects-client";
 import { workspaceApi, type WorkspaceAgent } from "@/lib/api/workspace-client";
+import { getModels, type ModelConfig } from "@/lib/api/models-client";
 import {
   X,
   FlaskConical,
@@ -21,6 +22,7 @@ import {
   ArrowLeft,
   Check,
   Search,
+  Cpu,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -61,7 +63,7 @@ type WizardStep = 1 | 2 | 3;
 
 const STEP_TITLES: Record<WizardStep, { title: string; subtitle: string }> = {
   1: { title: "Project Details", subtitle: "Name your project and describe its purpose" },
-  2: { title: "Select Agents", subtitle: "Choose the agents for your brainstorm" },
+  2: { title: "Select Agents", subtitle: "Choose the agents for your project" },
   3: { title: "Review & Create", subtitle: "Review your project configuration" },
 };
 
@@ -137,8 +139,10 @@ export function NewProjectDialog({ isOpen, onClose, onCreated }: NewProjectDialo
   const [error, setError] = useState<string | null>(null);
   const [blueprintSelectorOpen, setBlueprintSelectorOpen] = useState(false);
   const [selectedBlueprint, setSelectedBlueprint] = useState<BlueprintSelection | null>(null);
+  const [models, setModels] = useState<ModelConfig[]>([]);
+  const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
 
-  // Load project types and agents when dialog opens
+  // Load project types, agents, and models when dialog opens
   useEffect(() => {
     if (!isOpen) return;
 
@@ -160,6 +164,10 @@ export function NewProjectDialog({ isOpen, onClose, onCreated }: NewProjectDialo
       .then(setAgents)
       .catch(() => setAgents([]))
       .finally(() => setLoadingAgents(false));
+
+    getModels()
+      .then((list) => setModels(list.filter((m) => m.enabled)))
+      .catch(() => setModels([]));
   }, [isOpen]);
 
   // Reset form when dialog opens
@@ -173,6 +181,7 @@ export function NewProjectDialog({ isOpen, onClose, onCreated }: NewProjectDialo
       setAgentSearch("");
       setError(null);
       setSelectedBlueprint(null);
+      setSelectedModelId(null);
     }
   }, [isOpen]);
 
@@ -228,6 +237,7 @@ export function NewProjectDialog({ isOpen, onClose, onCreated }: NewProjectDialo
         description: description.trim(),
         project_type: projectType || "workshop",
         selected_agents: selectedAgentIds,
+        ...(selectedModelId && { model_id: selectedModelId }),
       };
 
       const project = await workspaceProjectsApi.create(payload);
@@ -423,8 +433,41 @@ export function NewProjectDialog({ isOpen, onClose, onCreated }: NewProjectDialo
                           "focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 outline-none",
                           "placeholder:text-neutral-400 dark:placeholder:text-neutral-500"
                         )}
-                        placeholder="Describe what you want your AI team to brainstorm..."
+                        placeholder="Describe what you want your AI team to work on..."
                       />
+                    </div>
+
+                    {/* AI Model */}
+                    <div>
+                      <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1.5">
+                        <span className="flex items-center gap-1.5">
+                          <Cpu className="w-3.5 h-3.5" />
+                          AI Model
+                        </span>
+                      </label>
+                      <div className="relative">
+                        <select
+                          value={selectedModelId ?? ""}
+                          onChange={(e) => setSelectedModelId(e.target.value || null)}
+                          className={cn(
+                            "w-full px-3 py-2.5 rounded-lg border text-sm appearance-none transition-colors",
+                            "bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white",
+                            "border-neutral-300 dark:border-neutral-700",
+                            "focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 outline-none"
+                          )}
+                        >
+                          <option value="">Auto (uses default model)</option>
+                          {models.map((m) => (
+                            <option key={m.id} value={m.id}>
+                              {m.name}{m.provider ? ` · ${m.provider}` : ""}
+                            </option>
+                          ))}
+                        </select>
+                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400 pointer-events-none" />
+                      </div>
+                      <p className="mt-1 text-xs text-neutral-400">
+                        All agents in this project will use the selected model.
+                      </p>
                     </div>
                   </>
                 )}
@@ -578,6 +621,16 @@ export function NewProjectDialog({ isOpen, onClose, onCreated }: NewProjectDialo
                           </div>
                         </div>
                       )}
+                      <div>
+                        <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">
+                          AI Model
+                        </p>
+                        <p className="text-sm text-neutral-900 dark:text-white mt-0.5">
+                          {selectedModelId
+                            ? models.find((m) => m.id === selectedModelId)?.name ?? selectedModelId
+                            : "Auto (default model)"}
+                        </p>
+                      </div>
                     </div>
 
                     {/* Selected agents */}

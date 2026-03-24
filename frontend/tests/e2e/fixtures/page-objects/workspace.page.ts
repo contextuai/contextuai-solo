@@ -1,15 +1,15 @@
 import { type Page, type Locator, expect } from "@playwright/test";
 
 /**
- * Page object for the Desktop Workspace (Workshop) route ("/workspace").
+ * Page object for the Desktop Workspace route ("/workspace").
  *
  * The page contains:
- * - Header with "New Brainstorm" button
+ * - Header with "New Project" button
  * - Status filter pills: All, Draft, Running, Completed, Failed
  * - Refresh button
  * - Project cards list (click navigates to /workspace/:id)
  * - NewProjectDialog wizard (3-step):
- *   Step 1: Project Details (name, type, description + blueprint)
+ *   Step 1: Project Details (name, type, description + blueprint, AI model)
  *   Step 2: Select Agents (with search)
  *   Step 3: Review & Create
  */
@@ -22,9 +22,9 @@ export class WorkspacePage {
 
   // ── Locators ────────────────────────────────────────────────────
 
-  /** The "New Brainstorm" button (header — always visible). */
+  /** The "New Project" button (header — always visible). */
   get newProjectButton(): Locator {
-    return this.page.getByRole("button", { name: /new brainstorm/i }).first();
+    return this.page.getByRole("button", { name: /new project/i }).first();
   }
 
   /** All status filter pill buttons. */
@@ -50,7 +50,7 @@ export class WorkspacePage {
 
   /** Empty state when no projects exist. */
   get emptyState(): Locator {
-    return this.page.getByText(/start your first workshop/i);
+    return this.page.getByText(/start your first project/i);
   }
 
   /** Project count text at the bottom of the list. */
@@ -77,7 +77,12 @@ export class WorkspacePage {
 
   /** Project type select (step 1). */
   get projectTypeSelect(): Locator {
-    return this.wizardDialog.locator("select");
+    return this.wizardDialog.locator("select").first();
+  }
+
+  /** AI model select (step 1). */
+  get modelSelect(): Locator {
+    return this.wizardDialog.locator("select").nth(1);
   }
 
   /** Description textarea (step 1). */
@@ -127,6 +132,35 @@ export class WorkspacePage {
     return this.wizardDialog.locator(".rounded-full.w-7.h-7");
   }
 
+  // ── Results Page Locators ──────────────────────────────────────
+
+  /** Back button on the project results page. */
+  get resultsBackButton(): Locator {
+    return this.page.locator("button").filter({
+      has: this.page.locator("svg"),
+    }).first();
+  }
+
+  /** Project title on the results page. */
+  get resultsTitle(): Locator {
+    return this.page.locator("h1").first();
+  }
+
+  /** Status badge on the results page. */
+  get resultsStatusBadge(): Locator {
+    return this.page.locator("span.rounded-full").first();
+  }
+
+  /** Discussion tab. */
+  get discussionTab(): Locator {
+    return this.page.getByRole("button", { name: /discussion/i });
+  }
+
+  /** Compiled Output tab. */
+  get compiledTab(): Locator {
+    return this.page.getByRole("button", { name: /compiled output/i });
+  }
+
   // ── Actions ─────────────────────────────────────────────────────
 
   /** Navigate to the workspace page. */
@@ -135,7 +169,7 @@ export class WorkspacePage {
     await this.page.waitForLoadState("networkidle");
   }
 
-  /** Open the wizard by clicking "New Brainstorm". */
+  /** Open the wizard by clicking "New Project". */
   async openWizard(): Promise<void> {
     await this.newProjectButton.click();
     await this.wizardDialog.waitFor({ state: "visible", timeout: 5000 });
@@ -173,25 +207,25 @@ export class WorkspacePage {
   }
 
   /**
-   * Create a project through the full wizard flow.
+   * Create a project through the full wizard flow and submit it.
+   * Returns the project name used.
    */
   async createProject(data: {
     name?: string;
     description?: string;
-  }): Promise<void> {
+  }): Promise<string> {
+    const projectName = data.name ?? `E2E Test ${Date.now()}`;
     await this.openWizard();
 
     // Step 1: Fill details
-    if (data.name) {
-      await this.projectNameInput.fill(data.name);
-    }
+    await this.projectNameInput.fill(projectName);
     if (data.description) {
       await this.descriptionInput.fill(data.description);
     }
 
     // Next → Step 2 (Agents)
     await this.nextButton.click();
-    await this.page.waitForTimeout(300);
+    await this.page.waitForTimeout(500);
 
     // Select first agent
     const agentCount = await this.agentItems.count();
@@ -205,11 +239,10 @@ export class WorkspacePage {
     await this.page.waitForTimeout(300);
 
     // Submit
-    if (await this.submitButton.isVisible()) {
-      await this.submitButton.click();
-    }
+    await this.submitButton.click();
+    await this.page.waitForTimeout(2000);
 
-    await this.page.waitForTimeout(1000);
+    return projectName;
   }
 
   /** Search agents on step 2. */
@@ -237,5 +270,12 @@ export class WorkspacePage {
   async openProject(index: number): Promise<void> {
     await this.projectCards.nth(index).click();
     await this.page.waitForURL(/\/workspace\/.+/, { timeout: 10_000 });
+  }
+
+  /** Delete a project via API (cleanup helper). */
+  async deleteProjectViaApi(projectId: string): Promise<void> {
+    await this.page.request.delete(
+      `http://127.0.0.1:18741/api/v1/workspace/projects/${projectId}`
+    );
   }
 }

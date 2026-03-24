@@ -425,3 +425,84 @@ test.describe("Library Agent Browser", () => {
     expect(lastInstructionsValue.length).toBeGreaterThan(0);
   });
 });
+
+// ==========================================================================
+// Crew Execution (run crew with local Gemma model)
+// ==========================================================================
+
+test.describe("Crew Execution", () => {
+  // Local model inference can be slow — allow up to 5 minutes
+  test.setTimeout(300_000);
+
+  test("DC-CREW-EXEC-01: create crew via API, run it with local model, and verify completed status", async ({ page }) => {
+    const API = "http://127.0.0.1:18741/api/v1";
+    const crewName = `Exec Crew ${Date.now()}`;
+
+    // 1. Create a crew via API with a single agent using small local model
+    const createResp = await page.request.post(`${API}/crews/`, {
+      data: {
+        name: crewName,
+        description: "E2E execution test crew",
+        agents: [
+          {
+            name: "Test Writer",
+            instructions: "Reply with exactly one short sentence.",
+            model_id: "local:qwen2.5-0.5b",
+            order: 0,
+          },
+        ],
+        execution_config: {
+          mode: "sequential",
+          max_iterations: 1,
+        },
+      },
+    });
+    expect(createResp.ok()).toBeTruthy();
+    const createData = await createResp.json();
+    // Response shape: { status: "success", data: { crew_id, ... } }
+    const crew = createData.data ?? createData.crew ?? createData;
+    const crewId = crew.crew_id ?? crew.id;
+    expect(crewId).toBeTruthy();
+
+    // 2. Run the crew
+    const runResp = await page.request.post(`${API}/crews/${crewId}/run`, {
+      data: {
+        input: "Say hello.",
+      },
+    });
+    expect(runResp.ok()).toBeTruthy();
+    const runData = await runResp.json();
+    // Response shape: { status: "success", data: { run_id, ... } }
+    const run = runData.data ?? runData.run ?? runData;
+    const runId = run.run_id ?? run.id;
+    expect(runId).toBeTruthy();
+
+    // 3. Poll until completed or failed (up to 4 minutes)
+    let finalStatus = "pending";
+    for (let i = 0; i < 120; i++) {
+      await page.waitForTimeout(2000);
+      const statusResp = await page.request.get(`${API}/crews/runs/${runId}`);
+      const statusData = await statusResp.json();
+      const runDetail = statusData.data ?? statusData.run ?? statusData;
+      finalStatus = runDetail.status ?? "unknown";
+      if (finalStatus === "completed" || finalStatus === "failed") break;
+    }
+    expect(finalStatus).toBe("completed");
+
+    // 4. Verify the run result has content via API
+    const resultResp = await page.request.get(`${API}/crews/runs/${runId}`);
+    const resultData = await resultResp.json();
+    const resultRun = resultData.data ?? resultData.run ?? resultData;
+    expect(resultRun.result).toBeTruthy();
+
+    // 5. Verify the crew appears in the UI
+    await page.goto("/crews");
+    await page.waitForLoadState("networkidle");
+    await page.waitForTimeout(1500);
+
+    await expect(page.getByText(crewName)).toBeVisible({ timeout: 10000 });
+
+    // 6. Cleanup
+    await page.request.delete(`${API}/crews/${crewId}`);
+  });
+});

@@ -19,7 +19,7 @@ test("DC-NAV-01: sidebar shows all navigation items", async () => {
   await expect(nav.sidebar).toBeVisible();
 
   const labels = await nav.getNavLabels();
-  const expectedItems = ["Chat", "Model Hub", "Personas", "Agents", "Crews", "Blueprints", "Workshop", "Connections", "Approvals", "Settings"];
+  const expectedItems = ["Chat", "Model Hub", "Personas", "Agents", "Crews", "Blueprints", "Workspace", "Connections", "Approvals", "Settings"];
 
   for (const item of expectedItems) {
     expect(labels).toContain(item);
@@ -37,7 +37,7 @@ test("DC-NAV-02: navigate to each page and verify heading", async ({ page }) => 
     { label: "Agents", heading: "Agent Library" },
     { label: "Crews", heading: "Crews" },
     { label: "Blueprints", heading: "Blueprints" },
-    { label: "Workshop", heading: "Workshop" },
+    { label: "Workspace", heading: "Workspace" },
     { label: "Connections", heading: "Connections" },
     { label: "Approvals", heading: "Approval Queue" },
     { label: "Settings", heading: "Settings" },
@@ -106,7 +106,7 @@ test("DC-NAV-04: sidebar collapse/expand toggle works", async ({ page }) => {
 
 // DC-NAV-05: Page transitions are smooth (no flash)
 test("DC-NAV-05: page transitions are smooth", async ({ page }) => {
-  const routes = ["Personas", "Agents", "Crews", "Blueprints", "Workshop", "Connections", "Approvals", "Settings", "Chat"];
+  const routes = ["Personas", "Agents", "Crews", "Blueprints", "Workspace", "Connections", "Approvals", "Settings", "Chat"];
 
   for (const route of routes) {
     await nav.navigateTo(route);

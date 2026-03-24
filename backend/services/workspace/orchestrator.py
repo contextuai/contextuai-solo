@@ -703,8 +703,13 @@ class WorkspaceOrchestrator:
         metrics = final_execution.get("metrics", {}) if final_execution else {}
 
         if success:
-            # Update status to completed
+            # Update execution and project status to completed
             await self.execution_repo.update_status(execution_id, "completed")
+            if project_id:
+                await self.project_repo.update(project_id, {
+                    "status": "completed",
+                    "completed_at": datetime.utcnow().isoformat(),
+                })
 
             # Create ZIP archive of artifacts
             zip_result = await artifact_service.create_zip(project_id)
@@ -740,8 +745,13 @@ class WorkspaceOrchestrator:
             )
 
         else:
-            # Update status to failed
+            # Update execution and project status to failed
             await self.execution_repo.update_status(execution_id, "failed", error)
+            if project_id:
+                await self.project_repo.update(project_id, {
+                    "status": "failed",
+                    "error_message": error or "Unknown error",
+                })
 
             # Emit failure event
             await stream_service.emit_event(

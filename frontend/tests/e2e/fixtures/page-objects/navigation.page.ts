@@ -3,7 +3,7 @@ import { type Page, type Locator, expect } from "@playwright/test";
 /**
  * Page object for testing desktop sidebar navigation.
  *
- * The sidebar contains 7 nav items (Chat, Personas, Agents, Crews, Workshop,
+ * The sidebar contains 7 nav items (Chat, Personas, Agents, Crews, Workspace,
  * Connections, Settings), a collapse/expand toggle, and connection status.
  */
 export class NavigationPage {

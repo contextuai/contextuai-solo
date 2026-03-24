@@ -93,6 +93,11 @@ export function ProjectResults({ projectId, onBack }: ProjectResultsProps) {
   const [copied, setCopied] = useState(false);
 
   const loadProject = useCallback(async () => {
+    if (!projectId) {
+      setError("No project ID provided");
+      setLoading(false);
+      return;
+    }
     try {
       setLoading(true);
       setError(null);
@@ -230,7 +235,7 @@ export function ProjectResults({ projectId, onBack }: ProjectResultsProps) {
             )}
           >
             <StatusIcon className={cn("w-3.5 h-3.5", isRunning && "animate-spin")} />
-            {project.status.charAt(0).toUpperCase() + project.status.slice(1)}
+            {(project.status ?? "unknown").charAt(0).toUpperCase() + (project.status ?? "unknown").slice(1)}
           </span>
           <span className="flex items-center gap-1 text-neutral-500 dark:text-neutral-400">
             <Users className="w-4 h-4" />
@@ -290,7 +295,7 @@ export function ProjectResults({ projectId, onBack }: ProjectResultsProps) {
                 <p className="text-neutral-500 dark:text-neutral-400">
                   {isRunning
                     ? "Agents are working... contributions will appear here."
-                    : "No contributions yet. Execute the project to begin the workshop."}
+                    : "No contributions yet. Execute the project to begin."}
                 </p>
                 {isRunning && (
                   <Loader2 className="w-6 h-6 animate-spin text-primary-500 mx-auto mt-4" />
@@ -407,9 +412,9 @@ export function ProjectResults({ projectId, onBack }: ProjectResultsProps) {
                 <FileOutput className="w-12 h-12 text-neutral-300 dark:text-neutral-600 mx-auto mb-4" />
                 <p className="text-neutral-500 dark:text-neutral-400">
                   {isComplete
-                    ? "No compiled output available for this workshop."
+                    ? "No compiled output available for this project."
                     : isRunning
-                    ? "Compiled output will appear here once the workshop is complete."
+                    ? "Compiled output will appear here once the project is complete."
                     : "Execute the project to generate compiled output."}
                 </p>
               </div>

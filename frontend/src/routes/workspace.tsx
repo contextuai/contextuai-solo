@@ -70,7 +70,10 @@ export default function WorkspacePage() {
   const handleProjectCreated = (project: WorkspaceProject) => {
     setShowNewDialog(false);
     const pid = project.project_id || project.id;
-    navigate(`/workspace/${pid}`);
+    if (pid) {
+      navigate(`/workspace/${pid}`);
+    }
+    loadProjects();
   };
 
   // Show results view when a project is selected
@@ -98,16 +101,16 @@ export default function WorkspacePage() {
             </div>
             <div>
               <h1 className="text-xl font-bold text-neutral-900 dark:text-white">
-                Workshop
+                Workspace
               </h1>
               <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                Multi-agent brainstorms and collaborative AI projects
+                Multi-agent collaboration and AI projects
               </p>
             </div>
           </div>
           <Button onClick={() => setShowNewDialog(true)}>
             <Plus className="w-4 h-4" />
-            New Brainstorm
+            New Project
           </Button>
         </div>
       </div>
@@ -168,15 +171,15 @@ export default function WorkspacePage() {
               <FlaskConical className="w-8 h-8 text-neutral-400" />
             </div>
             <h3 className="text-lg font-semibold text-neutral-900 dark:text-white mb-2">
-              Start your first workshop
+              Start your first project
             </h3>
             <p className="text-neutral-500 dark:text-neutral-400 mb-6 max-w-sm mx-auto text-sm">
-              Select agents and give them a task to collaborate on. They will brainstorm, discuss,
+              Select agents and give them a task to collaborate on. They will discuss
               and compile a final output together.
             </p>
             <Button onClick={() => setShowNewDialog(true)}>
               <Plus className="w-4 h-4" />
-              New Brainstorm
+              New Project
             </Button>
           </motion.div>
         )}

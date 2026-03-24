@@ -72,6 +72,7 @@ export interface CreateProjectPayload {
   description: string;
   project_type: string;
   selected_agents: string[];
+  model_id?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -136,11 +137,19 @@ export const workspaceProjectsApi = {
   listProjectTypes: async (): Promise<ProjectType[]> => {
     try {
       const { data } = await api.get<{
-        project_types?: ProjectType[];
+        project_types?: Record<string, unknown>[];
         success?: boolean;
       }>("/workspace-project-types?enabled=true");
       const raw = data as Record<string, unknown>;
-      return (raw.project_types ?? []) as ProjectType[];
+      const types = (raw.project_types ?? []) as Record<string, unknown>[];
+      // API returns { _id, key, label, description, ... } — normalize to frontend shape
+      return types.map((t) => ({
+        id: (t._id ?? t.key ?? "") as string,
+        name: (t.key ?? t.label ?? "") as string,
+        description: (t.description ?? "") as string,
+        category: (t.category ?? "") as string,
+        enabled: (t.enabled ?? true) as boolean,
+      }));
     } catch {
       return [];
     }

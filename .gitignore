@@ -51,6 +51,17 @@ models/embedding/
 models/chat/
 *.gguf
 
+# Large media (use external hosting for demos)
+docs/*.webm
+docs/*.mp4
+SETUP-GUIDE.pdf
+
+# Screenshot tooling output
+frontend/tests/e2e/screenshots/output/
+
+# Claude Code local settings
+.claude/
+
 # Misc
 *.log
 *.bak
