@@ -1,6 +1,6 @@
 # ContextuAI Solo
 
-### Your personal AI assistant desktop app — powered local ai models or by your own API keys
+### Your private AI command center — run local models offline or bring your own API keys
 
 [![License](https://img.shields.io/badge/License-Apache%202.0%20with%20Commons%20Clause-blue.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/version-1.0.0-brightgreen.svg)]()
