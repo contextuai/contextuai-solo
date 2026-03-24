@@ -2,6 +2,7 @@
 
 ### Your private AI command center — run local models offline or bring your own API keys
 
+[![Website](https://img.shields.io/badge/Website-contextuai.com%2Fsolo-FF6B35.svg)](https://contextuai.com/solo)
 [![License](https://img.shields.io/badge/License-Apache%202.0%20with%20Commons%20Clause-blue.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/version-1.0.0-brightgreen.svg)]()
 [![Tauri](https://img.shields.io/badge/Built%20with-Tauri%20v2-FFC131.svg)](https://tauri.app/)
@@ -17,7 +18,7 @@ Solo gives you an entire team of 81 specialized AI business agents, multi-agent 
 
 ## What is ContextuAI Solo?
 
-ContextuAI Solo is the community edition of the [ContextuAI](https://contextuai.com) enterprise platform. It's a single-user desktop application that turns your computer into a private, off-grid command center for AI-powered business operations.
+ContextuAI Solo is the community edition of the [ContextuAI](https://contextuai.com) enterprise platform. Learn more at [contextuai.com/solo](https://contextuai.com/solo). It's a single-user desktop application that turns your computer into a private, off-grid command center for AI-powered business operations.
 
 ### Key Features
 
@@ -206,7 +207,7 @@ The built app will be in `frontend/src-tauri/target/release/`.
 | Audit Logs & Compliance | -- | Yes |
 | Dedicated Support | -- | Yes |
 
-> Interested in enterprise features? Visit [contextuai.com](https://contextuai.com) or email hello@contextuai.com.
+> **Solo** is free forever — [contextuai.com/solo](https://contextuai.com/solo). Interested in enterprise features? Visit [contextuai.com](https://contextuai.com) or email hello@contextuai.com.
 
 ---
 
