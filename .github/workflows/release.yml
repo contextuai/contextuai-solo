@@ -1,0 +1,162 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build (${{ matrix.platform.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - name: Windows
+            os: windows-latest
+            rust-target: x86_64-pc-windows-msvc
+            sidecar-bin: contextuai-solo-backend.exe
+          - name: macOS
+            os: macos-latest
+            rust-target: aarch64-apple-darwin
+            sidecar-bin: contextuai-solo-backend
+          - name: Linux
+            os: ubuntu-22.04
+            rust-target: x86_64-unknown-linux-gnu
+            sidecar-bin: contextuai-solo-backend
+
+    runs-on: ${{ matrix.platform.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── Toolchains ──────────────────────────────────────────────────────
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform.rust-target }}
+
+      - name: Cache Rust build
+        uses: actions/cache@v4
+        with:
+          path: frontend/src-tauri/target
+          key: rust-${{ matrix.platform.os }}-${{ hashFiles('frontend/src-tauri/Cargo.lock') }}
+          restore-keys: rust-${{ matrix.platform.os }}-
+
+      # ── System dependencies (Linux) ────────────────────────────────────
+      - name: Install Linux system dependencies
+        if: matrix.platform.os == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
+            librsvg2-dev patchelf cmake build-essential \
+            libgobject-2.0-dev libpango1.0-dev libharfbuzz-dev libffi-dev
+
+      # ── Step 1: Build Python sidecar (PyInstaller) ─────────────────────
+      - name: Install Python dependencies
+        working-directory: backend
+        env:
+          CMAKE_ARGS: "-DGGML_NATIVE=OFF"
+        run: |
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build sidecar with PyInstaller
+        working-directory: backend
+        run: |
+          pyinstaller contextuai-solo-backend.spec \
+            --distpath ../frontend/src-tauri/sidecar \
+            --workpath ./build \
+            --noconfirm
+
+      - name: Flatten sidecar output
+        shell: bash
+        run: |
+          SIDECAR_DIR="frontend/src-tauri/sidecar"
+          NESTED="$SIDECAR_DIR/contextuai-solo-backend"
+          if [ -d "$NESTED" ]; then
+            cp -rf "$NESTED"/* "$SIDECAR_DIR/"
+            rm -rf "$NESTED"
+          fi
+          ls -la "$SIDECAR_DIR/${{ matrix.platform.sidecar-bin }}"
+
+      # ── Step 2: Build Tauri desktop app ────────────────────────────────
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build Tauri app
+        working-directory: frontend
+        run: npm run tauri build -- --target ${{ matrix.platform.rust-target }}
+
+      # ── Step 3: Collect installers ─────────────────────────────────────
+      - name: Collect Windows installers
+        if: matrix.platform.os == 'windows-latest'
+        shell: bash
+        run: |
+          mkdir -p release-assets
+          cp frontend/src-tauri/target/${{ matrix.platform.rust-target }}/release/bundle/msi/*.msi release-assets/ 2>/dev/null || true
+          cp frontend/src-tauri/target/${{ matrix.platform.rust-target }}/release/bundle/nsis/*setup.exe release-assets/ 2>/dev/null || true
+          ls -la release-assets/
+
+      - name: Collect macOS installer
+        if: matrix.platform.os == 'macos-latest'
+        run: |
+          mkdir -p release-assets
+          cp frontend/src-tauri/target/${{ matrix.platform.rust-target }}/release/bundle/dmg/*.dmg release-assets/ 2>/dev/null || true
+          ls -la release-assets/
+
+      - name: Collect Linux installers
+        if: matrix.platform.os == 'ubuntu-22.04'
+        run: |
+          mkdir -p release-assets
+          cp frontend/src-tauri/target/${{ matrix.platform.rust-target }}/release/bundle/deb/*.deb release-assets/ 2>/dev/null || true
+          cp frontend/src-tauri/target/${{ matrix.platform.rust-target }}/release/bundle/appimage/*.AppImage release-assets/ 2>/dev/null || true
+          ls -la release-assets/
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: installers-${{ matrix.platform.name }}
+          path: release-assets/*
+
+  # ── Create GitHub Release ────────────────────────────────────────────────
+  release:
+    name: Publish Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: List release assets
+        run: ls -la release-assets/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-assets/*
+          generate_release_notes: true
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
