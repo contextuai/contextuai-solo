@@ -15,11 +15,32 @@ pub fn is_running() -> bool {
 }
 
 pub fn stop_sidecar() {
+    // Guard against double-stop (WindowDestroyed + RunEvent::Exit)
+    if !SIDECAR_RUNNING.load(Ordering::Relaxed) {
+        return;
+    }
+
     if let Ok(mut guard) = SIDECAR_CHILD.lock() {
         if let Some(ref mut child) = *guard {
-            let _ = child.kill();
-            let _ = child.wait();
-            log::info!("Sidecar process stopped");
+            let pid = child.id();
+
+            // On Windows, kill the entire process tree (sidecar + llama-cpp threads)
+            #[cfg(target_os = "windows")]
+            {
+                use std::os::windows::process::CommandExt;
+                let _ = std::process::Command::new("taskkill")
+                    .args(["/F", "/T", "/PID", &pid.to_string()])
+                    .creation_flags(0x08000000) // CREATE_NO_WINDOW
+                    .output();
+                log::info!("Killed sidecar process tree (PID {})", pid);
+            }
+
+            #[cfg(not(target_os = "windows"))]
+            {
+                let _ = child.kill();
+                let _ = child.wait();
+                log::info!("Sidecar process stopped (PID {})", pid);
+            }
         }
         *guard = None;
     }
@@ -27,13 +48,12 @@ pub fn stop_sidecar() {
 }
 
 pub async fn start_sidecar(app_handle: &AppHandle) -> Result<(), String> {
-    // Find an available port
-    let port = find_available_port().map_err(|e| e.to_string())?;
+    let port = 18741u16;
     SIDECAR_PORT.store(port, Ordering::Relaxed);
 
     log::info!("Starting FastAPI sidecar on port {}", port);
 
-    // In development, assume backend is already running
+    // In development, assume backend is already running on the default port
     #[cfg(debug_assertions)]
     {
         log::info!("Dev mode: expecting backend at 127.0.0.1:{}", port);
@@ -94,9 +114,9 @@ pub async fn start_sidecar(app_handle: &AppHandle) -> Result<(), String> {
             *guard = Some(child);
         }
 
-        // Wait for the backend to become healthy
+        // Wait for the backend to become healthy (up to 60 seconds for cold start)
         let url = format!("http://127.0.0.1:{}/health", port);
-        for i in 0..30 {
+        for i in 0..60 {
             tokio::time::sleep(std::time::Duration::from_secs(1)).await;
             if let Ok(resp) = reqwest::get(&url).await {
                 if resp.status().is_success() {
@@ -107,12 +127,6 @@ pub async fn start_sidecar(app_handle: &AppHandle) -> Result<(), String> {
             }
         }
 
-        Err("Sidecar failed to become healthy within 30 seconds".to_string())
+        Err("Sidecar failed to become healthy within 60 seconds".to_string())
     }
-}
-
-fn find_available_port() -> Result<u16, std::io::Error> {
-    let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
-    let port = listener.local_addr()?.port();
-    Ok(port)
 }

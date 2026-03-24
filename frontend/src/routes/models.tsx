@@ -169,8 +169,10 @@ function ModelCard({
                 style={{ width: `${percent}%` }}
               />
             </div>
-            <span className="text-[10px] text-neutral-500 w-8 text-right">
-              {Math.round(percent)}%
+            <span className="text-[10px] text-neutral-500 tabular-nums">
+              {progress?.total_mb
+                ? `${progress.completed_mb ?? 0} / ${progress.total_mb} MB`
+                : `${Math.round(percent)}%`}
             </span>
             <button
               onClick={() => onCancel(model.id)}

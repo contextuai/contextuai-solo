@@ -3,12 +3,10 @@ import { type Page, type Locator, expect } from "@playwright/test";
 /**
  * Page object for the Desktop Personas route ("/personas").
  *
- * The page contains:
- * - Header with persona count and Create Persona button
- * - Search input and category filter pills (All, General, Technical, Creative, Business, Custom)
- * - Persona cards grid with edit (pencil) and delete (trash) buttons
- * - Create/Edit modal with name, description, type, category, system_prompt fields
- * - Delete confirmation dialog
+ * Wizard-style Create flow:
+ *   Step 1: Select persona type (card grid with search)
+ *   Step 2: Configure details (name, description, category, credentials, system prompt)
+ * Edit opens directly on Step 2.
  */
 export class PersonasPage {
   readonly page: Page;
@@ -19,82 +17,92 @@ export class PersonasPage {
 
   // ── Locators ────────────────────────────────────────────────────
 
-  /** The "Create Persona" button (header — always visible). */
   get createButton(): Locator {
     return this.page.getByRole("button", { name: /create persona/i }).first();
   }
 
-  /** The search input field. */
   get searchInput(): Locator {
     return this.page.locator('input[placeholder="Search personas..."]');
   }
 
-  /** All category filter pill buttons. */
   get categoryFilters(): Locator {
     return this.page.locator("button").filter({
       hasText: /^(All|General|Technical|Creative|Business|Custom)$/,
     });
   }
 
-  /** All persona cards in the grid. */
   get personaCards(): Locator {
     return this.page.locator(".group").filter({
       has: this.page.locator("h3"),
     });
   }
 
-  /** The refresh button. */
   get refreshButton(): Locator {
     return this.page.locator("button", {
       has: this.page.locator("svg.lucide-refresh-cw"),
     });
   }
 
-  // Form fields (visible when modal is open)
+  // ── Wizard locators ───────────────────────────────────────────
 
-  /** Name input in the create/edit modal. */
+  /** Type search input on Step 1. */
+  get typeSearchInput(): Locator {
+    return this.page.locator('input[placeholder="Search persona types..."]');
+  }
+
+  /** Name input in Step 2. */
   get formName(): Locator {
     return this.page.locator('input[placeholder="e.g., My Production DB"]');
   }
 
-  /** Description input in the create/edit modal. */
+  /** Description input in Step 2. */
   get formDescription(): Locator {
     return this.page.locator(
       'input[placeholder="A short description of what this persona does"]'
     );
   }
 
-  /** Type select dropdown in the create/edit modal. */
+  /** Type select dropdown — only visible in edit mode (Step 2 fallback). */
   get formType(): Locator {
     return this.page
       .locator("select")
       .filter({ has: this.page.locator('option[value="generic"]') });
   }
 
-  /** Category select dropdown in the create/edit modal. */
+  /** Category select dropdown in Step 2. */
   get formCategory(): Locator {
     return this.page
       .locator("select")
       .filter({ has: this.page.locator('option[value="General"]') });
   }
 
-  /** System prompt textarea in the create/edit modal. */
+  /** System prompt textarea in Step 2. */
   get formSystemPrompt(): Locator {
     return this.page.locator(
       'textarea[placeholder*="Optional instructions that define how this persona behaves"]'
     );
   }
 
-  /** The modal save/create button. */
+  /** Save/Create button (Step 2). */
   get formSaveButton(): Locator {
     return this.page
       .locator(".fixed button")
       .filter({ hasText: /^(Create|Update|Saving\.\.\.)$/ });
   }
 
-  /** The modal cancel button. */
+  /** Cancel button. */
   get formCancelButton(): Locator {
     return this.page.locator(".fixed button").filter({ hasText: "Cancel" });
+  }
+
+  /** Next button (Step 1). */
+  get nextButton(): Locator {
+    return this.page.locator(".fixed button").filter({ hasText: "Next" });
+  }
+
+  /** Back button (Step 2). */
+  get backButton(): Locator {
+    return this.page.locator(".fixed button").filter({ hasText: "Back" });
   }
 
   /** Delete confirmation dialog. */
@@ -102,21 +110,20 @@ export class PersonasPage {
     return this.page.locator(".fixed").filter({ hasText: "Delete persona?" });
   }
 
-  /** Confirm delete button in the confirmation dialog. */
   get confirmDeleteButton(): Locator {
     return this.deleteDialog.getByRole("button", { name: "Delete" });
   }
 
   // ── Actions ─────────────────────────────────────────────────────
 
-  /** Navigate to the personas page. */
   async goto(): Promise<void> {
     await this.page.goto("/personas");
     await this.page.waitForLoadState("networkidle");
   }
 
   /**
-   * Create a new persona via the modal form.
+   * Create a persona via the wizard.
+   * Step 1 → click Next → Step 2 → fill details → Create.
    */
   async createPersona(data: {
     name: string;
@@ -126,15 +133,17 @@ export class PersonasPage {
     systemPrompt?: string;
   }): Promise<void> {
     await this.createButton.click();
-    await expect(this.formName).toBeVisible({ timeout: 5_000 });
 
+    // Step 1: Wait for type grid, then proceed
+    await expect(this.typeSearchInput).toBeVisible({ timeout: 5_000 });
+    await this.nextButton.click();
+
+    // Step 2: Fill details
+    await expect(this.formName).toBeVisible({ timeout: 5_000 });
     await this.formName.fill(data.name);
 
     if (data.description) {
       await this.formDescription.fill(data.description);
-    }
-    if (data.type) {
-      await this.formType.selectOption(data.type);
     }
     if (data.category) {
       await this.formCategory.selectOption(data.category);
@@ -144,13 +153,11 @@ export class PersonasPage {
     }
 
     await this.formSaveButton.click();
-
-    // Wait for modal to close
     await expect(this.formName).toBeHidden({ timeout: 10_000 });
   }
 
   /**
-   * Edit an existing persona by hovering over its card to reveal the edit button.
+   * Edit an existing persona. Opens directly on Step 2.
    */
   async editPersona(
     currentName: string,
@@ -165,9 +172,8 @@ export class PersonasPage {
     const card = this.personaCards.filter({ hasText: currentName }).first();
     await card.scrollIntoViewIfNeeded();
 
-    // Click the pencil (edit) button — use dispatchEvent to bypass opacity:0
     const editBtn = card.locator("button").first();
-    await editBtn.dispatchEvent("click");
+    await editBtn.click({ force: true });
     await expect(this.formName).toBeVisible({ timeout: 5_000 });
 
     if (data.name !== undefined) {
@@ -177,9 +183,6 @@ export class PersonasPage {
     if (data.description !== undefined) {
       await this.formDescription.clear();
       await this.formDescription.fill(data.description);
-    }
-    if (data.type) {
-      await this.formType.selectOption(data.type);
     }
     if (data.category) {
       await this.formCategory.selectOption(data.category);
@@ -193,34 +196,24 @@ export class PersonasPage {
     await expect(this.formName).toBeHidden({ timeout: 10_000 });
   }
 
-  /**
-   * Delete a persona by hovering to reveal the trash button,
-   * then confirming in the dialog.
-   */
   async deletePersona(name: string): Promise<void> {
     const card = this.personaCards.filter({ hasText: name }).first();
     await card.scrollIntoViewIfNeeded();
 
-    // Click the trash (delete) button — use dispatchEvent to bypass opacity:0
     const deleteBtn = card.locator("button").last();
-    await deleteBtn.dispatchEvent("click");
+    await deleteBtn.click({ force: true });
 
     await expect(this.deleteDialog).toBeVisible({ timeout: 5_000 });
     await this.confirmDeleteButton.click();
-
-    // Wait for dialog to close
     await expect(this.deleteDialog).toBeHidden({ timeout: 10_000 });
   }
 
-  /** Type a search query into the search input. */
   async searchPersonas(query: string): Promise<void> {
     await this.searchInput.clear();
     await this.searchInput.fill(query);
-    // Allow filtering to take effect
     await this.page.waitForTimeout(300);
   }
 
-  /** Click a category filter pill. */
   async filterByCategory(category: string): Promise<void> {
     await this.page
       .locator("button")
@@ -230,7 +223,6 @@ export class PersonasPage {
     await this.page.waitForTimeout(300);
   }
 
-  /** Get all visible persona names from the cards. */
   async getPersonaNames(): Promise<string[]> {
     const cards = this.personaCards;
     const count = await cards.count();

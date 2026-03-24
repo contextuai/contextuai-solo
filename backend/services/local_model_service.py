@@ -13,6 +13,8 @@ import pathlib
 from typing import Dict, Any, List, Optional, Union, AsyncGenerator
 from functools import partial
 
+from services.think_tag_parser import parse_think_tags, StreamingThinkParser
+
 logger = logging.getLogger(__name__)
 
 try:
@@ -40,6 +42,7 @@ class LocalModelService:
         self._model: Optional[Any] = None
         self._loaded_model_path: Optional[str] = None
         self._loaded_model_id: Optional[str] = None
+        self._inference_lock = asyncio.Lock()
         logger.info(
             "LocalModelService initialized – models dir: %s, llama-cpp available: %s",
             MODELS_DIR,
@@ -55,7 +58,14 @@ class LocalModelService:
         """Check if a model config targets local GGUF inference."""
         provider = (model_config.get("provider") or "").lower()
         metadata = model_config.get("model_metadata", {})
-        return provider == "local" or metadata.get("runtime") == "local"
+        runtime = (metadata.get("runtime") or "").lower()
+        model_id = model_config.get("id") or model_config.get("_id") or ""
+        return (
+            provider == "local"
+            or runtime in ("local", "llama-cpp")
+            or str(model_id).startswith("local-")
+            or str(model_id).startswith("local:")
+        )
 
     # ------------------------------------------------------------------
     # Model lifecycle
@@ -65,34 +75,45 @@ class LocalModelService:
         """Determine the .gguf file path for the requested model.
 
         Resolution order:
-        1. ``model_metadata.local_model_file`` (explicit filename)
-        2. First ``.gguf`` file found in ``MODELS_DIR/chat/``
+        1. ``model_metadata.gguf_path`` (absolute path from seeder)
+        2. ``model_metadata.hf_filename`` (look in MODELS_DIR root)
+        3. ``model_metadata.local_model_file`` (legacy — look in MODELS_DIR/chat/)
+        4. First ``.gguf`` file found in ``MODELS_DIR`` or ``MODELS_DIR/chat/``
         """
         metadata = (model_config or {}).get("model_metadata", {})
-        local_file = metadata.get("local_model_file")
 
+        # 1. Absolute path from seeder
+        gguf_path = metadata.get("gguf_path")
+        if gguf_path and os.path.isfile(gguf_path):
+            return gguf_path
+
+        # 2. HuggingFace filename from catalog seeder — check MODELS_DIR root
+        hf_filename = metadata.get("hf_filename")
+        if hf_filename:
+            path = os.path.join(MODELS_DIR, hf_filename)
+            if os.path.isfile(path):
+                return path
+
+        # 3. Legacy local_model_file — check MODELS_DIR/chat/
+        local_file = metadata.get("local_model_file")
         if local_file:
-            # Accept absolute paths as-is; relative paths resolve under MODELS_DIR/chat/
             if os.path.isabs(local_file):
                 path = local_file
             else:
                 path = os.path.join(MODELS_DIR, "chat", local_file)
-            if not os.path.isfile(path):
-                raise FileNotFoundError(
-                    f"Configured local_model_file not found: {path}"
-                )
-            return path
+            if os.path.isfile(path):
+                return path
 
-        # Fallback – scan MODELS_DIR/chat/ for the first .gguf file
-        chat_dir = os.path.join(MODELS_DIR, "chat")
-        if os.path.isdir(chat_dir):
-            for fname in sorted(os.listdir(chat_dir)):
-                if fname.lower().endswith(".gguf"):
-                    return os.path.join(chat_dir, fname)
+        # 4. Fallback — scan both directories for any .gguf file
+        for search_dir in [MODELS_DIR, os.path.join(MODELS_DIR, "chat")]:
+            if os.path.isdir(search_dir):
+                for fname in sorted(os.listdir(search_dir)):
+                    if fname.lower().endswith(".gguf"):
+                        return os.path.join(search_dir, fname)
 
         raise FileNotFoundError(
-            f"No .gguf model files found in {chat_dir}. "
-            "Download a model or set 'local_model_file' in model metadata."
+            f"No .gguf model files found in {MODELS_DIR}. "
+            "Download a model from the Model Hub first."
         )
 
     def _ensure_model(self, model_path: str) -> Any:
@@ -103,6 +124,9 @@ class LocalModelService:
                 "Install with: pip install llama-cpp-python"
             )
 
+        # Normalize path for consistent comparison
+        model_path = os.path.normpath(os.path.abspath(model_path))
+
         if self._model is not None and self._loaded_model_path == model_path:
             return self._model
 
@@ -112,13 +136,60 @@ class LocalModelService:
             self.unload_model()
 
         logger.info("Loading GGUF model from %s …", model_path)
-        self._model = Llama(
-            model_path=model_path,
-            n_ctx=4096,
-            n_threads=os.cpu_count() or 4,
-        )
+
+        # Determine context size — smaller for very large models to save RAM
+        file_size_gb = os.path.getsize(model_path) / (1024 ** 3)
+        if file_size_gb > 15:
+            n_ctx = 2048
+            logger.info("Large model (%.1f GB) — using n_ctx=%d to save RAM", file_size_gb, n_ctx)
+        elif file_size_gb > 8:
+            n_ctx = 4096
+        else:
+            n_ctx = 4096
+
+        try:
+            self._model = Llama(
+                model_path=model_path,
+                n_ctx=n_ctx,
+                n_threads=os.cpu_count() or 4,
+                use_mmap=True,
+                verbose=False,
+            )
+        except Exception as e:
+            error_msg = str(e)
+            logger.error("Failed to load model %s: %s", model_path, error_msg)
+
+            # Check for unsupported architecture
+            if "unknown model architecture" in error_msg:
+                import llama_cpp as _lc
+                version = getattr(_lc, "__version__", "unknown")
+                raise RuntimeError(
+                    f"This model requires a newer version of llama-cpp-python. "
+                    f"Current version: {version}. "
+                    f"Run: pip install --upgrade llama-cpp-python"
+                ) from e
+
+            # Retry with minimal context if it failed for other reasons
+            if n_ctx > 512:
+                logger.info("Retrying with n_ctx=512...")
+                try:
+                    self._model = Llama(
+                        model_path=model_path,
+                        n_ctx=512,
+                        n_threads=os.cpu_count() or 4,
+                        use_mmap=True,
+                        verbose=False,
+                    )
+                except Exception as retry_err:
+                    raise RuntimeError(
+                        f"Failed to load model: {error_msg}. "
+                        f"Retry with n_ctx=512 also failed: {retry_err}"
+                    ) from retry_err
+            else:
+                raise
+
         self._loaded_model_path = model_path
-        logger.info("Model loaded successfully: %s", model_path)
+        logger.info("Model loaded successfully: %s (%.1f GB, n_ctx=%d)", model_path, file_size_gb, n_ctx)
         return self._model
 
     def load_model(self, model_path: str, model_id: str = None) -> None:
@@ -254,9 +325,23 @@ class LocalModelService:
         )
 
         if stream:
-            return self._stream_response(messages, model_id, max_tokens, temperature, tools)
+            return self._locked_stream(messages, model_id, max_tokens, temperature, tools)
         else:
-            return await self._sync_response(messages, model_id, max_tokens, temperature, tools)
+            async with self._inference_lock:
+                return await self._sync_response(messages, model_id, max_tokens, temperature, tools)
+
+    async def _locked_stream(
+        self,
+        messages: List[Dict[str, str]],
+        model_id: str,
+        max_tokens: int,
+        temperature: float,
+        tools: Optional[List[Dict[str, Any]]] = None,
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        """Wrap streaming with inference lock so concurrent requests wait."""
+        async with self._inference_lock:
+            async for chunk in self._stream_response(messages, model_id, max_tokens, temperature, tools):
+                yield chunk
 
     async def _sync_response(
         self,
@@ -287,8 +372,11 @@ class LocalModelService:
         content = message.get("content") or ""
         usage = response.get("usage", {})
 
+        # Strip <think> tags and extract reasoning
+        parsed = parse_think_tags(content)
+
         result: Dict[str, Any] = {
-            "content": content,
+            "content": parsed.content,
             "model_id": model_id,
             "tokens_used": {
                 "input_tokens": usage.get("prompt_tokens", 0),
@@ -297,6 +385,9 @@ class LocalModelService:
             },
             "stop_reason": "end_turn",
         }
+
+        if parsed.reasoning:
+            result["reasoning"] = parsed.reasoning
 
         # Attach tool calls if the model produced any
         tool_calls = message.get("tool_calls")
@@ -332,7 +423,7 @@ class LocalModelService:
             partial(self._model.create_chat_completion, **create_kwargs),
         )
 
-        accumulated_text = ""
+        think_parser = StreamingThinkParser()
 
         def _next_chunk(it):
             """Pull one chunk from the blocking iterator (runs in executor)."""
@@ -344,7 +435,16 @@ class LocalModelService:
         while True:
             chunk = await loop.run_in_executor(None, _next_chunk, stream_iter)
             if chunk is None:
-                # Stream exhausted – emit final frame
+                # Flush remaining buffered text
+                for kind, segment_text in think_parser.finish():
+                    if segment_text:
+                        yield {
+                            "chunk": segment_text if kind == "content" else "",
+                            "thinking": segment_text if kind == "thinking" else "",
+                            "model_id": model_id,
+                            "is_final": False,
+                            "status": "streaming",
+                        }
                 yield {
                     "chunk": "",
                     "model_id": model_id,
@@ -357,22 +457,34 @@ class LocalModelService:
             text = delta.get("content") or ""
             finish_reason = chunk.get("choices", [{}])[0].get("finish_reason")
 
+            if text:
+                for kind, segment_text in think_parser.feed(text):
+                    if segment_text:
+                        yield {
+                            "chunk": segment_text if kind == "content" else "",
+                            "thinking": segment_text if kind == "thinking" else "",
+                            "model_id": model_id,
+                            "is_final": False,
+                            "status": "streaming",
+                        }
+
             if finish_reason:
+                for kind, segment_text in think_parser.finish():
+                    if segment_text:
+                        yield {
+                            "chunk": segment_text if kind == "content" else "",
+                            "thinking": segment_text if kind == "thinking" else "",
+                            "model_id": model_id,
+                            "is_final": False,
+                            "status": "streaming",
+                        }
                 yield {
-                    "chunk": text,
+                    "chunk": "",
                     "model_id": model_id,
                     "is_final": True,
                     "status": "complete",
                 }
                 return
-            elif text:
-                accumulated_text += text
-                yield {
-                    "chunk": text,
-                    "model_id": model_id,
-                    "is_final": False,
-                    "status": "streaming",
-                }
 
 
     async def generate(self, model_id: str, prompt: str, max_tokens: int = 2048) -> str:

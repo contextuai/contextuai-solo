@@ -235,54 +235,6 @@ class AnalyticsService:
             metadata=metadata
         )
 
-    async def capture_automation_event(
-        self,
-        user_id: str,
-        automation_id: str,
-        event_type: EventType,
-        status: EventStatus = EventStatus.SUCCESS,
-        duration_ms: Optional[int] = None,
-        step_number: Optional[int] = None,
-        total_steps: Optional[int] = None,
-        personas_used: Optional[List[str]] = None,
-        error_message: Optional[str] = None
-    ) -> Optional[str]:
-        """
-        Capture an automation execution event.
-
-        Args:
-            user_id: User running the automation
-            automation_id: Automation ID
-            event_type: AUTOMATION_START, AUTOMATION_STEP, or AUTOMATION_COMPLETE
-            status: Execution status
-            duration_ms: Execution duration (for complete events)
-            step_number: Current step (for step events)
-            total_steps: Total steps in automation
-            personas_used: List of persona IDs used
-            error_message: Error details if failed
-
-        Returns:
-            event_id if captured successfully
-        """
-        metadata = {
-            "automation_id": automation_id
-        }
-        if step_number is not None:
-            metadata["step_number"] = step_number
-        if total_steps is not None:
-            metadata["total_steps"] = total_steps
-        if personas_used:
-            metadata["personas_used"] = personas_used
-
-        return await self.capture_event(
-            event_type=event_type,
-            user_id=user_id,
-            status=status,
-            response_time_ms=duration_ms,
-            error_message=error_message,
-            metadata=metadata
-        )
-
     async def capture_model_invocation(
         self,
         user_id: str,
@@ -659,48 +611,6 @@ async def capture_session_analytics(
         event_type=event_type,
         persona_id=persona_id,
         model_id=model_id
-    )
-
-
-async def capture_automation_analytics(
-    user_id: str,
-    automation_id: str,
-    event_type: str,  # "start", "step", "complete"
-    status: str = "success",
-    duration_ms: Optional[int] = None,
-    step_number: Optional[int] = None,
-    total_steps: Optional[int] = None,
-    personas_used: Optional[List[str]] = None,
-    error_message: Optional[str] = None
-) -> Optional[str]:
-    """
-    Convenience function to capture automation analytics.
-    Import and call this from automations.py.
-    """
-    # Map string event type to enum
-    event_type_map = {
-        "start": EventType.AUTOMATION_START,
-        "step": EventType.AUTOMATION_STEP,
-        "complete": EventType.AUTOMATION_COMPLETE
-    }
-
-    # Map string status to enum
-    status_map = {
-        "success": EventStatus.SUCCESS,
-        "error": EventStatus.ERROR,
-        "timeout": EventStatus.TIMEOUT
-    }
-
-    return await analytics_service.capture_automation_event(
-        user_id=user_id,
-        automation_id=automation_id,
-        event_type=event_type_map.get(event_type, EventType.AUTOMATION_START),
-        status=status_map.get(status, EventStatus.SUCCESS),
-        duration_ms=duration_ms,
-        step_number=step_number,
-        total_steps=total_steps,
-        personas_used=personas_used,
-        error_message=error_message
     )
 
 

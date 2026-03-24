@@ -15,9 +15,6 @@ class EventType(str, Enum):
     CHAT_RESPONSE = "chat_response"
     SESSION_START = "session_start"
     SESSION_END = "session_end"
-    AUTOMATION_START = "automation_start"
-    AUTOMATION_COMPLETE = "automation_complete"
-    AUTOMATION_STEP = "automation_step"
     PERSONA_USED = "persona_used"
     MODEL_INVOCATION = "model_invocation"
     ERROR = "error"
@@ -133,6 +130,7 @@ class AnalyticsEvent(BaseModel):
     expires_at: Optional[int] = Field(None, description="TTL epoch timestamp for data retention")
 
     model_config = {
+        "protected_namespaces": (),
         "json_schema_extra": {
             "example": {
                 "event_id": "evt-550e8400-e29b-41d4-a716-446655440000",
@@ -468,6 +466,7 @@ class PersonaAnalyticsResponse(BaseModel):
 
 class ModelMetrics(BaseModel):
     """Model for individual AI model metrics"""
+    model_config = {"protected_namespaces": ()}
     model_id: str = Field(..., description="Model identifier")
     name: str = Field(..., description="Model display name")
     provider: ModelProvider = Field(..., description="Model provider")

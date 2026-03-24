@@ -70,7 +70,7 @@ class BaseRepository(Generic[T], ABC):
         """
         try:
             return ObjectId(id)
-        except (InvalidId, TypeError):
+        except (InvalidId, TypeError, ValueError):
             # UUID or other non-ObjectId string — pass through as-is
             return id
 

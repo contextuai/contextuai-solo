@@ -41,12 +41,13 @@ class ModelManager:
         """Detect system RAM and GPU, capped at 64 GB for recommendations."""
         try:
             import psutil
-            total_ram = round(psutil.virtual_memory().total / (1024 ** 3))
-            available_ram = round(psutil.virtual_memory().available / (1024 ** 3))
-        except ImportError:
-            logger.warning("psutil not installed — cannot detect RAM")
-            total_ram = 8
-            available_ram = 4
+            mem = psutil.virtual_memory()
+            total_ram = round(mem.total / (1024 ** 3))
+            available_ram = round(mem.available / (1024 ** 3))
+        except (ImportError, AttributeError) as exc:
+            logger.warning("psutil unavailable (%s) — falling back to platform detection", exc)
+            total_ram, available_ram = ModelManager._fallback_ram()
+
 
         gpu_info = ModelManager._detect_gpu()
 
@@ -76,6 +77,31 @@ class ModelManager:
         }
 
     @staticmethod
+    def _fallback_ram():
+        """Detect RAM without psutil (Windows wmic / Linux meminfo)."""
+        try:
+            if platform.system() == "Windows":
+                result = subprocess.run(
+                    ["wmic", "OS", "get", "TotalVisibleMemorySize", "/value"],
+                    capture_output=True, text=True, timeout=5,
+                )
+                for line in result.stdout.strip().splitlines():
+                    if "=" in line:
+                        kb = int(line.split("=")[1].strip())
+                        total = round(kb / (1024 ** 2))
+                        return total, max(total // 2, 4)
+            else:
+                with open("/proc/meminfo") as f:
+                    for line in f:
+                        if line.startswith("MemTotal"):
+                            kb = int(line.split()[1])
+                            total = round(kb / (1024 ** 2))
+                            return total, max(total // 2, 4)
+        except Exception:
+            pass
+        return 8, 4
+
+    @staticmethod
     def _detect_gpu() -> Optional[Dict[str, Any]]:
         """Best-effort GPU detection via nvidia-smi."""
         try:
@@ -95,7 +121,7 @@ class ModelManager:
     # ── Installed models ────────────────────────────────────────────────────
 
     def list_installed(self) -> List[Dict[str, Any]]:
-        """Scan models directory and return installed model info."""
+        """Scan models directory (and chat/ subdir) and return installed model info."""
         from .model_catalog import LOCAL_MODEL_CATALOG
 
         models_path = Path(self.models_dir)
@@ -106,8 +132,21 @@ class ModelManager:
         for entry in LOCAL_MODEL_CATALOG:
             filename_to_catalog[entry["hf_filename"].lower()] = entry
 
+        # Scan both root and chat/ subdirectory (legacy download location)
+        gguf_files = list(sorted(models_path.glob("*.gguf")))
+        chat_dir = models_path / "chat"
+        if chat_dir.exists():
+            gguf_files.extend(sorted(chat_dir.glob("*.gguf")))
+        # Dedupe by filename (prefer root over chat/)
+        seen: set = set()
+        unique_files = []
+        for f in gguf_files:
+            if f.name.lower() not in seen:
+                seen.add(f.name.lower())
+                unique_files.append(f)
+
         installed = []
-        for f in sorted(models_path.glob("*.gguf")):
+        for f in unique_files:
             size_gb = round(f.stat().st_size / (1024 ** 3), 2)
             modified = f.stat().st_mtime
             catalog_entry = filename_to_catalog.get(f.name.lower())
@@ -143,21 +182,29 @@ class ModelManager:
         return installed
 
     def is_installed(self, model_id: str) -> bool:
-        """Check if a catalog model is already downloaded."""
+        """Check if a catalog model is already downloaded (root or chat/ subdir)."""
         from .model_catalog import get_model
         entry = get_model(model_id)
         if not entry:
             return False
-        return (Path(self.models_dir) / entry["hf_filename"]).exists()
+        filename = entry["hf_filename"]
+        return (
+            (Path(self.models_dir) / filename).exists()
+            or (Path(self.models_dir) / "chat" / filename).exists()
+        )
 
     def get_model_path(self, model_id: str) -> Optional[str]:
-        """Get the local path for an installed model."""
+        """Get the local path for an installed model (checks root and chat/)."""
         from .model_catalog import get_model
         entry = get_model(model_id)
         if not entry:
             return None
-        path = Path(self.models_dir) / entry["hf_filename"]
-        return str(path) if path.exists() else None
+        filename = entry["hf_filename"]
+        for search_dir in [Path(self.models_dir), Path(self.models_dir) / "chat"]:
+            path = search_dir / filename
+            if path.exists():
+                return str(path)
+        return None
 
     # ── Download ────────────────────────────────────────────────────────────
 
@@ -165,6 +212,7 @@ class ModelManager:
         self, model_id: str
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Download a GGUF model from HuggingFace. Yields SSE progress dicts."""
+        import queue as _queue
         from .model_catalog import get_model
 
         entry = get_model(model_id)
@@ -193,11 +241,38 @@ class ModelManager:
             "percent": 0.0,
         }
 
+        # Thread-safe queue for progress updates from the blocking download
+        progress_queue: _queue.Queue = _queue.Queue()
+
         try:
-            result = await asyncio.to_thread(
+            loop = asyncio.get_event_loop()
+            download_future = loop.run_in_executor(
+                None,
                 self._download_with_progress,
-                repo_id, filename, dest_path, model_id,
+                repo_id, filename, dest_path, model_id, progress_queue,
             )
+
+            # Poll progress queue while download runs
+            while not download_future.done():
+                await asyncio.sleep(0.3)
+                # Drain all queued progress updates
+                while True:
+                    try:
+                        update = progress_queue.get_nowait()
+                        yield update
+                    except _queue.Empty:
+                        break
+
+            # Get final result
+            result = download_future.result()
+
+            # Drain remaining progress
+            while True:
+                try:
+                    update = progress_queue.get_nowait()
+                    yield update
+                except _queue.Empty:
+                    break
 
             if self._active_downloads.get(model_id):
                 if os.path.isfile(dest_path):
@@ -220,17 +295,27 @@ class ModelManager:
             self._active_downloads.pop(model_id, None)
 
     def _download_with_progress(
-        self, repo_id: str, filename: str, dest_path: str, model_id: str
+        self, repo_id: str, filename: str, dest_path: str, model_id: str,
+        progress_queue=None,
     ) -> Dict[str, Any]:
-        """Blocking download using huggingface_hub (runs in thread)."""
+        """Blocking download using huggingface_hub (runs in thread).
+
+        If *progress_queue* is supplied, intermediate progress dicts are
+        pushed so the async caller can yield them as SSE events.
+        """
         try:
             from huggingface_hub import hf_hub_download
+
+            tqdm_cls = None
+            if progress_queue is not None:
+                tqdm_cls = self._make_progress_tqdm(progress_queue, model_id)
 
             downloaded_path = hf_hub_download(
                 repo_id=repo_id,
                 filename=filename,
                 local_dir=self.models_dir,
                 local_dir_use_symlinks=False,
+                tqdm_class=tqdm_cls,
             )
 
             size = os.path.getsize(downloaded_path)
@@ -240,6 +325,40 @@ class ModelManager:
         except Exception as exc:
             logger.exception("HuggingFace download error")
             return {"error": str(exc)}
+
+    @staticmethod
+    def _make_progress_tqdm(progress_queue, model_id: str):
+        """Create a tqdm-compatible class that pushes progress into a queue."""
+        import tqdm as _tqdm
+
+        class _QueueTqdm(_tqdm.tqdm):
+            """Custom tqdm that reports progress via a thread-safe queue."""
+
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                self._last_reported = 0.0
+
+            def update(self, n=1):
+                super().update(n)
+                if self.total and self.total > 0:
+                    percent = (self.n / self.total) * 100
+                    # Throttle: only emit if progress changed by >= 0.5%
+                    if percent - self._last_reported >= 0.5 or percent >= 100:
+                        self._last_reported = percent
+                        completed_mb = self.n / (1024 * 1024)
+                        total_mb = self.total / (1024 * 1024)
+                        progress_queue.put({
+                            "status": "downloading",
+                            "model_id": model_id,
+                            "completed": self.n,
+                            "total": self.total,
+                            "percent": round(percent, 1),
+                            "completed_mb": round(completed_mb, 1),
+                            "total_mb": round(total_mb, 1),
+                            "speed": self.format_dict.get("rate", 0),
+                        })
+
+        return _QueueTqdm
 
     def cancel_download(self, model_id: str) -> bool:
         """Request cancellation of an active download."""

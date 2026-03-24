@@ -332,8 +332,6 @@ class AnalyticsAggregationService:
             "estimated_cost_cents": 0,
             "response_times": [],
             "error_count": 0,
-            "automation_runs": 0,
-            "automation_success": 0,
             "unique_sessions": set()
         })
 
@@ -391,8 +389,6 @@ class AnalyticsAggregationService:
                 "estimated_cost_cents": agg["estimated_cost_cents"],
                 "avg_response_time_ms": round(avg_response_time, 2),
                 "error_count": agg["error_count"],
-                "automation_runs": agg["automation_runs"],
-                "automation_success": agg["automation_success"],
                 "updated_at": datetime.utcnow().isoformat() + "Z"
             }
 
@@ -431,12 +427,6 @@ class AnalyticsAggregationService:
         if status == "error":
             agg["error_count"] += 1
 
-        # Track automations
-        if event_type == "automation_start":
-            agg["automation_runs"] += 1
-        if event_type == "automation_complete" and status == "success":
-            agg["automation_success"] += 1
-
     def _sum_hourly_to_daily(self, hourly_data: List[Dict[str, Any]], date: str) -> Dict[str, Dict[str, Any]]:
         """Sum hourly aggregates into daily aggregates."""
         daily_aggregates = defaultdict(lambda: {
@@ -447,9 +437,7 @@ class AnalyticsAggregationService:
             "output_tokens": 0,
             "estimated_cost_cents": 0,
             "response_times": [],
-            "error_count": 0,
-            "automation_runs": 0,
-            "automation_success": 0
+            "error_count": 0
         })
 
         for hourly in hourly_data:
@@ -468,8 +456,6 @@ class AnalyticsAggregationService:
             agg["output_tokens"] += hourly.get("output_tokens", 0)
             agg["estimated_cost_cents"] += hourly.get("estimated_cost_cents", 0)
             agg["error_count"] += hourly.get("error_count", 0)
-            agg["automation_runs"] += hourly.get("automation_runs", 0)
-            agg["automation_success"] += hourly.get("automation_success", 0)
 
             # Track max active users (not sum)
             agg["active_users"] = max(
@@ -508,8 +494,6 @@ class AnalyticsAggregationService:
                 "estimated_cost_cents": agg["estimated_cost_cents"],
                 "avg_response_time_ms": round(avg_response_time, 2),
                 "error_count": agg["error_count"],
-                "automation_runs": agg["automation_runs"],
-                "automation_success": agg["automation_success"],
                 "updated_at": datetime.utcnow().isoformat() + "Z"
             }
 

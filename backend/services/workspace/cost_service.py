@@ -55,6 +55,7 @@ class CostService:
         "legal_compliance": {"input": 1500, "output": 2500},
         "it_security": {"input": 2000, "output": 3000},
         "data_analytics": {"input": 2000, "output": 3000},
+        "social_engagement": {"input": 1500, "output": 2500},
         "specialized": {"input": 1500, "output": 2500},
         "engineering": {"input": 3000, "output": 6000},
         "default": {"input": 2000, "output": 4000}

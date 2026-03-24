@@ -39,20 +39,42 @@ export default function ChatPage() {
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingContent, setStreamingContent] = useState("");
+  const [streamingThinking, setStreamingThinking] = useState("");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   // Abort controller for stopping stream
   const abortRef = useRef(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
-  // ── Load initial data ──────────────────────────────────────────
+  // ── Load initial data (wait for backend to be ready) ──────────
   useEffect(() => {
-    // Sync any downloaded local models into DB first, then load models
-    import("@/lib/api/local-models-client")
-      .then((m) => m.syncLocalModels())
-      .catch(() => {})
-      .finally(() => loadModels());
-    loadPersonas();
-    loadSessions();
+    let cancelled = false;
+
+    async function waitForBackend() {
+      // Poll /health until the backend responds (handles cold-start delay)
+      for (let i = 0; i < 60; i++) {
+        if (cancelled) return;
+        try {
+          const resp = await fetch("http://127.0.0.1:18741/health");
+          if (resp.ok) break;
+        } catch {
+          // backend not ready yet
+        }
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+      if (cancelled) return;
+
+      // Backend is ready — load all data
+      import("@/lib/api/local-models-client")
+        .then((m) => m.syncLocalModels())
+        .catch(() => {})
+        .finally(() => loadModels());
+      loadPersonas();
+      loadSessions();
+    }
+
+    waitForBackend();
+    return () => { cancelled = true; };
   }, []);
 
   // Re-fetch models when AI mode changes
@@ -121,6 +143,7 @@ export default function ChatPage() {
     setActiveSessionId(sessionId);
     setMessages([]);
     setStreamingContent("");
+    setStreamingThinking("");
     setInput("");
 
     // Find session in list for title/model/persona
@@ -149,6 +172,7 @@ export default function ChatPage() {
     setActiveSessionId(null);
     setMessages([]);
     setStreamingContent("");
+    setStreamingThinking("");
     setSessionTitle("New Chat");
     setInput("");
   }, []);
@@ -183,8 +207,8 @@ export default function ChatPage() {
         setActiveSessionId(realId);
         setSessionTitle(prompt.slice(0, 30));
 
-        // Add to sessions list
-        setSessions((prev) => [created, ...prev]);
+        // Refresh session list from backend (avoids duplicates from optimistic add + reload)
+        loadSessions();
       } catch (err) {
         console.warn("Failed to create session, using local ID:", err);
       }
@@ -203,19 +227,28 @@ export default function ChatPage() {
     // Start streaming
     setIsStreaming(true);
     setStreamingContent("");
+    setStreamingThinking("");
+
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
 
     let fullResponse = "";
+    let fullThinking = "";
 
     try {
       for await (const chunk of sendMessageStream(
         prompt,
         sessionId,
         selectedModelId || undefined,
-        selectedPersonaId || undefined
+        selectedPersonaId || undefined,
+        controller.signal
       )) {
         if (abortRef.current) break;
 
-        if (chunk.type === "chunk") {
+        if (chunk.type === "thinking") {
+          fullThinking += chunk.data;
+          setStreamingThinking(fullThinking);
+        } else if (chunk.type === "chunk") {
           fullResponse += chunk.data;
           setStreamingContent(fullResponse);
         } else if (chunk.type === "error") {
@@ -225,19 +258,23 @@ export default function ChatPage() {
         // metadata chunks are silently consumed
       }
     } catch (err) {
-      if (!abortRef.current) {
+      // Ignore abort errors — those are intentional stops
+      const isAbort = abortRef.current || (err instanceof DOMException && err.name === "AbortError");
+      if (!isAbort) {
         fullResponse +=
           `\n\n**Error:** ${err instanceof Error ? err.message : "Unknown error"}`;
         setStreamingContent(fullResponse);
       }
     }
+    abortControllerRef.current = null;
 
     // Finalize: add assistant message
-    if (fullResponse) {
+    if (fullResponse || fullThinking) {
       const assistantMsg: ChatMessage = {
         message_id: `msg_${Date.now()}_assistant`,
         session_id: sessionId,
         content: fullResponse,
+        reasoning: fullThinking || undefined,
         message_type: "assistant",
         timestamp: new Date().toISOString(),
       };
@@ -246,6 +283,7 @@ export default function ChatPage() {
 
     setIsStreaming(false);
     setStreamingContent("");
+    setStreamingThinking("");
 
     // Refresh session list to update message counts
     loadSessions();
@@ -253,6 +291,8 @@ export default function ChatPage() {
 
   const handleStop = useCallback(() => {
     abortRef.current = true;
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
   }, []);
 
   // ── Session management ─────────────────────────────────────────
@@ -339,6 +379,7 @@ export default function ChatPage() {
         <MessageList
           messages={messages}
           streamingContent={streamingContent}
+          streamingThinking={streamingThinking}
           isStreaming={isStreaming}
         />
 

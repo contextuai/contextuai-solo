@@ -54,6 +54,10 @@ class AgentBlueprint(BaseModel):
         default=True,
         description="Whether the agent is currently enabled"
     )
+    system_prompt: Optional[str] = Field(
+        None,
+        description="Full system prompt / instructions for the agent"
+    )
     source: Optional[str] = Field(
         None,
         description="Agent source: system, library, custom, admin_edit"
@@ -291,6 +295,24 @@ class ProjectConfig(BaseModel):
 
 class CreateProjectRequest(BaseModel):
     """Request model for creating a new workspace project"""
+    model_config = {
+        "protected_namespaces": (),
+        "json_schema_extra": {
+            "example": {
+                "name": "E-commerce API Migration",
+                "description": "Migrate legacy REST API to GraphQL with TypeScript",
+                "tech_stack": ["typescript", "graphql", "nodejs", "postgresql"],
+                "complexity": "complex",
+                "team_agent_ids": ["agent-code-gen-001", "agent-reviewer-001", "agent-docs-001"],
+                "template_id": "template-api-migration",
+                "config": {
+                    "enable_checkpoints": True,
+                    "auto_create_pr": True,
+                    "github_repo_url": "https://github.com/company/ecommerce-api"
+                }
+            }
+        }
+    }
     name: Optional[str] = Field(
         None,
         min_length=1,
@@ -367,23 +389,6 @@ class CreateProjectRequest(BaseModel):
     def resolved_template_id(self) -> Optional[str]:
         """Get template ID from either template_id or team_template_id"""
         return self.template_id or self.team_template_id
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "name": "E-commerce API Migration",
-                "description": "Migrate legacy REST API to GraphQL with TypeScript",
-                "tech_stack": ["typescript", "graphql", "nodejs", "postgresql"],
-                "complexity": "complex",
-                "team_agent_ids": ["agent-code-gen-001", "agent-reviewer-001", "agent-docs-001"],
-                "template_id": "template-api-migration",
-                "config": {
-                    "enable_checkpoints": True,
-                    "auto_create_pr": True,
-                    "github_repo_url": "https://github.com/company/ecommerce-api"
-                }
-            }
-        }
 
 
 class UpdateProjectRequest(BaseModel):
@@ -1189,18 +1194,9 @@ class UpdateCustomAgentRequest(BaseModel):
 
 class CustomAgentPreview(BaseModel):
     """Preview of a generated agent blueprint before saving"""
-    name: str = Field(..., description="Agent name")
-    description: str = Field(..., description="Original description")
-    category: str = Field(..., description="Detected or provided category")
-    icon: str = Field(..., description="Suggested icon")
-    capabilities: List[str] = Field(default_factory=list, description="Extracted capabilities")
-    system_prompt: str = Field(..., description="Generated system prompt")
-    model_id: str = Field(..., description="Default model ID")
-    estimated_tokens: int = Field(default=2000, description="Estimated token usage")
-    estimated_cost_usd: float = Field(default=0.02, description="Estimated cost per run")
-
-    class Config:
-        json_schema_extra = {
+    model_config = {
+        "protected_namespaces": (),
+        "json_schema_extra": {
             "example": {
                 "name": "Python API Tester",
                 "description": "An agent that writes pytest test suites for FastAPI backends",
@@ -1213,6 +1209,16 @@ class CustomAgentPreview(BaseModel):
                 "estimated_cost_usd": 0.02
             }
         }
+    }
+    name: str = Field(..., description="Agent name")
+    description: str = Field(..., description="Original description")
+    category: str = Field(..., description="Detected or provided category")
+    icon: str = Field(..., description="Suggested icon")
+    capabilities: List[str] = Field(default_factory=list, description="Extracted capabilities")
+    system_prompt: str = Field(..., description="Generated system prompt")
+    model_id: str = Field(..., description="Default model ID")
+    estimated_tokens: int = Field(default=2000, description="Estimated token usage")
+    estimated_cost_usd: float = Field(default=0.02, description="Estimated cost per run")
 
 
 class CustomAgentResponse(BaseModel):

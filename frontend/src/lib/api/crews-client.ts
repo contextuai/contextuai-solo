@@ -29,6 +29,12 @@ export interface CrewSchedule {
   timezone?: string;
 }
 
+export interface ChannelBinding {
+  channel_type: string;
+  enabled: boolean;
+  approval_required: boolean;
+}
+
 export interface Crew {
   id?: string;
   crew_id: string;
@@ -36,6 +42,7 @@ export interface Crew {
   description?: string;
   execution_config?: CrewExecutionConfig;
   agents?: CrewAgent[];
+  channel_bindings?: ChannelBinding[];
   phases?: unknown[];
   schedule?: CrewSchedule;
   status: "active" | "paused" | "archived" | "idle";
@@ -134,13 +141,15 @@ export const crewsApi = {
     return (data as { data: CrewRun }).data;
   },
 
-  getRun: async (crewId: string, runId: string): Promise<CrewRun> => {
-    const { data } = await api.get<{ data: CrewRun }>(`/crews/${crewId}/runs/${runId}`);
+  getRun: async (_crewId: string, runId: string): Promise<CrewRun> => {
+    // Backend route is /crews/runs/{run_id} (no crew_id in path)
+    const { data } = await api.get<{ data: CrewRun }>(`/crews/runs/${runId}`);
     return (data as { data: CrewRun }).data;
   },
 
-  cancelRun: async (crewId: string, runId: string): Promise<void> => {
-    await api.post(`/crews/${crewId}/runs/${runId}/cancel`);
+  cancelRun: async (_crewId: string, runId: string): Promise<void> => {
+    // Backend route is /crews/runs/{run_id}/cancel (no crew_id in path)
+    await api.post(`/crews/runs/${runId}/cancel`);
   },
 
   // Library agents

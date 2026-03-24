@@ -1,11 +1,12 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
-import { Bot, User } from "lucide-react";
+import { Bot, User, Brain, ChevronRight } from "lucide-react";
 import type { ChatMessage } from "@/types/chat";
 
 interface MessageListProps {
   messages: ChatMessage[];
   streamingContent: string;
+  streamingThinking: string;
   isStreaming: boolean;
 }
 
@@ -115,6 +116,33 @@ function renderMarkdown(text: string): string {
   return html;
 }
 
+function ThinkingBlock({ content, streaming = false }: { content: string; streaming?: boolean }) {
+  const [open, setOpen] = useState(streaming);
+
+  // Auto-open while streaming, allow manual toggle after
+  useEffect(() => {
+    if (streaming) setOpen(true);
+  }, [streaming]);
+
+  return (
+    <div className="mb-2 rounded-lg border border-purple-200 dark:border-purple-800/50 bg-purple-50/50 dark:bg-purple-900/20 overflow-hidden">
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-1.5 w-full px-3 py-1.5 text-xs font-medium text-purple-600 dark:text-purple-400 hover:bg-purple-100/50 dark:hover:bg-purple-800/30 transition-colors"
+      >
+        <ChevronRight className={cn("w-3 h-3 transition-transform", open && "rotate-90")} />
+        <Brain className="w-3 h-3" />
+        <span>Thinking{streaming ? "..." : ""}</span>
+      </button>
+      {open && (
+        <div className="px-3 pb-2 text-xs text-purple-700 dark:text-purple-300/80 leading-relaxed whitespace-pre-wrap border-t border-purple-200/50 dark:border-purple-800/30 pt-1.5">
+          {content}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function MessageBubble({
   message,
   isLast,
@@ -160,44 +188,64 @@ function MessageBubble({
         {isUser ? (
           <p className="whitespace-pre-wrap">{message.content}</p>
         ) : (
-          <div
-            className="prose prose-sm dark:prose-invert max-w-none [&_pre]:my-2 [&_code]:text-xs"
-            dangerouslySetInnerHTML={{
-              __html: renderMarkdown(message.content),
-            }}
-          />
+          <>
+            {message.reasoning && (
+              <ThinkingBlock content={message.reasoning} />
+            )}
+            <div
+              className="prose prose-sm dark:prose-invert max-w-none [&_pre]:my-2 [&_code]:text-xs"
+              dangerouslySetInnerHTML={{
+                __html: renderMarkdown(message.content),
+              }}
+            />
+          </>
         )}
       </div>
     </div>
   );
 }
 
-function StreamingBubble({ content }: { content: string }) {
+function StreamingBubble({ content, thinking }: { content: string; thinking: string }) {
   return (
     <div className="flex gap-3 px-4 py-3 max-w-3xl mr-auto mb-2">
       <div className="flex-shrink-0 flex items-center justify-center w-8 h-8 rounded-full bg-neutral-100 dark:bg-neutral-800">
         <Bot className="w-4 h-4 text-neutral-600 dark:text-neutral-400" />
       </div>
       <div className="rounded-2xl rounded-tl-sm px-4 py-2.5 text-sm leading-relaxed max-w-[85%] bg-neutral-100 dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100">
+        {thinking && (
+          <ThinkingBlock content={thinking} streaming />
+        )}
         {content ? (
           <div
             className="prose prose-sm dark:prose-invert max-w-none [&_pre]:my-2 [&_code]:text-xs"
             dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }}
           />
-        ) : (
+        ) : !thinking ? (
           <TypingIndicator />
-        )}
+        ) : null}
       </div>
     </div>
   );
 }
 
 function TypingIndicator() {
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    const t = setInterval(() => setElapsed((e) => e + 1), 1000);
+    return () => clearInterval(t);
+  }, []);
+
   return (
-    <div className="flex items-center gap-1 py-1 px-1">
+    <div className="flex items-center gap-2 py-1 px-1">
       <span className="w-2 h-2 rounded-full bg-neutral-400 dark:bg-neutral-500 animate-bounce [animation-delay:0ms]" />
       <span className="w-2 h-2 rounded-full bg-neutral-400 dark:bg-neutral-500 animate-bounce [animation-delay:150ms]" />
       <span className="w-2 h-2 rounded-full bg-neutral-400 dark:bg-neutral-500 animate-bounce [animation-delay:300ms]" />
+      {elapsed >= 3 && (
+        <span className="ml-1 text-xs text-neutral-400 dark:text-neutral-500">
+          {elapsed < 8 ? "Thinking..." : `Loading model... (${elapsed}s)`}
+        </span>
+      )}
     </div>
   );
 }
@@ -222,13 +270,14 @@ function EmptyState() {
 export default function MessageList({
   messages,
   streamingContent,
+  streamingThinking,
   isStreaming,
 }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, streamingContent]);
+  }, [messages, streamingContent, streamingThinking]);
 
   if (messages.length === 0 && !isStreaming) {
     return <EmptyState />;
@@ -244,7 +293,7 @@ export default function MessageList({
             isLast={i === messages.length - 1 && !isStreaming}
           />
         ))}
-        {isStreaming && <StreamingBubble content={streamingContent} />}
+        {isStreaming && <StreamingBubble content={streamingContent} thinking={streamingThinking} />}
         <div ref={bottomRef} />
       </div>
     </div>

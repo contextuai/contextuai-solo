@@ -84,10 +84,8 @@ class AgentRunner:
 
     def _is_local_model(self) -> bool:
         """Check if the configured model is a local GGUF model."""
-        return (
-            self.model_id.startswith("local-")
-            or self.model_id.startswith("local:")
-        )
+        mid = self.model_id.lower()
+        return mid.startswith("local-") or mid.startswith("local:")
 
     async def run_agent(
         self,

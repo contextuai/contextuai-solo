@@ -1,20 +1,6 @@
 # Models package for ContextuAI Backend
 # Contains Pydantic models for data validation
 
-from .automation_models import (
-    AutomationCreate,
-    AutomationUpdate,
-    AutomationResponse,
-    AutomationValidation,
-    AutomationListResponse,
-    ExecutionMode,
-    ExecutionStatus,
-    ExecutionStep,
-    AutomationExecutionRequest,
-    AutomationExecutionResponse,
-    ExecutionHistoryResponse
-)
-
 from .workspace_enums import (
     ProjectStatus,
     AgentStatus,
@@ -55,18 +41,6 @@ from .workspace_models import (
 )
 
 __all__ = [
-    # Automation Models
-    "AutomationCreate",
-    "AutomationUpdate",
-    "AutomationResponse",
-    "AutomationValidation",
-    "AutomationListResponse",
-    "ExecutionMode",
-    "ExecutionStatus",
-    "ExecutionStep",
-    "AutomationExecutionRequest",
-    "AutomationExecutionResponse",
-    "ExecutionHistoryResponse",
     # Workspace Enums
     "ProjectStatus",
     "AgentStatus",

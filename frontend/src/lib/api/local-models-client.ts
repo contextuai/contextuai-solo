@@ -71,6 +71,8 @@ export interface DownloadProgress {
   completed?: number;
   total?: number;
   percent?: number;
+  completed_mb?: number;
+  total_mb?: number;
   path?: string;
   detail?: string;
 }

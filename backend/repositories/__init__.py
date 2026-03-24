@@ -12,8 +12,6 @@ from .persona_type_repository import PersonaTypeRepository
 from .persona_access_repository import PersonaAccessRepository
 from .session_repository import SessionRepository
 from .message_repository import MessageRepository
-from .automation_repository import AutomationRepository
-from .automation_execution_repository import AutomationExecutionRepository
 from .user_repository import UserRepository
 from .user_profile_repository import UserProfileRepository
 from .user_settings_repository import UserSettingsRepository
@@ -36,8 +34,6 @@ __all__ = [
     "PersonaAccessRepository",
     "SessionRepository",
     "MessageRepository",
-    "AutomationRepository",
-    "AutomationExecutionRepository",
     "UserRepository",
     "UserProfileRepository",
     "UserSettingsRepository",

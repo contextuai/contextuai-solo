@@ -276,6 +276,7 @@ def agent_to_blueprint(agent_data: dict) -> AgentBlueprint:
         is_system=agent_data.get("is_system", False),
         created_by=agent_data.get("created_by"),
         is_enabled=agent_data.get("is_active", True),
+        system_prompt=agent_data.get("system_prompt"),
         source=agent_data.get("source"),
         created_at=agent_data.get("created_at"),
         updated_at=agent_data.get("updated_at")
@@ -703,13 +704,24 @@ async def start_execution(
         await project_repo.update(project_id, {"status": ProjectStatus.QUEUED.value})
         await project_repo.increment_execution_count(project_id)
 
-        # Dispatch to Celery worker for execution
+        # Desktop mode: execute via orchestrator directly (no Celery)
         try:
-            from tasks.workspace_tasks import execute_workspace_project
-            execute_workspace_project.delay(project_id, execution_id, user_id)
-            logger.info(f"Project {project_id} dispatched to Celery worker")
+            import asyncio
+            from database import get_database
+            from services.workspace.orchestrator import WorkspaceOrchestrator
+
+            async def _run_in_background():
+                try:
+                    db = await get_database()
+                    orchestrator = WorkspaceOrchestrator(db)
+                    await orchestrator.execute_project(project_id, execution_id, user_id)
+                except Exception as exc:
+                    logger.error(f"Background execution failed for project {project_id}: {exc}")
+
+            asyncio.get_event_loop().create_task(_run_in_background())
+            logger.info(f"Project {project_id} execution started (desktop mode)")
         except Exception as e:
-            logger.error(f"Celery dispatch failed for project {project_id}: {e}")
+            logger.error(f"Execution dispatch failed for project {project_id}: {e}")
             await project_repo.update(project_id, {"status": "failed", "error_message": str(e)})
             raise HTTPException(status_code=503, detail=f"Task dispatch failed: {str(e)}")
 
@@ -845,13 +857,24 @@ async def resume_execution(
         except Exception:
             pass
 
-        # Dispatch resume to Celery worker
+        # Desktop mode: resume via orchestrator directly
         try:
-            from tasks.workspace_tasks import execute_workspace_project
-            execute_workspace_project.delay(project_id, resume_execution_id, user_id, True)
-            logger.info(f"Project {project_id} resume dispatched to Celery worker (execution: {resume_execution_id})")
+            import asyncio
+            from database import get_database
+            from services.workspace.orchestrator import WorkspaceOrchestrator
+
+            async def _resume_in_background():
+                try:
+                    db = await get_database()
+                    orchestrator = WorkspaceOrchestrator(db)
+                    await orchestrator.resume_project(project_id, resume_execution_id)
+                except Exception as exc:
+                    logger.error(f"Background resume failed for project {project_id}: {exc}")
+
+            asyncio.get_event_loop().create_task(_resume_in_background())
+            logger.info(f"Project {project_id} resume started (desktop mode)")
         except Exception as e:
-            logger.error(f"Celery dispatch failed for project resume {project_id}: {e}")
+            logger.error(f"Resume dispatch failed for project {project_id}: {e}")
 
         logger.info(f"Project {project_id} resume queued")
 
@@ -1318,22 +1341,24 @@ async def respond_to_checkpoint(
             checkpoint_execution_id = checkpoint.get("execution_id")
             await project_repo.update(project_id, {"status": ProjectStatus.QUEUED.value})
 
-            # Dispatch resume via Celery worker
+            # Desktop mode: resume via orchestrator
             try:
-                from tasks.workspace_tasks import execute_workspace_project
-                execute_workspace_project.delay(
-                    project_id, execution_id=checkpoint_execution_id,
-                    user_id=user_id, resume=True
-                )
-                logger.info(f"Checkpoint approved, resume dispatched for {project_id}")
+                import asyncio
+                from database import get_database
+                from services.workspace.orchestrator import WorkspaceOrchestrator
+
+                async def _checkpoint_resume():
+                    try:
+                        db = await get_database()
+                        orchestrator = WorkspaceOrchestrator(db)
+                        await orchestrator.resume_project(project_id, checkpoint_execution_id)
+                    except Exception as exc:
+                        logger.error(f"Checkpoint resume failed: {exc}")
+
+                asyncio.get_event_loop().create_task(_checkpoint_resume())
+                logger.info(f"Checkpoint approved, resume started for {project_id}")
             except Exception as e:
-                logger.error(f"Celery dispatch failed for checkpoint resume: {e}")
-                # Fallback: create job for poll-based worker
-                await job_repo.create_job(
-                    job_type="continue_execution",
-                    payload={"project_id": project_id, "checkpoint_id": checkpoint_id, "user_id": user_id},
-                    priority=1
-                )
+                logger.error(f"Resume dispatch failed for checkpoint: {e}")
 
         elif request_body.action == CheckpointAction.REJECT:
             await project_repo.update(project_id, {"status": ProjectStatus.CANCELLED.value})
@@ -1348,13 +1373,21 @@ async def respond_to_checkpoint(
             await project_repo.update(project_id, {"status": ProjectStatus.QUEUED.value})
 
             try:
-                from tasks.workspace_tasks import execute_workspace_project
-                execute_workspace_project.delay(
-                    project_id, execution_id=checkpoint_execution_id,
-                    user_id=user_id, resume=True
-                )
+                import asyncio
+                from database import get_database
+                from services.workspace.orchestrator import WorkspaceOrchestrator
+
+                async def _checkpoint_modify_resume():
+                    try:
+                        db = await get_database()
+                        orchestrator = WorkspaceOrchestrator(db)
+                        await orchestrator.resume_project(project_id, checkpoint_execution_id)
+                    except Exception as exc:
+                        logger.error(f"Checkpoint modify resume failed: {exc}")
+
+                asyncio.get_event_loop().create_task(_checkpoint_modify_resume())
             except Exception as e:
-                logger.error(f"Celery dispatch failed for checkpoint modify: {e}")
+                logger.error(f"Resume dispatch failed for checkpoint modify: {e}")
                 await job_repo.create_job(
                     job_type="reprocess_checkpoint",
                     payload={"project_id": project_id, "checkpoint_id": checkpoint_id,

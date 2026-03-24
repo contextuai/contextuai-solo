@@ -54,6 +54,7 @@ class AgentCategory(str, Enum):
     LEGAL_COMPLIANCE = "legal_compliance"
     IT_SECURITY = "it_security"
     DATA_ANALYTICS = "data_analytics"
+    SOCIAL_ENGAGEMENT = "social_engagement"
     SPECIALIZED = "specialized"
     ENGINEERING = "engineering"
 

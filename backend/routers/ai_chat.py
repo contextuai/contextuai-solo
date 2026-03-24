@@ -299,14 +299,13 @@ async def ai_chat(request: ChatRequest, http_request: Request = None):
 
             model_config = None
 
-            # Try lookup by MongoDB ObjectId first (24 hex chars)
-            if len(model_id) == 24:
-                try:
-                    model_config = await model_repo.get_by_id(model_id)
-                    if model_config:
-                        logger.info(f"✅ Found model by MongoDB ID: {model_id}")
-                except Exception:
-                    pass
+            # Try direct _id lookup first (works for local:* IDs and MongoDB ObjectIds)
+            try:
+                model_config = await model_repo.get_by_id(model_id)
+                if model_config:
+                    logger.info(f"✅ Found model by _id: {model_id}")
+            except Exception:
+                pass
 
             # If not found by ID, try by model field (Bedrock model ID)
             if not model_config:
@@ -376,8 +375,38 @@ async def ai_chat(request: ChatRequest, http_request: Request = None):
         # ── Local GGUF model intercept ─────────────────────────────────
         # If the resolved model config is a local GGUF model, use
         # LocalModelService (llama-cpp-python) directly.
+        # Also detect by model_id prefix when model_config lookup failed.
         from services.local_model_service import LocalModelService, local_model_service
-        if model_config and LocalModelService.is_local_model(model_config):
+        _is_local = (model_config and LocalModelService.is_local_model(model_config)) or \
+            str(model_id).startswith("local:") or str(model_id).startswith("local-")
+        if _is_local:
+            # If model_config is missing (sync not yet run), build a minimal
+            # config from the catalog so LocalModelService can resolve the file.
+            if not model_config:
+                from services.model_catalog import get_model as get_catalog_model
+                catalog_id = model_id.replace("local:", "").replace("local-", "")
+                catalog_entry = get_catalog_model(catalog_id)
+                if catalog_entry:
+                    model_config = {
+                        "id": model_id,
+                        "name": catalog_entry.get("name", model_id),
+                        "provider": "local",
+                        "model_metadata": {
+                            "runtime": "llama-cpp",
+                            "hf_filename": catalog_entry.get("hf_filename"),
+                            "gguf_path": None,
+                        },
+                    }
+                    logger.info(f"🖥️ Built model_config from catalog for {model_id}")
+                else:
+                    # No catalog entry — still try with minimal config
+                    model_config = {
+                        "id": model_id,
+                        "name": model_id,
+                        "provider": "local",
+                        "model_metadata": {"runtime": "llama-cpp"},
+                    }
+                    logger.warning(f"⚠️ No catalog entry for {catalog_id}, using minimal config")
             logger.info(f"🖥️ ROUTING: Local model detected ({model_config.get('name')}), using LocalModelService")
 
             # Store user message
@@ -406,6 +435,7 @@ async def ai_chat(request: ChatRequest, http_request: Request = None):
 
                 async def local_event_generator() -> AsyncGenerator[str, None]:
                     collected_response = []
+                    disconnected = False
                     try:
                         gen = await local_model_service.call_model(
                             prompt=request.prompt,
@@ -419,33 +449,49 @@ async def ai_chat(request: ChatRequest, http_request: Request = None):
                         )
                         async for chunk in gen:
                             text = chunk.get("chunk", "")
-                            if text:
-                                collected_response.append(text)
-                                yield f"data: {json.dumps({'chunk': text})}\n\n"
+                            thinking = chunk.get("thinking", "")
+                            if text or thinking:
+                                if text:
+                                    collected_response.append(text)
+                                payload: dict = {}
+                                if text:
+                                    payload["chunk"] = text
+                                if thinking:
+                                    payload["thinking"] = thinking
+                                yield f"data: {json.dumps(payload)}\n\n"
+                    except (GeneratorExit, asyncio.CancelledError):
+                        disconnected = True
+                        logger.info("Client disconnected during local model streaming")
                     except Exception as e:
                         logger.error(f"❌ Local model streaming error: {e}")
                         yield f"data: {json.dumps({'chunk': f'Error: {e}', 'error': True})}\n\n"
 
-                    yield "data: [DONE]\n\n"
+                    if not disconnected:
+                        yield "data: [DONE]\n\n"
 
+                    # Always store what we have so far
                     full_response = "".join(collected_response)
-                    await store_message(session_id, "assistant", full_response)
-                    await update_session_stats(session_id)
-                    if is_first_message and full_response:
-                        try:
+                    try:
+                        if full_response:
+                            await store_message(session_id, "assistant", full_response)
+                        await update_session_stats(session_id)
+                        if is_first_message and full_response:
                             await update_session_title_from_first_message(session_id, request.prompt, max_length=20)
-                        except Exception:
-                            pass
+                    except Exception:
+                        pass
 
-                    response_time_ms = int((time.time() - request_start_time) * 1000)
-                    await capture_chat_analytics(
-                        user_id=user_id, session_id=session_id, model_id=model_id,
-                        persona_id=request.persona_id,
-                        input_tokens=len(request.prompt.split()) * 2,
-                        output_tokens=len(full_response.split()) * 2,
-                        response_time_ms=response_time_ms, is_streaming=True,
-                        status=EventStatus.SUCCESS,
-                    )
+                    try:
+                        response_time_ms = int((time.time() - request_start_time) * 1000)
+                        await capture_chat_analytics(
+                            user_id=user_id, session_id=session_id, model_id=model_id,
+                            persona_id=request.persona_id,
+                            input_tokens=len(request.prompt.split()) * 2,
+                            output_tokens=len(full_response.split()) * 2,
+                            response_time_ms=response_time_ms, is_streaming=True,
+                            status=EventStatus.SUCCESS,
+                        )
+                    except Exception:
+                        pass
 
                 return StreamingResponse(local_event_generator(), media_type="text/plain")
             else:
@@ -765,51 +811,52 @@ async def ai_chat(request: ChatRequest, http_request: Request = None):
             async def event_generator() -> AsyncGenerator[str, None]:
                 """Async generator to stream response chunks."""
                 nonlocal collected_response
+                disconnected = False
                 prompt = full_prompt
-                agent_stream = agent.stream_async(prompt)
 
-                async for event in agent_stream:
-                    if "data" in event:
-                        collected_response.append(event['data'])
-                        yield f"data: {json.dumps({'chunk': event['data']})}\n\n"
-                    elif "current_tool_use" in event and event["current_tool_use"].get("name"):
-                        yield f"data: [Tool use delta for: {event['current_tool_use']['name']}]\n\n"
+                try:
+                    agent_stream = agent.stream_async(prompt)
 
-                yield "data: [DONE]\n\n"
+                    async for event in agent_stream:
+                        if "data" in event:
+                            collected_response.append(event['data'])
+                            yield f"data: {json.dumps({'chunk': event['data']})}\n\n"
+                        elif "current_tool_use" in event and event["current_tool_use"].get("name"):
+                            yield f"data: [Tool use delta for: {event['current_tool_use']['name']}]\n\n"
+                except (GeneratorExit, asyncio.CancelledError):
+                    disconnected = True
+                    logger.info("Client disconnected during cloud model streaming")
+                except Exception as e:
+                    logger.error(f"❌ Cloud model streaming error: {e}")
+                    yield f"data: {json.dumps({'chunk': f'Error: {e}', 'error': True})}\n\n"
 
-                # After streaming completes, store assistant message
+                if not disconnected:
+                    yield "data: [DONE]\n\n"
+
+                # Always store what we have so far
                 full_response = ''.join(collected_response)
-                assistant_message_id = await store_message(session_id, "assistant", full_response)
-
-                # Update session stats (message_count += 2 for user + assistant)
-                await update_session_stats(session_id)
-
-                # Generate title if first message
-                if is_first_message and full_response:
-                    try:
+                try:
+                    if full_response:
+                        await store_message(session_id, "assistant", full_response)
+                    await update_session_stats(session_id)
+                    if is_first_message and full_response:
                         await update_session_title_from_first_message(session_id, request.prompt, max_length=20)
-                        logger.info(f"✅ Session title generated for first message")
-                    except Exception as e:
-                        logger.error(f"⚠️ Title generation failed (non-critical): {e}")
+                except Exception:
+                    pass
 
-                # Capture chat analytics (non-blocking)
-                response_time_ms = int((time.time() - request_start_time) * 1000)
-                # Estimate tokens (rough calculation - actual would come from model response)
-                input_tokens = len(request.prompt.split()) * 2  # Rough estimate
-                output_tokens = len(full_response.split()) * 2 if full_response else 0
-
-                await capture_chat_analytics(
-                    user_id=user_id,
-                    session_id=session_id,
-                    model_id=model_id,
-                    persona_id=request.persona_id,
-                    input_tokens=input_tokens,
-                    output_tokens=output_tokens,
-                    response_time_ms=response_time_ms,
-                    is_streaming=True,
-                    status=EventStatus.SUCCESS
-                )
-                logger.debug(f"📊 Analytics captured for streaming chat request")
+                try:
+                    response_time_ms = int((time.time() - request_start_time) * 1000)
+                    input_tokens = len(request.prompt.split()) * 2
+                    output_tokens = len(full_response.split()) * 2 if full_response else 0
+                    await capture_chat_analytics(
+                        user_id=user_id, session_id=session_id, model_id=model_id,
+                        persona_id=request.persona_id,
+                        input_tokens=input_tokens, output_tokens=output_tokens,
+                        response_time_ms=response_time_ms, is_streaming=True,
+                        status=EventStatus.SUCCESS,
+                    )
+                except Exception:
+                    pass
 
             return StreamingResponse(event_generator(),
                                      media_type="text/plain")

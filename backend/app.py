@@ -38,6 +38,10 @@ from routers.distribution import router as distribution_router
 from routers.desktop_oauth import router as desktop_oauth_router
 from routers.models import router as models_router
 from routers.local_models import router as local_models_router
+from routers.openai_compat import router as openai_compat_router
+from routers.triggers import router as triggers_router
+from routers.approvals import router as approvals_router
+from routers.blueprints import router as blueprints_router
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -82,6 +86,10 @@ app.include_router(distribution_router)
 app.include_router(desktop_oauth_router)
 app.include_router(models_router)
 app.include_router(local_models_router)
+app.include_router(openai_compat_router)
+app.include_router(triggers_router)
+app.include_router(approvals_router)
+app.include_router(blueprints_router)
 
 
 # ---------------------------------------------------------------------------
@@ -189,25 +197,9 @@ _DEFAULT_PERSONA_TYPES = [
             {"name": "basePath", "label": "Base Directory Path", "placeholder": "/path/to/files", "type": "text", "required": False},
         ],
     },
-    {
-        "id": "slack", "name": "Slack", "description": "Slack messaging platform",
-        "category": "communication", "icon": "💬", "enabled": True, "status": "active",
-        "credentialFields": [
-            {"name": "botToken", "label": "Bot User OAuth Token", "placeholder": "xoxb-...", "type": "password", "required": True},
-            {"name": "channel", "label": "Default Channel", "placeholder": "#general", "type": "text", "required": False},
-            {"name": "workspace", "label": "Workspace", "type": "text", "required": False},
-        ],
-    },
-    {
-        "id": "twitter", "name": "Twitter / X", "description": "Post and manage content on Twitter/X",
-        "category": "communication", "icon": "🐦", "enabled": True, "status": "active",
-        "credentialFields": [
-            {"name": "apiKey", "label": "API Key", "type": "password", "required": True},
-            {"name": "apiSecret", "label": "API Secret", "type": "password", "required": True},
-            {"name": "accessToken", "label": "Access Token", "type": "password", "required": True},
-            {"name": "accessTokenSecret", "label": "Access Token Secret", "type": "password", "required": True},
-        ],
-    },
+    # NOTE: Slack and Twitter/X were removed — social channels are managed
+    # via Connections (routes/connections.tsx) and crew channel bindings,
+    # not as persona types.
 ]
 
 
@@ -262,6 +254,7 @@ _CATEGORY_ICONS = {
     "legal_compliance": "scale",
     "marketing_sales": "megaphone",
     "product_management": "layout",
+    "social_engagement": "message-circle",
     "specialized": "star",
     "startup_venture": "rocket",
 }
@@ -361,45 +354,37 @@ async def _seed_agent_library(db):
 # ---------------------------------------------------------------------------
 # Local model seeding — register downloaded GGUFs in the models collection
 # ---------------------------------------------------------------------------
+async def _seed_blueprints(db):
+    """
+    Seed blueprints from the on-disk markdown library.
+
+    Reads each .md file via BlueprintLibraryService and upserts into
+    the ``blueprints`` collection. Existing blueprints are left untouched.
+    """
+    try:
+        from services.blueprint_library_service import BlueprintLibraryService
+        library = BlueprintLibraryService()
+
+        from pathlib import Path as _Path
+        library_path = _Path(os.environ.get("BLUEPRINT_LIBRARY_PATH", library.LIBRARY_PATH))
+        if not library_path.exists():
+            logger.warning("Blueprint library not found at %s — skipping seed", library_path)
+            return
+
+        collection = db["blueprints"]
+        seeded = await library.sync_library_to_db(collection)
+        logger.info("Blueprint library: seeded %d new blueprint(s)", seeded)
+    except Exception:
+        logger.exception("Failed to seed blueprint library")
+
+
 async def _seed_local_models(db):
     """Check for downloaded GGUF models and ensure they have DB entries."""
     try:
-        from routers.local_models import AVAILABLE_MODELS, CHAT_DIR
-        collection = db["models"]
-        seeded = 0
-        for model in AVAILABLE_MODELS:
-            file_path = CHAT_DIR / model["file"]
-            if not file_path.is_file():
-                continue
-            model_id = f"local-{model['id']}"
-            existing = await collection.find_one({"_id": model_id})
-            if existing:
-                continue
-            doc = {
-                "_id": model_id,
-                "name": model["name"],
-                "provider": "local",
-                "model": model_id,
-                "max_tokens": "4096",
-                "enabled": True,
-                "description": f"Local {model['name']} model (GGUF, runs on CPU)",
-                "capabilities": ["chat"],
-                "input_cost": 0,
-                "output_cost": 0,
-                "context_window": 4096,
-                "supports_vision": False,
-                "supports_function_calling": model.get("supports_tools", False),
-                "model_metadata": {
-                    "runtime": "local",
-                    "local_model_file": model["file"],
-                    "ram_gb": model.get("ram_gb"),
-                    "tier": model.get("tier"),
-                },
-            }
-            await collection.insert_one(doc)
-            seeded += 1
-        if seeded:
-            logger.info("Seeded %d local model config(s)", seeded)
+        from services.local_model_seeder import sync_local_models_to_db
+        synced = await sync_local_models_to_db(db)
+        if synced:
+            logger.info("Seeded %d local model config(s)", synced)
     except Exception:
         logger.exception("Failed to seed local model configs")
 
@@ -443,6 +428,9 @@ async def startup_event():
 
         # Seed agent library (business agents, exclude engineering)
         await _seed_agent_library(proxy)
+
+        # Seed blueprint library
+        await _seed_blueprints(proxy)
 
         # Seed model configs for any already-downloaded local GGUF models
         await _seed_local_models(proxy)
@@ -553,13 +541,20 @@ async def reseed_data():
         await agent_collection.delete_many({})
         await _seed_agent_library(db)
 
+        # Clear and re-seed blueprint library
+        bp_collection = db["blueprints"]
+        await bp_collection.delete_many({})
+        await _seed_blueprints(db)
+
         pt_count = await pt_collection.count_documents({})
         agent_count = await agent_collection.count_documents({})
+        bp_count = await bp_collection.count_documents({})
 
         return {
             "status": "success",
             "persona_types_seeded": pt_count,
             "agents_seeded": agent_count,
+            "blueprints_seeded": bp_count,
         }
     except Exception as e:
         logger.exception("Reseed failed")

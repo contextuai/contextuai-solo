@@ -82,20 +82,36 @@ export const api = {
 // SSE streaming support for chat
 export async function* streamRequest(
   path: string,
-  body: unknown
+  body: unknown,
+  signal?: AbortSignal
 ): AsyncGenerator<{ type: string; data: string }, void, unknown> {
   // For streaming, always use fetch (even in Tauri, SSE goes through HTTP)
   const baseUrl = isTauri ? `http://127.0.0.1:${await getSidecarPort()}` : DEV_API_URL.replace("/api/v1", "");
   const fullUrl = `${baseUrl}/api/v1${path}`;
 
-  const response = await fetch(fullUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  let response: Response | null = null;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      response = await fetch(fullUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        signal,
+      });
+      break;
+    } catch (err) {
+      if (signal?.aborted) return;
+      if (attempt < 4 && isTauri) {
+        await sleep(1500 * (attempt + 1));
+        continue;
+      }
+      yield { type: "error", data: `Connection failed: ${err}` };
+      return;
+    }
+  }
 
-  if (!response.ok) {
-    yield { type: "error", data: `HTTP ${response.status}: ${response.statusText}` };
+  if (!response || !response.ok) {
+    yield { type: "error", data: `HTTP ${response?.status}: ${response?.statusText}` };
     return;
   }
 
@@ -124,7 +140,10 @@ export async function* streamRequest(
         if (content === "[DONE]") continue;
         try {
           const parsed = JSON.parse(content);
-          if (parsed.chunk !== undefined) {
+          if (parsed.thinking) {
+            yield { type: "thinking", data: parsed.thinking };
+          }
+          if (parsed.chunk) {
             yield { type: "chunk", data: parsed.chunk };
           } else if (parsed.is_final) {
             yield { type: "metadata", data: JSON.stringify(parsed.metadata || {}) };

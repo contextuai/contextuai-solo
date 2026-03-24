@@ -8,6 +8,7 @@ import {
   Users,
   FlaskConical,
   Cable,
+  ClipboardCheck,
   Settings,
   ChevronLeft,
   ChevronRight,
@@ -16,6 +17,7 @@ import {
   Monitor,
   Cloud,
   Cpu,
+  BookOpen,
 } from "lucide-react";
 import { useAiMode } from "@/contexts/ai-mode-context";
 import logoImg from "@/assets/logo.png";
@@ -32,8 +34,10 @@ const navItems: NavItem[] = [
   { label: "Personas", path: "/personas", icon: Sparkles },
   { label: "Agents", path: "/agents", icon: Bot },
   { label: "Crews", path: "/crews", icon: Users },
+  { label: "Blueprints", path: "/blueprints", icon: BookOpen },
   { label: "Workshop", path: "/workspace", icon: FlaskConical },
   { label: "Connections", path: "/connections", icon: Cable },
+  { label: "Approvals", path: "/approvals", icon: ClipboardCheck },
   { label: "Settings", path: "/settings", icon: Settings },
 ];
 
