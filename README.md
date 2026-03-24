@@ -1,6 +1,6 @@
 # ContextuAI Solo
 
-### Your personal AI assistant desktop app — powered by your own API keys
+### Your personal AI assistant desktop app — powered local ai models or by your own API keys
 
 [![License](https://img.shields.io/badge/License-Apache%202.0%20with%20Commons%20Clause-blue.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/version-1.0.0-brightgreen.svg)]()
@@ -9,26 +9,27 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-Python%203.11+-009688.svg)](https://fastapi.tiangolo.com/)
 [![SQLite](https://img.shields.io/badge/Database-SQLite-003B57.svg)](https://sqlite.org/)
 
-**ContextuAI Solo** is a free, open-source desktop AI assistant that gives you an entire team of 81 specialized AI business agents — right on your machine. Bring your own API keys, run local AI models for free, keep your data local, and get enterprise-grade AI assistance without the enterprise price tag.
+**Your privacy is your power.** ContextuAI Solo runs AI models directly on your machine — completely offline, no cloud, no telemetry, no data leaving your device. When you need more horsepower, bring your own API keys. Either way, you stay in control.
+
+Solo gives you an entire team of 81 specialized AI business agents, multi-agent crews, and a workshop for brainstorming — all running locally on your desktop.
 
 ---
 
 ## What is ContextuAI Solo?
 
-ContextuAI Solo is the community edition of the [ContextuAI](https://contextuai.com) enterprise platform. It's a single-user desktop application that turns your computer into a command center for AI-powered business operations.
+ContextuAI Solo is the community edition of the [ContextuAI](https://contextuai.com) enterprise platform. It's a single-user desktop application that turns your computer into a private, off-grid command center for AI-powered business operations.
 
-### Why Solo?
+### Key Features
 
-- **BYOK (Bring Your Own Key)** — Use your existing API keys from Anthropic, OpenAI, Google, or AWS Bedrock
-- **Local AI Models (Free)** — Run AI completely offline with built-in GGUF models (Gemma 3 1B, Qwen 2.5 1.5B, Phi-3 Mini) — no API key required
+- **Local AI Models (100% Offline)** — Run AI entirely on your CPU with built-in GGUF models (Gemma 3 1B, Qwen 2.5 1.5B, Qwen 3, Phi-3 Mini) — no API key, no internet, no data sent anywhere
 - **81 Pre-Built Business Agents** — Ready-to-use AI agents across 12 departments: C-Suite, Marketing & Sales, Finance & Operations, Legal & Compliance, HR & People, Design & UX, Data & Analytics, IT & Security, Product Management, Startup & Venture, Specialized, and Operations
 - **Multi-Agent Crews** — Assemble teams of agents via a 5-step wizard with blueprint templates, AI model selection, and social channel bindings — sequential, parallel, pipeline, or fully autonomous execution modes
-- **10 Blueprint Templates** — Pre-built workflow templates across strategy, content, marketing, product, and research categories — skip the setup and start working
-- **10 Persona Types** — Nexus Agent, Web Researcher, database connectors (PostgreSQL, MySQL, MSSQL, Snowflake, MongoDB), MCP Server, API Connector, File Operations
 - **Workshop Mode** — Run multi-agent brainstorming sessions with structured outputs and artifact generation
 - **6 Platform Connections** — Integrate with Telegram, Discord, LinkedIn, Twitter/X, Instagram, and Facebook for automated messaging and publishing workflows
-- **100% Local** — Your data never leaves your machine. SQLite database + localStorage. No cloud required. No telemetry.
-- **Beautiful UI** — Dark/Light theme, brand voice customization, and a polished desktop experience built with Tauri v2
+- **BYOK (Bring Your Own Key)** — Optionally connect your API keys from Anthropic, OpenAI, Google, or AWS Bedrock for cloud-powered models
+- **10 Blueprint Templates** — Pre-built workflow templates across strategy, content, marketing, product, and research categories
+- **10 Persona Types** — Nexus Agent, Web Researcher, database connectors (PostgreSQL, MySQL, MSSQL, Snowflake, MongoDB), MCP Server, API Connector, File Operations
+- **100% Private** — SQLite database + localStorage. No cloud required. No telemetry. No accounts. Your data never leaves your machine.
 
 ---
 
