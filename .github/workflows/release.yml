@@ -27,6 +27,7 @@ jobs:
             os: ubuntu-22.04
             rust-target: x86_64-unknown-linux-gnu
             sidecar-bin: contextuai-solo-backend
+            tauri-bundles: deb,rpm
 
     runs-on: ${{ matrix.platform.os }}
 
@@ -102,7 +103,7 @@ jobs:
 
       - name: Build Tauri app
         working-directory: frontend
-        run: npm run tauri build -- --target ${{ matrix.platform.rust-target }}
+        run: npm run tauri build -- --target ${{ matrix.platform.rust-target }} ${{ matrix.platform.tauri-bundles && format('--bundles {0}', matrix.platform.tauri-bundles) || '' }}
 
       # ── Step 3: Collect installers ─────────────────────────────────────
       - name: Collect Windows installers
@@ -126,7 +127,7 @@ jobs:
         run: |
           mkdir -p release-assets
           cp frontend/src-tauri/target/${{ matrix.platform.rust-target }}/release/bundle/deb/*.deb release-assets/ 2>/dev/null || true
-          cp frontend/src-tauri/target/${{ matrix.platform.rust-target }}/release/bundle/appimage/*.AppImage release-assets/ 2>/dev/null || true
+          cp frontend/src-tauri/target/${{ matrix.platform.rust-target }}/release/bundle/rpm/*.rpm release-assets/ 2>/dev/null || true
           ls -la release-assets/
 
       - name: Upload build artifacts
