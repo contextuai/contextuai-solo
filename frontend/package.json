@@ -11,9 +11,7 @@
     "tauri": "tauri"
   },
   "dependencies": {
-    "@rollup/rollup-win32-x64-msvc": "^4.59.0",
     "@tauri-apps/api": "^2.2.0",
-    "@tauri-apps/cli-win32-x64-msvc": "^2.10.1",
     "@tauri-apps/plugin-notification": "^2.2.0",
     "@tauri-apps/plugin-os": "^2.2.0",
     "@tauri-apps/plugin-shell": "^2.2.0",
@@ -24,6 +22,10 @@
     "react-dom": "^19.0.0",
     "react-router-dom": "^7.1.0",
     "tailwind-merge": "^2.6.0"
+  },
+  "optionalDependencies": {
+    "@rollup/rollup-win32-x64-msvc": "^4.59.0",
+    "@tauri-apps/cli-win32-x64-msvc": "^2.10.1"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",
