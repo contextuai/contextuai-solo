@@ -88,8 +88,10 @@ jobs:
           SIDECAR_DIR="frontend/src-tauri/sidecar"
           NESTED="$SIDECAR_DIR/contextuai-solo-backend"
           if [ -d "$NESTED" ]; then
-            mv "$NESTED"/* "$SIDECAR_DIR/"
-            rmdir "$NESTED"
+            TEMP_DIR="$SIDECAR_DIR/_pyinstaller_temp"
+            mv "$NESTED" "$TEMP_DIR"
+            mv "$TEMP_DIR"/* "$SIDECAR_DIR/"
+            rmdir "$TEMP_DIR"
           fi
           ls -la "$SIDECAR_DIR/${{ matrix.platform.sidecar-bin }}"
 
