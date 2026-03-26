@@ -104,7 +104,46 @@ contextuai-solo/
 
 ---
 
-## Quick Start
+## Download & Install
+
+Download the latest installer from the [Releases page](https://github.com/contextuai/contextuai-solo/releases).
+
+| Platform | File | Notes |
+|----------|------|-------|
+| **Windows** | `ContextuAI.Solo_x64-setup.exe` or `.msi` | See note below about SmartScreen |
+| **macOS** | `ContextuAI Solo.dmg` | See note below about Gatekeeper |
+| **Linux** | `.deb` (Debian/Ubuntu) or `.rpm` (Fedora/RHEL) | Install via package manager |
+
+### Windows — SmartScreen Warning
+
+Windows Defender SmartScreen may show **"Windows protected your PC"** because the app is not yet EV code-signed. This is normal for new open-source software.
+
+To install: click **"More info"** → **"Run anyway"**.
+
+### macOS — Gatekeeper Warning
+
+macOS may show **"ContextuAI Solo can't be opened"** on first launch. To open:
+
+1. Open **Finder** → go to **Applications**
+2. **Right-click** (or Control-click) on **ContextuAI Solo**
+3. Click **"Open"** from the context menu
+4. Click **"Open"** again in the confirmation dialog
+
+You only need to do this once — after that the app opens normally.
+
+### Linux Install Commands
+
+```bash
+# Debian/Ubuntu
+sudo dpkg -i contextuai-solo_*.deb
+
+# Fedora/RHEL
+sudo rpm -i contextuai-solo-*.rpm
+```
+
+---
+
+## Quick Start (Development)
 
 ### Prerequisites
 

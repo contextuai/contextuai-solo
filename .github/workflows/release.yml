@@ -59,26 +59,6 @@ jobs:
           key: rust-${{ matrix.platform.os }}-${{ hashFiles('frontend/src-tauri/Cargo.lock') }}
           restore-keys: rust-${{ matrix.platform.os }}-
 
-      # ── macOS code signing ─────────────────────────────────────────────
-      - name: Import Apple certificate
-        if: matrix.platform.os == 'macos-latest'
-        env:
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-        run: |
-          CERTIFICATE_PATH=$RUNNER_TEMP/certificate.p12
-          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
-          KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
-
-          echo -n "$APPLE_CERTIFICATE" | base64 --decode -o $CERTIFICATE_PATH
-
-          security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
-          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
-          security import $CERTIFICATE_PATH -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
-          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
-          security list-keychain -d user -s $KEYCHAIN_PATH
-
       # ── System dependencies (Linux) ────────────────────────────────────
       - name: Install Linux system dependencies
         if: matrix.platform.os == 'ubuntu-22.04'
@@ -123,12 +103,6 @@ jobs:
 
       - name: Build Tauri app
         working-directory: frontend
-        env:
-          APPLE_SIGNING_IDENTITY: ${{ matrix.platform.os == 'macos-latest' && 'Developer ID Application' || '' }}
-          APPLE_ID: ${{ matrix.platform.os == 'macos-latest' && secrets.APPLE_ID || '' }}
-          APPLE_PASSWORD: ${{ matrix.platform.os == 'macos-latest' && secrets.APPLE_PASSWORD || '' }}
-          APPLE_TEAM_ID: ${{ matrix.platform.os == 'macos-latest' && secrets.APPLE_TEAM_ID || '' }}
-          TAURI_SIGNING_PRIVATE_KEY: ""
         run: npm run tauri build -- --target ${{ matrix.platform.rust-target }} ${{ matrix.platform.tauri-bundles && format('--bundles {0}', matrix.platform.tauri-bundles) || '' }}
 
       # ── Step 3: Collect installers ─────────────────────────────────────
@@ -140,10 +114,6 @@ jobs:
           cp frontend/src-tauri/target/${{ matrix.platform.rust-target }}/release/bundle/msi/*.msi release-assets/ 2>/dev/null || true
           cp frontend/src-tauri/target/${{ matrix.platform.rust-target }}/release/bundle/nsis/*setup.exe release-assets/ 2>/dev/null || true
           ls -la release-assets/
-
-      - name: Clean up Apple keychain
-        if: ${{ always() && matrix.platform.os == 'macos-latest' }}
-        run: security delete-keychain $RUNNER_TEMP/app-signing.keychain-db 2>/dev/null || true
 
       - name: Collect macOS installer
         if: matrix.platform.os == 'macos-latest'
