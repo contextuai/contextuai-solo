@@ -434,6 +434,8 @@ test.describe("Crew Execution", () => {
   // Local model inference can be slow — allow up to 5 minutes
   test.setTimeout(300_000);
 
+  test.skip(!!process.env.CI, "Requires a downloaded local model — skipped in CI");
+
   test("DC-CREW-EXEC-01: create crew via API, run it with local model, and verify completed status", async ({ page }) => {
     const API = "http://127.0.0.1:18741/api/v1";
     const crewName = `Exec Crew ${Date.now()}`;

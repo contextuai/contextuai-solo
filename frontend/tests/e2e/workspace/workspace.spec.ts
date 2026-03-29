@@ -431,6 +431,8 @@ test.describe("Execution", () => {
   // Use a longer timeout for execution tests — local model inference can be slow
   test.setTimeout(180_000);
 
+  test.skip(!!process.env.CI, "Requires a downloaded local model — skipped in CI");
+
   test("DC-WORKSPACE-EXEC-01: create project with Gemma model, execute, and verify execution completes", async ({ page }) => {
     const API = "http://127.0.0.1:18741/api/v1";
     const projectName = `Exec Test ${Date.now()}`;
