@@ -1,6 +1,6 @@
 # ContextuAI Solo
 
-### Your private AI command center — run local models offline or bring your own API keys
+### The AI team behind every solo business
 
 [![Website](https://img.shields.io/badge/Website-contextuai.com%2Fsolo-FF6B35.svg)](https://contextuai.com/solo)
 [![License](https://img.shields.io/badge/License-Apache%202.0%20with%20Commons%20Clause-blue.svg)](LICENSE)
@@ -10,78 +10,239 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-Python%203.11+-009688.svg)](https://fastapi.tiangolo.com/)
 [![SQLite](https://img.shields.io/badge/Database-SQLite-003B57.svg)](https://sqlite.org/)
 
-**Your privacy is your power.** ContextuAI Solo runs AI models directly on your machine — completely offline, no cloud, no telemetry, no data leaving your device. When you need more horsepower, bring your own API keys. Either way, you stay in control.
+You're one person running a business. You need a marketing strategist, a financial analyst, a legal reviewer, a content writer, and a dozen other specialists — but you can't afford to hire them.
 
-Solo gives you an entire team of 81 specialized AI business agents, multi-agent crews, and a workshop for brainstorming — all running locally on your desktop.
+**Now you don't have to.** ContextuAI Solo puts an entire team of 81 AI business experts on your desktop. They research, write, analyze, review, and publish — individually or as coordinated crews. And everything stays private on your machine.
+
+<p align="center">
+  <a href="https://github.com/contextuai/contextuai-solo/releases/latest"><img src="https://img.shields.io/badge/Download-Latest%20Release-FF6B35?style=for-the-badge&logo=github" alt="Download Latest Release"></a>
+</p>
+
+> **Ready to try it?** Download the installer for your platform from the [Releases page](https://github.com/contextuai/contextuai-solo/releases/latest) — Windows (.exe/.msi), macOS (.dmg), or Linux (.deb/.rpm). No build steps required.
+>
+> **New here?** Read the [User Guide](docs/user-guide/README.md) to get started, or the [Deep Strategy Playbook (PDF)](https://github.com/contextuai/contextuai-solo/releases/latest/download/ContextuAI_Solo_Deep_Strategy_Playbook.pdf) for a full overview.
+
+> **Which model should I run?** For best results, download **Qwen 3 8B** (8 GB RAM) or **Qwen 3 14B** (16 GB RAM) from the Model Hub. These deliver strong results for business writing, analysis, and social media content. The smaller 1B models work for quick tests but won't match the quality of larger models.
+
+![Solo Preview](docs/solo-preview.gif)
+
+<details>
+<summary><strong>View all screenshots</strong></summary>
+
+| | |
+|:---:|:---:|
+| ![Dashboard & Chat](docs/screenshots/001-dashboard-chat.png) **Dashboard & Chat** | ![Model Hub](docs/screenshots/002-ModelHub-Selection.png) **Model Hub** |
+| ![Models Installed](docs/screenshots/003-ModelsInstalled.png) **Models Installed** | ![Personas](docs/screenshots/004-Personas.png) **Personas** |
+| ![Create Persona](docs/screenshots/005-CreatePersona.png) **Create Persona** | ![Agent Library](docs/screenshots/006-AgentLibrary.png) **Agent Library** |
+| ![Create Agent](docs/screenshots/007-CreateAgent.png) **Create Agent** | ![Crews](docs/screenshots/008-CrewHome.png) **Crews** |
+| ![Blueprints](docs/screenshots/009-Blueprints.png) **Blueprints** | ![Create Blueprint](docs/screenshots/010-CreateBlueprint.png) **Create Blueprint** |
+| ![Workspace](docs/screenshots/011-Workspace.png) **Workspace** | ![Connections](docs/screenshots/012-Connections.png) **Connections** |
+| ![Approvals](docs/screenshots/013-CrewApprovals.png) **Approvals** | ![Settings](docs/screenshots/014-Settings.png) **Settings** |
+
+</details>
 
 ---
 
-## What is ContextuAI Solo?
+## What can Solo do for you?
 
-ContextuAI Solo is the community edition of the [ContextuAI](https://contextuai.com) enterprise platform. Learn more at [contextuai.com/solo](https://contextuai.com/solo). It's a single-user desktop application that turns your computer into a private, off-grid command center for AI-powered business operations.
+### Ask your AI team for help — just like you'd ask a colleague
 
-### Key Features
+| You need to... | Solo gives you... |
+|----------------|-------------------|
+| Review a contract before signing | A **Legal Counsel** agent that flags risks and suggests revisions |
+| Write a LinkedIn post that sounds like you | A **Content Strategist** who knows your brand voice |
+| Forecast next quarter's revenue | A **Financial Analyst** who structures projections and assumptions |
+| Research a new market before entering | A **Competitive Intelligence Analyst** who maps the landscape |
+| Prepare a board presentation | A **CEO Strategic Advisor** who structures the narrative |
+| Audit your website's SEO | An **SEO Specialist** who identifies gaps and priorities |
+| Draft a job description | An **HR Talent Acquisition** specialist who writes to attract |
+| Plan a product launch | A **crew** of Product Manager + Content Strategist + Social Media Manager working together |
 
-- **37 Local AI Models — One Click, Zero Cloud** — From tiny 0.5B models that run on any laptop to powerful 70B models for machines with more RAM — Solo auto-detects your hardware and recommends the right model. Download it. Click run. That's it. No API keys. No internet. No data leaves your machine. Ever.
+### Build crews that work together
 
-  | Your RAM | What You Can Run |
-  |----------|-----------------|
-  | 4 GB | Qwen 3.5 0.8B, Gemma 3 1B, Llama 3.2 1B |
-  | 8 GB | Qwen 3 8B, DeepSeek R1 7B, Mistral 7B, Qwen 2.5 Coder 7B |
-  | 16 GB | Qwen 3 14B, Phi-4 14B, DeepSeek R1 14B, Qwen 2.5 Coder 14B |
-  | 32 GB | Qwen 3 32B, DeepSeek R1 32B, Gemma 3 27B, Qwen 2.5 Coder 32B |
-  | 48+ GB | Llama 3.1 70B, DeepSeek R1 70B |
+Don't just ask one agent — assemble a team. A crew of 3–5 agents can research, draft, review, and refine a deliverable while you focus on other work.
 
-  8 model families: **Qwen 3.5** / **Qwen 3** / **Qwen 2.5** / **DeepSeek R1** / **Gemma 3** / **Llama 3** / **Mistral** / **Phi-4** — covering general chat, reasoning, coding, creative writing, multilingual, and vision.
+**Example: Quarterly Business Review**
+1. **Financial Analyst** pulls together the numbers and trends
+2. **Data Analyst** creates visualizations and insights
+3. **CEO Strategic Advisor** frames the narrative for stakeholders
+4. **Copywriter** polishes the final document
 
-- **Built-in Coding Server** — Solo exposes an **OpenAI-compatible API endpoint** (`/v1/chat/completions`) on your localhost. Point your IDE (VS Code, Cursor, Windsurf, or any tool that speaks OpenAI) at it and use Qwen 2.5 Coder or DeepSeek R1 as your local coding assistant — completely offline, completely free.
+You define the crew once. Run it whenever you need it.
 
-- **81 Pre-Built Business Agents** — Ready-to-use AI agents across 12 departments: C-Suite, Marketing & Sales, Finance & Operations, Legal & Compliance, HR & People, Design & UX, Data & Analytics, IT & Security, Product Management, Startup & Venture, Specialized, and Operations
-- **Multi-Agent Crews** — Assemble teams of agents via a 5-step wizard with blueprint templates, AI model selection, and social channel bindings — sequential, parallel, pipeline, or fully autonomous execution modes
-- **Workshop Mode** — Run multi-agent brainstorming sessions with structured outputs and artifact generation
-- **6 Platform Connections** — Integrate with Telegram, Discord, LinkedIn, Twitter/X, Instagram, and Facebook for automated messaging and publishing workflows
-- **BYOK (Bring Your Own Key)** — Optionally connect your API keys from Anthropic, OpenAI, Google, or AWS Bedrock when you need cloud-scale models
-- **10 Blueprint Templates** — Pre-built workflow templates across strategy, content, marketing, product, and research categories
+### Publish to your channels
+
+Connect Solo to **Telegram, Discord, LinkedIn, Twitter/X, Instagram, and Facebook**. Your crews can draft and post content — with optional approval gates so nothing goes live without your sign-off.
+
+---
+
+## Who is Solo for?
+
+Solo is built for people who run a business with a small team — or no team at all:
+
+- **Freelancers and consultants** who handle client strategy, proposals, and deliverables alone
+- **Solo founders** building a company and wearing every hat — marketing, finance, legal, product
+- **Small agency owners** who need to scale output without scaling headcount
+- **Professionals with sensitive data** — client financials, legal documents, HR records — who can't risk sending it to the cloud
+
+---
+
+## Your data never leaves your machine
+
+Solo runs 100% on your desktop. No accounts. No cloud sync. No telemetry.
+
+- **AI models run locally** on your CPU — download once, use forever, no internet required
+- **All data stored locally** in SQLite — conversations, agents, crews, everything
+- **No sign-up, no login** — you're the admin, always
+- **Bring Your Own Key** — optionally connect Anthropic, OpenAI, Google, or AWS Bedrock when you need cloud-scale power
+
+Your client proposals, financial models, legal reviews, and business strategies stay on your laptop. Period.
+
+---
+
+## 81 Business Agents, Ready to Work
+
+Solo ships with specialized agents across every business function:
+
+| Department | Your AI team members |
+|------------|---------------------|
+| **C-Suite** | CEO Strategic Advisor, CFO Financial Strategist, CTO Technology Advisor, CMO, COO, CHRO, and 6 more |
+| **Marketing & Sales** | Content Strategist, Copywriter, SEO Specialist, Social Media Manager, Sales Engineer, and 6 more |
+| **Finance & Operations** | Financial Analyst, Pricing Strategist, Controller, Supply Chain Analyst, Risk Manager, and more |
+| **Legal & Compliance** | General Counsel, Privacy Officer, Contract Specialist, IP Strategist, Compliance Officer |
+| **HR & People** | Talent Acquisition, People Operations, Compensation Analyst, L&D Specialist, Org Development |
+| **Data & Analytics** | Data Analyst, Data Scientist, BI Analyst, Analytics Engineer, Data Governance Specialist |
+| **Design & UX** | UI Designer, UX Researcher, Brand Designer, Motion Designer, Design System Architect |
+| **Product Management** | Product Manager, Agile Coach, Technical Writer, Scrum Master, Business Analyst |
+| **IT & Security** | SOC Analyst, Penetration Tester, IAM Specialist, Network Architect, IT Support Lead |
+| **Startup & Venture** | Fundraising Advisor, Growth Hacker, Pitch Deck Architect, MVP Architect, and 6 more |
+| **Social Engagement** | Social Media Responder, Brand Voice Guardian, Sentiment Analyzer, Lead Qualifier, and 8 more |
+| **Specialized** | Solutions Architect, Developer Advocate, AI Ethics Advisor, Sustainability Officer, and 5 more |
+
+Every agent comes with a detailed system prompt, recommended tools, and domain expertise. Use them as-is or customize them for your business.
+
+---
+
+## 37 Local AI Models — One Click, No Subscriptions
+
+Download a model. Click run. That's it. No API keys. No internet. No monthly bills.
+
+Solo auto-detects your hardware and recommends the right model:
+
+| Your RAM | What you can run |
+|----------|-----------------|
+| 4 GB | Qwen 3.5 0.8B, Gemma 3 1B, Llama 3.2 1B |
+| 8 GB | Qwen 3 8B, DeepSeek R1 7B, Mistral 7B, Qwen 2.5 Coder 7B |
+| 16 GB | Qwen 3 14B, Phi-4 14B, DeepSeek R1 14B, Qwen 2.5 Coder 14B |
+| 32 GB | Qwen 3 32B, DeepSeek R1 32B, Gemma 3 27B, Qwen 2.5 Coder 32B |
+| 48+ GB | Llama 3.1 70B, DeepSeek R1 70B |
+
+8 model families: **Qwen 3.5** / **Qwen 3** / **Qwen 2.5** / **DeepSeek R1** / **Gemma 3** / **Llama 3** / **Mistral** / **Phi-4** — covering general chat, reasoning, coding, creative writing, multilingual, and vision.
+
+### Built-in Coding Server
+
+Solo exposes an **OpenAI-compatible API endpoint** (`/v1/chat/completions`) on your localhost. Point VS Code, Cursor, or any OpenAI-compatible IDE at it and use Qwen 2.5 Coder or DeepSeek R1 as your local coding assistant — completely offline, completely free.
+
+---
+
+## Everything else you get
+
+- **Multi-Agent Crews** — Assemble teams via a 5-step wizard with 4 execution modes: sequential, parallel, pipeline, or fully autonomous
+- **10 Blueprint Templates** — Pre-built workflow templates across strategy, content, marketing, product, and research
+- **Workshop Mode** — Run multi-agent brainstorming sessions with structured outputs
 - **10 Persona Types** — Nexus Agent, Web Researcher, database connectors (PostgreSQL, MySQL, MSSQL, Snowflake, MongoDB), MCP Server, API Connector, File Operations
-- **100% Private** — SQLite database + localStorage. No cloud. No telemetry. No accounts. No sign-ups. Your conversations, your agents, your data — they never leave your machine.
+- **6 Platform Connections** — Telegram, Discord, LinkedIn, Twitter/X, Instagram, Facebook with approval gates. See the [Connections Guide](CONNECTIONS-GUIDE.md) for setup
+- **Brand Voice** — Define your business identity so every response sounds like you
+- **Dark/Light Theme** — Easy on the eyes, day or night
 
 ---
 
-## Screenshots
+## Download & Install
 
-### AI Chat
-![AI Chat](docs/screenshots/solo-chat.png)
+**[Download the latest release](https://github.com/contextuai/contextuai-solo/releases/latest)** — pre-built installers for all platforms, no build steps needed.
 
-### Agent Library (81 Agents)
-![Agents](docs/screenshots/solo-agents.png)
+| Platform | Installer | How to Install |
+|----------|-----------|----------------|
+| **Windows** | `.exe` or `.msi` | Run the installer. If SmartScreen warns "Windows protected your PC", click **"More info"** → **"Run anyway"** |
+| **macOS** | `.dmg` | Open the DMG, drag to Applications. On first launch: **right-click** the app → **"Open"** → **"Open"** again |
+| **Linux** | `.deb` / `.rpm` | `sudo dpkg -i contextuai-solo_*.deb` or `sudo rpm -i contextuai-solo-*.rpm` |
 
-### Multi-Agent Crews
-![Crews](docs/screenshots/solo-crews.png)
+> **Note:** Windows SmartScreen and macOS Gatekeeper warnings are normal for new open-source software that isn't yet EV code-signed. You only need to bypass them once.
 
-### Blueprint Templates
-![Blueprints](docs/screenshots/solo-blueprints.png)
+### First Run
 
-### Model Hub
-![Model Hub](docs/screenshots/solo-model-hub.png)
+1. The app launches a **Setup Wizard** that walks you through configuration
+2. Download a free local model or enter an API key for a cloud provider
+3. Start chatting, building agents, or assembling crews
 
-### Personas
-![Personas](docs/screenshots/solo-personas.png)
+### Beta Testers Welcome
 
-### Workshop
-![Workshop](docs/screenshots/solo-workshop.png)
+This is an active beta — we'd love your feedback! If you run into any issues:
 
-### Connections
-![Connections](docs/screenshots/solo-connections.png)
-
-### Approval Queue
-![Approvals](docs/screenshots/solo-approvals.png)
-
-### Settings
-![Settings](docs/screenshots/solo-settings.png)
+1. Check which version you're running (Settings page or the release you downloaded)
+2. [Open a GitHub Issue](https://github.com/contextuai/contextuai-solo/issues/new) with the version number, your OS, and steps to reproduce
+3. Feature requests are welcome too — tell us what agents or integrations you'd like to see
 
 ---
 
-## Project Structure
+## Solo vs Enterprise
+
+| Feature | Solo (Free) | Enterprise |
+|---------|:-----------:|:----------:|
+| AI Chat with Streaming | Yes | Yes |
+| 81 Business Agents | Yes | Yes |
+| 10 Persona Types | Yes | Yes |
+| Multi-Agent Crews | Yes | Yes |
+| Workshop (Brainstorming) | Yes | Yes |
+| BYOK (Bring Your Own Key) | Yes | Yes |
+| Local AI Models (GGUF) | Yes | Yes |
+| Dark/Light Theme | Yes | Yes |
+| 6 Platform Connections | Yes | Yes |
+| SQLite (Local Storage) | Yes | -- |
+| MongoDB + Cloud Infra | -- | Yes |
+| Multi-User / Teams | -- | Yes |
+| Role-Based Access Control | -- | Yes |
+| SSO / MFA / SCIM 2.0 | -- | Yes |
+| Analytics Dashboard | -- | Yes |
+| Automations & Scheduling | -- | Yes |
+| CodeMorph (Code Gen) | -- | Yes |
+| Control Center (23 integrations) | -- | Yes |
+| Enterprise DB Connectors | -- | Yes |
+| Audit Logs & Compliance | -- | Yes |
+| Dedicated Support | -- | Yes |
+
+> **Solo** is free forever — [contextuai.com/solo](https://contextuai.com/solo). Interested in enterprise features? Visit [contextuai.com](https://contextuai.com) or email hello@contextuai.com.
+
+---
+
+## For Developers
+
+<details>
+<summary><strong>Architecture</strong></summary>
+
+```
++-------------------+     +-------------------------+     +--------------------+
+|                   |     |                         |     |                    |
+|   Tauri v2 Shell  |     |   FastAPI Backend       |     |   AI Providers     |
+|   (Rust)          |     |   (Python 3.11+)        |     |   (BYOK)           |
+|                   |     |                         |     |                    |
+|  +-------------+  |     |  +-------------------+  |     |  - Anthropic       |
+|  | Vite + React|  | --> |  | SQLite Database   |  | --> |  - OpenAI          |
+|  | SPA (1420)  |  | API |  | (via async adapter)|  |     |  - Google Gemini   |
+|  +-------------+  |     |  +-------------------+  |     |  - AWS Bedrock     |
+|                   |     |  Port 18741             |     |  - Local GGUF      |
++-------------------+     +-------------------------+     +--------------------+
+```
+
+- **Frontend**: React 19 SPA served by Vite dev server (port 1420) or bundled into the Tauri desktop shell
+- **Backend**: FastAPI with SQLite via an async adapter layer that mirrors the enterprise Motor/MongoDB interface
+- **AI Routing**: BYOK keys configured in the Setup Wizard; the backend routes requests to the selected provider
+- **Data**: Everything stored locally in SQLite + localStorage. No telemetry. No cloud calls (except to your chosen AI provider).
+
+</details>
+
+<details>
+<summary><strong>Project Structure</strong></summary>
 
 ```
 contextuai-solo/
@@ -96,54 +257,34 @@ contextuai-solo/
 │   ├── services/       # Business logic and AI orchestration
 │   └── requirements.txt
 ├── agent-library/      # Built-in agent templates (81 agents across 12 categories)
+├── docs/user-guide/    # Per-module user guides
 ├── run.sh              # One-command backend launcher (Linux/macOS)
 ├── run-tests.ps1       # One-click test runner (backend + frontend)
 ├── docker-compose.yml  # Docker-based development setup
 └── LICENSE             # Apache 2.0 with Commons Clause
 ```
 
----
+</details>
 
-## Download & Install
+<details>
+<summary><strong>Tech Stack</strong></summary>
 
-Download the latest installer from the [Releases page](https://github.com/contextuai/contextuai-solo/releases).
+| Layer | Technology |
+|-------|-----------|
+| **Desktop Shell** | [Tauri v2](https://tauri.app/) (Rust) — lightweight, secure, cross-platform |
+| **Frontend** | [React 19](https://react.dev/) + [Vite](https://vitejs.dev/) + [TypeScript 5.9](https://typescriptlang.org/) |
+| **Styling** | [Tailwind CSS](https://tailwindcss.com/) + [Framer Motion](https://motion.dev/) |
+| **Icons** | [Lucide Icons](https://lucide.dev/) |
+| **Backend** | [FastAPI](https://fastapi.tiangolo.com/) (Python 3.11+) |
+| **Database** | [SQLite](https://sqlite.org/) via async adapter |
+| **AI Providers** | Anthropic Claude, OpenAI GPT, Google Gemini, AWS Bedrock |
+| **Local AI** | 37 GGUF models via llama-cpp-python (Qwen 3.5, Qwen 3, DeepSeek R1, Gemma 3, Llama 3, Mistral, Phi-4) — 0.5B to 70B |
+| **Agent Framework** | [Strands Agents SDK](https://github.com/strands-agents/sdk-python) |
 
-| Platform | File | Notes |
-|----------|------|-------|
-| **Windows** | `ContextuAI.Solo_x64-setup.exe` or `.msi` | See note below about SmartScreen |
-| **macOS** | `ContextuAI Solo.dmg` | See note below about Gatekeeper |
-| **Linux** | `.deb` (Debian/Ubuntu) or `.rpm` (Fedora/RHEL) | Install via package manager |
+</details>
 
-### Windows — SmartScreen Warning
-
-Windows Defender SmartScreen may show **"Windows protected your PC"** because the app is not yet EV code-signed. This is normal for new open-source software.
-
-To install: click **"More info"** → **"Run anyway"**.
-
-### macOS — Gatekeeper Warning
-
-macOS may show **"ContextuAI Solo can't be opened"** on first launch. To open:
-
-1. Open **Finder** → go to **Applications**
-2. **Right-click** (or Control-click) on **ContextuAI Solo**
-3. Click **"Open"** from the context menu
-4. Click **"Open"** again in the confirmation dialog
-
-You only need to do this once — after that the app opens normally.
-
-### Linux Install Commands
-
-```bash
-# Debian/Ubuntu
-sudo dpkg -i contextuai-solo_*.deb
-
-# Fedora/RHEL
-sudo rpm -i contextuai-solo-*.rpm
-```
-
----
-
-## Quick Start (Development)
+<details>
+<summary><strong>Quick Start (Development)</strong></summary>
 
 ### Prerequisites
 
@@ -203,8 +344,6 @@ This starts the backend on port 18741. Run the frontend separately with `cd fron
 
 ### Building the Desktop App
 
-To create a native desktop executable:
-
 ```bash
 cd frontend
 npm run tauri build
@@ -212,132 +351,35 @@ npm run tauri build
 
 The built app will be in `frontend/src-tauri/target/release/`.
 
-### First Run
+</details>
 
-1. The app launches a **Setup Wizard** that walks you through API key configuration
-2. Choose your preferred AI provider or download a free local GGUF model
-3. Start chatting, building agents, or assembling crews
-
----
-
-## Solo vs Enterprise
-
-| Feature | Solo (Free) | Enterprise |
-|---------|:-----------:|:----------:|
-| AI Chat with Streaming | Yes | Yes |
-| 81 Business Agents | Yes | Yes |
-| 10 Persona Types | Yes | Yes |
-| Multi-Agent Crews | Yes | Yes |
-| Workshop (Brainstorming) | Yes | Yes |
-| BYOK (Bring Your Own Key) | Yes | Yes |
-| Local AI Models (GGUF) | Yes | Yes |
-| Dark/Light Theme | Yes | Yes |
-| 6 Platform Connections | Yes | Yes |
-| SQLite (Local Storage) | Yes | -- |
-| MongoDB + Cloud Infra | -- | Yes |
-| Multi-User / Teams | -- | Yes |
-| Role-Based Access Control | -- | Yes |
-| SSO / MFA / SCIM 2.0 | -- | Yes |
-| Analytics Dashboard | -- | Yes |
-| Automations & Scheduling | -- | Yes |
-| CodeMorph (Code Gen) | -- | Yes |
-| Control Center (23 integrations) | -- | Yes |
-| Enterprise DB Connectors | -- | Yes |
-| Audit Logs & Compliance | -- | Yes |
-| Dedicated Support | -- | Yes |
-
-> **Solo** is free forever — [contextuai.com/solo](https://contextuai.com/solo). Interested in enterprise features? Visit [contextuai.com](https://contextuai.com) or email hello@contextuai.com.
-
----
-
-## Architecture
-
-```
-+-------------------+     +-------------------------+     +--------------------+
-|                   |     |                         |     |                    |
-|   Tauri v2 Shell  |     |   FastAPI Backend       |     |   AI Providers     |
-|   (Rust)          |     |   (Python 3.11+)        |     |   (BYOK)           |
-|                   |     |                         |     |                    |
-|  +-------------+  |     |  +-------------------+  |     |  - Anthropic       |
-|  | Vite + React|  | --> |  | SQLite Database   |  | --> |  - OpenAI          |
-|  | SPA (1420)  |  | API |  | (via async adapter)|  |     |  - Google Gemini   |
-|  +-------------+  |     |  +-------------------+  |     |  - AWS Bedrock     |
-|                   |     |  Port 18741             |     |  - Local GGUF      |
-+-------------------+     +-------------------------+     +--------------------+
-```
-
-- **Frontend**: React 19 SPA served by Vite dev server (port 1420) or bundled into the Tauri desktop shell
-- **Backend**: FastAPI with SQLite via an async adapter layer that mirrors the enterprise Motor/MongoDB interface
-- **AI Routing**: BYOK keys configured in the Setup Wizard; the backend routes requests to the selected provider
-- **Data**: Everything stored locally in SQLite + localStorage. No telemetry. No cloud calls (except to your chosen AI provider).
-
----
-
-## Agent Library
-
-Solo ships with **81 pre-built business agents** across 12 categories:
-
-| Category | Example Agents |
-|----------|---------------|
-| **C-Suite** | CEO Strategic Advisor, CFO Financial Strategist, COO Operations Optimizer, CTO Technology Advisor |
-| **Marketing & Sales** | Content Strategist, SEO Specialist, Social Media Manager, Brand Voice Designer, Email Campaign Builder |
-| **Finance & Operations** | Financial Analyst, Budget Planner, Invoice Processor, Tax Advisor, Revenue Forecaster |
-| **Legal & Compliance** | Contract Reviewer, Compliance Checker, IP Advisor, Privacy Policy Drafter, Terms of Service Generator |
-| **HR & People** | Recruiter Assistant, Job Description Writer, Employee Handbook Drafter, Performance Review Helper |
-| **Design & UX** | UI/UX Advisor, Brand Identity Designer, Presentation Builder, Color Palette Generator |
-| **Data & Analytics** | Data Analyst, SQL Query Builder, Dashboard Designer, Statistical Modeler, Data Cleaning Assistant |
-| **IT & Security** | DevOps Assistant, Security Auditor, Infrastructure Planner, Incident Response Helper |
-| **Product Management** | Product Manager, Feature Prioritizer, User Story Writer, Roadmap Planner, Competitive Analyst |
-| **Startup & Venture** | Pitch Deck Builder, Business Model Canvas Creator, Investor Brief Writer, Go-to-Market Strategist |
-| **Specialized** | Industry-specific and cross-functional agents for niche business needs |
-| **Operations** | Process Optimizer, Supply Chain Analyst, Quality Assurance Planner, Vendor Evaluation Assistant |
-
-Each agent comes with a specialized system prompt, recommended model, and relevant tool configurations.
-
----
-
-## Tech Stack
-
-| Layer | Technology |
-|-------|-----------|
-| **Desktop Shell** | [Tauri v2](https://tauri.app/) (Rust) — lightweight, secure, cross-platform |
-| **Frontend** | [React 19](https://react.dev/) + [Vite](https://vitejs.dev/) + [TypeScript 5.9](https://typescriptlang.org/) |
-| **Styling** | [Tailwind CSS](https://tailwindcss.com/) + [Framer Motion](https://motion.dev/) |
-| **Icons** | [Lucide Icons](https://lucide.dev/) |
-| **Backend** | [FastAPI](https://fastapi.tiangolo.com/) (Python 3.11+) |
-| **Database** | [SQLite](https://sqlite.org/) via async adapter |
-| **AI Providers** | Anthropic Claude, OpenAI GPT, Google Gemini, AWS Bedrock |
-| **Local AI** | 37 GGUF models via llama-cpp-python (Qwen 3.5, Qwen 3, DeepSeek R1, Gemma 3, Llama 3, Mistral, Phi-4) — 0.5B to 70B |
-| **Agent Framework** | [Strands Agents SDK](https://github.com/strands-agents/sdk-python) |
-
----
-
-## Contributing
-
-We welcome contributions from the community! Whether it's bug fixes, new agents, UI improvements, or documentation — every contribution helps.
-
-Please read our [Contributing Guide](CONTRIBUTING.md) before submitting a pull request.
-
-### Quick Contribution Steps
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Make your changes
-4. Run tests: `.\run-tests.ps1` (runs both backend pytest + frontend Playwright E2E — auto-starts servers)
-5. Commit with clear messages (`git commit -m "feat: add amazing feature"`)
-6. Push and open a Pull Request
-
-### Testing
+<details>
+<summary><strong>Testing</strong></summary>
 
 ```powershell
 .\run-tests.ps1                              # Run all tests (auto-starts servers)
 .\run-tests.ps1 -Backend                     # Backend pytest only (607+ tests)
-.\run-tests.ps1 -Frontend                    # Frontend Playwright E2E only (118+ tests)
+.\run-tests.ps1 -Frontend                    # Frontend Playwright E2E only (174 tests)
 .\run-tests.ps1 -Backend -Filter "sqlite"    # Filter by test name
 .\run-tests.ps1 -Frontend -Filter "chat"     # Filter Playwright tests
 ```
 
-The test runner automatically starts/stops the backend and frontend dev servers as needed. If servers are already running, it uses them and leaves them alone.
+The test runner automatically starts/stops the backend and frontend dev servers as needed.
+
+</details>
+
+### Contributing
+
+We welcome contributions! Whether it's bug fixes, new agents, UI improvements, or documentation — every contribution helps.
+
+Please read our [Contributing Guide](CONTRIBUTING.md) before submitting a pull request.
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Make your changes
+4. Run tests: `.\run-tests.ps1`
+5. Commit with clear messages (`git commit -m "feat: add amazing feature"`)
+6. Push and open a Pull Request
 
 ---
 
@@ -359,5 +401,6 @@ You are free to use, modify, and contribute to this software for personal, inter
 
 <p align="center">
   <strong>Built with love by ContextuAI</strong><br>
+  <em>You're one person. Now you have a team.</em><br><br>
   Star us on GitHub if you find this useful!
 </p>
