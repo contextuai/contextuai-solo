@@ -338,10 +338,25 @@ class ModelManager:
             def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
                 self._last_reported = 0.0
+                self._sent_initial = False
 
             def update(self, n=1):
                 super().update(n)
                 if self.total and self.total > 0:
+                    # Emit 0% immediately so frontend switches from "Preparing" to progress bar
+                    if not self._sent_initial:
+                        self._sent_initial = True
+                        total_mb = self.total / (1024 * 1024)
+                        completed_mb = self.n / (1024 * 1024)
+                        progress_queue.put({
+                            "status": "downloading",
+                            "model_id": model_id,
+                            "completed": self.n,
+                            "total": self.total,
+                            "percent": round((self.n / self.total) * 100, 1),
+                            "completed_mb": round(completed_mb, 1),
+                            "total_mb": round(total_mb, 1),
+                        })
                     percent = (self.n / self.total) * 100
                     # Throttle: only emit if progress changed by >= 0.5%
                     if percent - self._last_reported >= 0.5 or percent >= 100:

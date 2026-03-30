@@ -187,7 +187,7 @@ function ModelCard({
             ) : progress?.status === "starting" ? (
               <>
                 <Loader2 className="w-3.5 h-3.5 animate-spin text-primary-500" />
-                <span className="text-[10px] text-neutral-500">Connecting...</span>
+                <span className="text-[10px] text-neutral-500">Preparing download...</span>
                 <button
                   onClick={() => onCancel(model.id)}
                   className="p-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800"
@@ -203,11 +203,14 @@ function ModelCard({
                     style={{ width: `${percent}%` }}
                   />
                 </div>
-                <span className="text-[10px] text-neutral-500 tabular-nums">
-                  {progress?.total_mb
-                    ? `${progress.completed_mb ?? 0} / ${progress.total_mb} MB`
-                    : `${Math.round(percent)}%`}
+                <span className="text-[10px] text-neutral-500 tabular-nums font-medium">
+                  {Math.round(percent)}%
                 </span>
+                {progress?.total_mb ? (
+                  <span className="text-[10px] text-neutral-400 tabular-nums">
+                    {progress.completed_mb ?? 0} / {progress.total_mb} MB
+                  </span>
+                ) : null}
                 <button
                   onClick={() => onCancel(model.id)}
                   className="p-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800"
