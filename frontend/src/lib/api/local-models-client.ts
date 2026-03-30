@@ -67,7 +67,7 @@ export interface DiskUsage {
 }
 
 export interface DownloadProgress {
-  status: "starting" | "downloading" | "done" | "error" | "cancelled";
+  status: "starting" | "connecting" | "downloading" | "done" | "error" | "cancelled";
   model_id?: string;
   completed?: number;
   total?: number;

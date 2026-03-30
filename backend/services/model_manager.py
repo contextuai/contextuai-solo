@@ -242,6 +242,62 @@ class ModelManager:
             "percent": 0.0,
         }
 
+        # ── Pre-flight: verify HuggingFace is reachable ──────────────────
+        # Check both the API (metadata) and CDN (file downloads) domains.
+        # Windows firewalls often block one but not the other.
+        import urllib.request
+        import urllib.error
+
+        preflight_domains = [
+            ("huggingface.co", f"https://huggingface.co/api/models/{repo_id}"),
+            ("cdn-lfs.huggingface.co", "https://cdn-lfs.huggingface.co"),
+        ]
+        for domain, url in preflight_domains:
+            try:
+                req = urllib.request.Request(url, method="HEAD")
+                urllib.request.urlopen(req, timeout=15)
+            except urllib.error.HTTPError:
+                # HTTP errors (403, 404) mean the server is reachable — that's fine
+                pass
+            except urllib.error.URLError as exc:
+                reason = str(exc.reason) if hasattr(exc, "reason") else str(exc)
+                if "getaddrinfo" in reason.lower() or "name or service" in reason.lower():
+                    detail = (
+                        f"Cannot resolve {domain} — check your internet connection. "
+                        f"If you are behind a firewall, allow outbound HTTPS (port 443) "
+                        f"for huggingface.co and cdn-lfs.huggingface.co."
+                    )
+                elif "timed out" in reason.lower():
+                    detail = (
+                        f"Connection to {domain} timed out. "
+                        f"This is often caused by a firewall or proxy blocking HTTPS. "
+                        f"Allow outbound port 443 for huggingface.co and "
+                        f"cdn-lfs.huggingface.co in your Windows Firewall settings."
+                    )
+                elif "certificate" in reason.lower() or "ssl" in reason.lower():
+                    detail = (
+                        f"SSL/certificate error connecting to {domain}. "
+                        f"If you use a corporate proxy, its CA certificate may need "
+                        f"to be trusted by Python. Try setting the REQUESTS_CA_BUNDLE "
+                        f"environment variable to your proxy's CA bundle."
+                    )
+                else:
+                    detail = f"Cannot reach {domain}: {reason}"
+                logger.warning("Pre-flight failed for %s (%s): %s", model_id, domain, detail)
+                yield {"status": "error", "detail": detail}
+                self._active_downloads.pop(model_id, None)
+                return
+            except Exception as exc:
+                logger.warning("Pre-flight error for %s (%s): %s", model_id, domain, exc)
+                # Non-fatal — proceed anyway
+                pass
+
+        yield {
+            "status": "connecting",
+            "model_id": model_id,
+            "detail": "Connected to HuggingFace, starting download...",
+        }
+
         # Thread-safe queue for progress updates from the blocking download
         progress_queue: _queue.Queue = _queue.Queue()
 
@@ -254,15 +310,47 @@ class ModelManager:
             )
 
             # Poll progress queue while download runs
+            last_progress_time = time.time()
+            got_first_progress = False
             while not download_future.done():
                 await asyncio.sleep(0.3)
                 # Drain all queued progress updates
+                drained_any = False
                 while True:
                     try:
                         update = progress_queue.get_nowait()
                         yield update
+                        drained_any = True
+                        got_first_progress = True
                     except _queue.Empty:
                         break
+                if drained_any:
+                    last_progress_time = time.time()
+                # If no progress for 60s and we never got any, the download is likely blocked
+                elif not got_first_progress and (time.time() - last_progress_time) > 60:
+                    logger.warning("Download stalled for %s — no progress after 60s", model_id)
+                    yield {
+                        "status": "error",
+                        "detail": (
+                            "Download appears stalled — no data received for 60 seconds. "
+                            "This is usually caused by a firewall or proxy blocking "
+                            "downloads from cdn-lfs.huggingface.co. Check your "
+                            "Windows Firewall outbound rules for port 443."
+                        ),
+                    }
+                    self._active_downloads[model_id] = True  # signal cancellation
+                    break
+
+            # If stall detector fired, don't wait for the thread — it may hang
+            if self._active_downloads.get(model_id):
+                # Thread is still blocking in hf_hub_download; clean up partial file
+                if os.path.isfile(dest_path):
+                    try:
+                        os.remove(dest_path)
+                    except OSError:
+                        pass
+                # Don't call download_future.result() — it may never return
+                return
 
             # Get final result
             result = download_future.result()
@@ -275,11 +363,7 @@ class ModelManager:
                 except _queue.Empty:
                     break
 
-            if self._active_downloads.get(model_id):
-                if os.path.isfile(dest_path):
-                    os.remove(dest_path)
-                yield {"status": "cancelled", "model_id": model_id}
-            elif result.get("error"):
+            if result.get("error"):
                 yield {"status": "error", "detail": result["error"]}
             else:
                 yield {
@@ -306,6 +390,10 @@ class ModelManager:
         """
         try:
             from huggingface_hub import hf_hub_download
+
+            # Set a connection timeout so downloads don't hang forever
+            # if the CDN is unreachable after the pre-flight passed.
+            os.environ.setdefault("HF_HUB_DOWNLOAD_TIMEOUT", "30")
 
             tqdm_cls = None
             if progress_queue is not None:

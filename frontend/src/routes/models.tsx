@@ -181,13 +181,20 @@ function ModelCard({
         ) : downloading ? (
           <div className="flex items-center gap-2">
             {progress?.status === "error" ? (
-              <span className="text-[10px] text-red-500 font-medium">
-                {progress.detail || "Download failed"}
-              </span>
-            ) : progress?.status === "starting" ? (
+              <div className="flex flex-col gap-1 max-w-xs">
+                <span className="text-[11px] text-red-500 font-semibold">Download failed</span>
+                <span className="text-[10px] text-red-400 leading-tight">
+                  {progress.detail || "Unknown error"}
+                </span>
+              </div>
+            ) : progress?.status === "starting" || progress?.status === "connecting" ? (
               <>
                 <Loader2 className="w-3.5 h-3.5 animate-spin text-primary-500" />
-                <span className="text-[10px] text-neutral-500">Preparing download...</span>
+                <span className="text-[10px] text-neutral-500">
+                  {progress?.status === "connecting"
+                    ? "Connected, starting download..."
+                    : "Checking connection..."}
+                </span>
                 <button
                   onClick={() => onCancel(model.id)}
                   className="p-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800"
