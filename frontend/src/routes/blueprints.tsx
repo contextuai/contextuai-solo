@@ -17,6 +17,8 @@ import {
   X,
   BookOpen,
 } from "lucide-react";
+import { useBackendStatus } from "@/contexts/backend-status-context";
+import { BackendWaiting } from "@/components/backend-waiting";
 
 // ---------------------------------------------------------------------------
 // Category config
@@ -72,6 +74,7 @@ function CategoryBadge({ category }: { category: string }) {
 // ---------------------------------------------------------------------------
 
 export default function BlueprintsPage() {
+  const { status: backendStatus } = useBackendStatus();
   const [blueprints, setBlueprints] = useState<BlueprintListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -215,7 +218,9 @@ export default function BlueprintsPage() {
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto px-6 pb-6">
-        {loading ? (
+        {loading && backendStatus !== "ready" ? (
+          <BackendWaiting />
+        ) : loading ? (
           <div className="flex items-center justify-center py-20">
             <Loader2 className="w-8 h-8 animate-spin text-primary-500" />
           </div>
@@ -228,15 +233,32 @@ export default function BlueprintsPage() {
             <p className="text-neutral-500 dark:text-neutral-400 mb-6 text-sm">
               {searchQuery || categoryFilter !== "all"
                 ? "Try adjusting your filters."
-                : "Create your first blueprint to get started."}
+                : "Blueprints may still be loading. Try syncing from the library."}
             </p>
-            <button
-              onClick={() => setCreateOpen(true)}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary-500 text-white hover:bg-primary-600 transition-colors text-sm font-medium"
-            >
-              <Plus className="w-4 h-4" />
-              Create Blueprint
-            </button>
+            <div className="flex items-center justify-center gap-3">
+              {!searchQuery && categoryFilter === "all" && (
+                <button
+                  onClick={async () => {
+                    setRefreshing(true);
+                    try {
+                      await blueprintsApi.sync();
+                    } catch { /* ignore */ }
+                    loadData();
+                  }}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-primary-300 dark:border-primary-700 text-primary-600 dark:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-500/10 transition-colors text-sm font-medium"
+                >
+                  <RefreshCw className={cn("w-4 h-4", refreshing && "animate-spin")} />
+                  Sync Library
+                </button>
+              )}
+              <button
+                onClick={() => setCreateOpen(true)}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary-500 text-white hover:bg-primary-600 transition-colors text-sm font-medium"
+              >
+                <Plus className="w-4 h-4" />
+                Create Blueprint
+              </button>
+            </div>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
