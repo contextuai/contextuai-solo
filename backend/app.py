@@ -396,10 +396,12 @@ async def _seed_local_models(db):
 async def startup_event():
     """Initialise database and scheduler adapters."""
     try:
-        # Set agent library path (defaults to <repo-root>/agent-library/)
+        # Set library paths (defaults to <repo-root>/<library>/)
+        _repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         if "AGENT_LIBRARY_PATH" not in os.environ:
-            _repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             os.environ["AGENT_LIBRARY_PATH"] = os.path.join(_repo_root, "agent-library")
+        if "BLUEPRINT_LIBRARY_PATH" not in os.environ:
+            os.environ["BLUEPRINT_LIBRARY_PATH"] = os.path.join(_repo_root, "blueprints")
 
         # Database adapter (SQLite)
         adapter = await get_database_adapter()

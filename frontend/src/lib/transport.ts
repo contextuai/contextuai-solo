@@ -205,3 +205,12 @@ async function getSidecarPort(): Promise<number> {
   }
   return 18741;
 }
+
+/** Get the base URL for direct HTTP requests (SSE streams, downloads). */
+export async function getApiBaseUrl(): Promise<string> {
+  if (isTauri) {
+    const port = await getSidecarPort();
+    return `http://127.0.0.1:${port}/api/v1`;
+  }
+  return DEV_API_URL;
+}
