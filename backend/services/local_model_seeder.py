@@ -51,13 +51,17 @@ async def sync_local_models_to_db(db) -> int:
 
     for f in gguf_files:
         catalog_entry = filename_to_catalog.get(f.name.lower())
-        if not catalog_entry:
-            continue  # Unknown GGUF — skip
 
-        model_id = f"local:{catalog_entry['id']}"
+        if catalog_entry:
+            model_id = f"local:{catalog_entry['id']}"
+            doc = _catalog_to_model_doc(catalog_entry, str(f))
+        else:
+            # Unknown GGUF — register as a custom local model
+            stem = f.stem.lower().replace(" ", "-")
+            model_id = f"local:custom-{stem}"
+            doc = _unknown_gguf_to_model_doc(f)
+
         installed_ids.add(model_id)
-
-        doc = _catalog_to_model_doc(catalog_entry, str(f))
 
         # Upsert: insert or update
         existing = await collection.find_one({"_id": model_id})
@@ -69,7 +73,8 @@ async def sync_local_models_to_db(db) -> int:
         else:
             doc["_id"] = model_id
             await collection.insert_one(doc)
-            logger.info("Registered local model: %s (%s)", catalog_entry["name"], f.name)
+            name = catalog_entry["name"] if catalog_entry else f.stem
+            logger.info("Registered local model: %s (%s)", name, f.name)
 
         synced += 1
 
@@ -124,6 +129,41 @@ def _catalog_to_model_doc(entry: Dict, file_path: str) -> Dict[str, Any]:
             "chat_template": entry.get("chat_template", "chatml"),
             "hf_repo": entry["hf_repo"],
             "hf_filename": entry["hf_filename"],
+        },
+    }
+
+
+def _unknown_gguf_to_model_doc(file_path: Path) -> Dict[str, Any]:
+    """Create a model document for an unknown GGUF file not in the catalog."""
+    stem = file_path.stem
+    model_id = f"local:custom-{stem.lower().replace(' ', '-')}"
+    size_gb = round(file_path.stat().st_size / (1024 ** 3), 2)
+    return {
+        "id": model_id,
+        "name": f"{stem} (Local)",
+        "provider": "Local",
+        "model": model_id,
+        "max_tokens": 4096,
+        "enabled": True,
+        "description": f"Custom local model: {file_path.name}",
+        "capabilities": ["general"],
+        "input_cost": 0,
+        "output_cost": 0,
+        "context_window": 4096,
+        "supports_vision": False,
+        "supports_function_calling": False,
+        "model_metadata": {
+            "runtime": "llama-cpp",
+            "local_model_id": f"custom-{stem.lower().replace(' ', '-')}",
+            "gguf_path": str(file_path),
+            "family": "unknown",
+            "parameter_size": "Unknown",
+            "parameter_count": 0,
+            "quantization": "Unknown",
+            "ram_required_gb": max(1, round(size_gb * 1.2)),
+            "chat_template": "chatml",
+            "hf_repo": None,
+            "hf_filename": file_path.name,
         },
     }
 

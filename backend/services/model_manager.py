@@ -166,6 +166,7 @@ class ModelManager:
                     "parameter_size": catalog_entry["parameter_size"],
                     "categories": catalog_entry["categories"],
                     "ram_required_gb": catalog_entry["ram_required_gb"],
+                    "hf_repo": catalog_entry.get("hf_repo"),
                 })
             else:
                 info.update({

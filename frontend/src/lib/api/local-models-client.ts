@@ -1,4 +1,4 @@
-import { api } from "@/lib/transport";
+import { api, getApiBaseUrl } from "@/lib/transport";
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -55,6 +55,7 @@ export interface InstalledModel {
   parameter_size: string;
   categories: string[];
   ram_required_gb: number | null;
+  hf_repo?: string;
   modified_at: string;
 }
 
@@ -166,14 +167,13 @@ export async function getLoadedModel(): Promise<{
 
 // ── Download with SSE progress ─────────────────────────────────────────
 
-const DEV_API_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:18741/api/v1";
-
 export async function downloadModel(
   modelId: string,
   onProgress: (progress: DownloadProgress) => void,
   signal?: AbortSignal
 ): Promise<void> {
-  const url = `${DEV_API_URL}${BASE}/download`;
+  const baseUrl = await getApiBaseUrl();
+  const url = `${baseUrl}${BASE}/download`;
 
   const response = await fetch(url, {
     method: "POST",

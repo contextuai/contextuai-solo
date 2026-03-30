@@ -27,12 +27,16 @@ import {
   downloadModel,
   cancelDownload,
   deleteModel,
+  syncLocalModels,
   type CatalogModel,
   type InstalledModel,
   type SystemInfo,
   type DiskUsage,
   type DownloadProgress,
 } from "@/lib/api/local-models-client";
+import { getApiBaseUrl } from "@/lib/transport";
+import { useBackendStatus } from "@/contexts/backend-status-context";
+import { BackendWaiting } from "@/components/backend-waiting";
 
 // ── Constants ────────────────────────────────────────────────────────────
 
@@ -130,9 +134,22 @@ function ModelCard({
       </div>
 
       {/* Description */}
-      <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-3 line-clamp-2">
+      <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-2 line-clamp-2">
         {model.description}
       </p>
+
+      {/* Source link */}
+      {model.hf_repo && (
+        <a
+          href={`https://huggingface.co/${model.hf_repo}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1 text-[11px] text-primary-500 hover:text-primary-400 underline underline-offset-2 mb-3"
+        >
+          <ExternalLink className="w-3 h-3" />
+          View on HuggingFace
+        </a>
+      )}
 
       {/* Tags */}
       <div className="flex flex-wrap gap-1.5 mb-3">
@@ -223,6 +240,17 @@ function InstalledRow({
       </div>
 
       <div className="flex items-center gap-2">
+        {model.hf_repo && (
+          <a
+            href={`https://huggingface.co/${model.hf_repo}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
+          >
+            <ExternalLink className="w-3.5 h-3.5" />
+            Source
+          </a>
+        )}
         <button
           onClick={() => onDelete(model.id)}
           disabled={deleting}
@@ -249,9 +277,9 @@ function CustomModelInput({ onDownload }: { onDownload: () => void }) {
     setDownloading(true);
     setStatus("Downloading...");
 
-    const DEV_API_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:18741/api/v1";
     try {
-      const response = await fetch(`${DEV_API_URL}/local-models/download/custom`, {
+      const baseUrl = await getApiBaseUrl();
+      const response = await fetch(`${baseUrl}/local-models/download/custom`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ hf_repo: repo.trim(), hf_filename: filename.trim() }),
@@ -339,6 +367,7 @@ function CustomModelInput({ onDownload }: { onDownload: () => void }) {
 // ── Main Page ────────────────────────────────────────────────────────────
 
 export default function ModelsPage() {
+  const { status: backendStatus } = useBackendStatus();
   const [tab, setTab] = useState<Tab>("discover");
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
   const [catalog, setCatalog] = useState<CatalogModel[]>([]);
@@ -465,6 +494,14 @@ export default function ModelsPage() {
   const activeDownloadCount = Object.keys(downloads).length;
 
   // ── Render ─────────────────────────────────────────────────────────────
+
+  if (loading && backendStatus !== "ready") {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <BackendWaiting />
+      </div>
+    );
+  }
 
   if (loading) {
     return (
@@ -681,22 +718,47 @@ export default function ModelsPage() {
                   No models installed
                 </h3>
                 <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-4">
-                  Browse the Discover tab to download your first model.
+                  Browse the Discover tab to download your first model, or copy a .gguf file into the models folder and sync.
                 </p>
-                <button
-                  onClick={() => setTab("discover")}
-                  className="px-4 py-2 text-sm font-medium rounded-lg bg-primary-500 text-white hover:bg-primary-600 transition-colors"
-                >
-                  Browse Models
-                </button>
+                <div className="flex items-center justify-center gap-3">
+                  <button
+                    onClick={() => setTab("discover")}
+                    className="px-4 py-2 text-sm font-medium rounded-lg bg-primary-500 text-white hover:bg-primary-600 transition-colors"
+                  >
+                    Browse Models
+                  </button>
+                  <button
+                    onClick={async () => {
+                      await syncLocalModels().catch(() => {});
+                      loadData();
+                    }}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg border border-neutral-300 dark:border-neutral-600 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    Sync Models
+                  </button>
+                </div>
               </div>
             ) : (
               <div className="space-y-3">
                 {diskUsage && (
-                  <div className="flex items-center gap-2 text-xs text-neutral-500 mb-4">
-                    <HardDrive className="w-3.5 h-3.5" />
-                    {diskUsage.model_count} model{diskUsage.model_count !== 1 ? "s" : ""} ·{" "}
-                    {diskUsage.models_gb} GB used · {diskUsage.disk_free_gb} GB free on disk
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2 text-xs text-neutral-500">
+                      <HardDrive className="w-3.5 h-3.5" />
+                      {diskUsage.model_count} model{diskUsage.model_count !== 1 ? "s" : ""} ·{" "}
+                      {diskUsage.models_gb} GB used · {diskUsage.disk_free_gb} GB free on disk
+                    </div>
+                    <button
+                      onClick={async () => {
+                        await syncLocalModels().catch(() => {});
+                        loadData();
+                      }}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+                      title="Sync manually-added models to the database"
+                    >
+                      <RefreshCw className="w-3 h-3" />
+                      Sync to DB
+                    </button>
                   </div>
                 )}
                 {installed.map((m) => (

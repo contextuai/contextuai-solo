@@ -17,6 +17,8 @@ import {
   Lock,
   X,
 } from "lucide-react";
+import { useBackendStatus } from "@/contexts/backend-status-context";
+import { BackendWaiting } from "@/components/backend-waiting";
 
 const ROLE_FILTERS = ["All", "Researcher", "Writer", "Analyst", "Designer", "Developer", "Reviewer", "Planner", "Custom"];
 
@@ -48,6 +50,7 @@ function formatDate(dateStr: string) {
 }
 
 export default function AgentsPage() {
+  const { status: backendStatus } = useBackendStatus();
   const [agents, setAgents] = useState<WorkspaceAgent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -257,8 +260,13 @@ export default function AgentsPage() {
           </div>
         )}
 
+        {/* Backend Starting State */}
+        {loading && agents.length === 0 && backendStatus !== "ready" && (
+          <BackendWaiting />
+        )}
+
         {/* Loading State */}
-        {loading && agents.length === 0 && (
+        {loading && agents.length === 0 && backendStatus === "ready" && (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {Array.from({ length: 6 }).map((_, i) => (
               <div
