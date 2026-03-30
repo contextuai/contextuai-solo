@@ -180,23 +180,42 @@ function ModelCard({
           </span>
         ) : downloading ? (
           <div className="flex items-center gap-2">
-            <div className="w-24 h-1.5 rounded-full bg-neutral-200 dark:bg-neutral-700 overflow-hidden">
-              <div
-                className="h-full rounded-full bg-primary-500 transition-all duration-300"
-                style={{ width: `${percent}%` }}
-              />
-            </div>
-            <span className="text-[10px] text-neutral-500 tabular-nums">
-              {progress?.total_mb
-                ? `${progress.completed_mb ?? 0} / ${progress.total_mb} MB`
-                : `${Math.round(percent)}%`}
-            </span>
-            <button
-              onClick={() => onCancel(model.id)}
-              className="p-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800"
-            >
-              <X className="w-3 h-3 text-neutral-400" />
-            </button>
+            {progress?.status === "error" ? (
+              <span className="text-[10px] text-red-500 font-medium">
+                {progress.detail || "Download failed"}
+              </span>
+            ) : progress?.status === "starting" ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-primary-500" />
+                <span className="text-[10px] text-neutral-500">Connecting...</span>
+                <button
+                  onClick={() => onCancel(model.id)}
+                  className="p-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                >
+                  <X className="w-3 h-3 text-neutral-400" />
+                </button>
+              </>
+            ) : (
+              <>
+                <div className="w-24 h-1.5 rounded-full bg-neutral-200 dark:bg-neutral-700 overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-primary-500 transition-all duration-300"
+                    style={{ width: `${percent}%` }}
+                  />
+                </div>
+                <span className="text-[10px] text-neutral-500 tabular-nums">
+                  {progress?.total_mb
+                    ? `${progress.completed_mb ?? 0} / ${progress.total_mb} MB`
+                    : `${Math.round(percent)}%`}
+                </span>
+                <button
+                  onClick={() => onCancel(model.id)}
+                  className="p-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                >
+                  <X className="w-3 h-3 text-neutral-400" />
+                </button>
+              </>
+            )}
           </div>
         ) : (
           <button
@@ -416,24 +435,42 @@ export default function ModelsPage() {
       [modelId]: { status: "starting", percent: 0 },
     }));
 
-    await downloadModel(
-      modelId,
-      (progress) => {
-        setDownloads((prev) => ({ ...prev, [modelId]: progress }));
+    try {
+      await downloadModel(
+        modelId,
+        (progress) => {
+          setDownloads((prev) => ({ ...prev, [modelId]: progress }));
 
-        if (progress.status === "done") {
-          setTimeout(() => {
-            setDownloads((prev) => {
-              const next = { ...prev };
-              delete next[modelId];
-              return next;
-            });
-            loadData();
-          }, 500);
-        }
-      },
-      controller.signal
-    );
+          if (progress.status === "done") {
+            setTimeout(() => {
+              setDownloads((prev) => {
+                const next = { ...prev };
+                delete next[modelId];
+                return next;
+              });
+              loadData();
+            }, 500);
+          } else if (progress.status === "error" || progress.status === "cancelled") {
+            // Show error briefly, then clean up
+            setTimeout(() => {
+              setDownloads((prev) => {
+                const next = { ...prev };
+                delete next[modelId];
+                return next;
+              });
+            }, 3000);
+          }
+        },
+        controller.signal
+      );
+    } catch {
+      // Network error or fetch failure — clean up stuck download state
+      setDownloads((prev) => {
+        const next = { ...prev };
+        delete next[modelId];
+        return next;
+      });
+    }
   }, [loadData]);
 
   const handleCancel = useCallback(async (modelId: string) => {
