@@ -453,7 +453,7 @@ export default function ModelsPage() {
 
           if (progress.status === "done") {
             // If file already existed, skip animation and refresh immediately
-            const delay = (progress as Record<string, unknown>).already_exists ? 0 : 500;
+            const delay = progress.already_exists ? 0 : 500;
             setTimeout(() => {
               setDownloads((prev) => {
                 const next = { ...prev };
