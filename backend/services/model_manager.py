@@ -243,54 +243,54 @@ class ModelManager:
         }
 
         # ── Pre-flight: verify HuggingFace is reachable ──────────────────
-        # Check both the API (metadata) and CDN (file downloads) domains.
-        # Windows firewalls often block one but not the other.
         import urllib.request
         import urllib.error
 
-        preflight_domains = [
-            ("huggingface.co", f"https://huggingface.co/api/models/{repo_id}"),
-            ("cdn-lfs.huggingface.co", "https://cdn-lfs.huggingface.co"),
-        ]
-        for domain, url in preflight_domains:
-            try:
-                req = urllib.request.Request(url, method="HEAD")
-                urllib.request.urlopen(req, timeout=15)
-            except urllib.error.HTTPError:
-                # HTTP errors (403, 404) mean the server is reachable — that's fine
-                pass
-            except urllib.error.URLError as exc:
-                reason = str(exc.reason) if hasattr(exc, "reason") else str(exc)
-                if "getaddrinfo" in reason.lower() or "name or service" in reason.lower():
-                    detail = (
-                        f"Cannot resolve {domain} — check your internet connection. "
-                        f"If you are behind a firewall, allow outbound HTTPS (port 443) "
-                        f"for huggingface.co and cdn-lfs.huggingface.co."
-                    )
-                elif "timed out" in reason.lower():
-                    detail = (
-                        f"Connection to {domain} timed out. "
-                        f"This is often caused by a firewall or proxy blocking HTTPS. "
-                        f"Allow outbound port 443 for huggingface.co and "
-                        f"cdn-lfs.huggingface.co in your Windows Firewall settings."
-                    )
-                elif "certificate" in reason.lower() or "ssl" in reason.lower():
-                    detail = (
-                        f"SSL/certificate error connecting to {domain}. "
-                        f"If you use a corporate proxy, its CA certificate may need "
-                        f"to be trusted by Python. Try setting the REQUESTS_CA_BUNDLE "
-                        f"environment variable to your proxy's CA bundle."
-                    )
-                else:
-                    detail = f"Cannot reach {domain}: {reason}"
-                logger.warning("Pre-flight failed for %s (%s): %s", model_id, domain, detail)
-                yield {"status": "error", "detail": detail}
-                self._active_downloads.pop(model_id, None)
-                return
-            except Exception as exc:
-                logger.warning("Pre-flight error for %s (%s): %s", model_id, domain, exc)
-                # Non-fatal — proceed anyway
-                pass
+        preflight_url = f"https://huggingface.co/api/models/{repo_id}"
+        try:
+            req = urllib.request.Request(preflight_url, method="HEAD")
+            urllib.request.urlopen(req, timeout=15)
+            logger.info("Pre-flight OK for %s", model_id)
+        except urllib.error.HTTPError:
+            pass  # HTTP errors mean the server is reachable
+        except (urllib.error.URLError, OSError) as exc:
+            reason = str(getattr(exc, "reason", exc))
+            if "getaddrinfo" in reason.lower() or "name or service" in reason.lower():
+                detail = (
+                    "Cannot reach huggingface.co — please check your internet connection."
+                )
+            elif "timed out" in reason.lower():
+                detail = (
+                    "Connection to huggingface.co timed out. Please check your "
+                    "internet connection and try again."
+                )
+            elif "certificate" in reason.lower() or "ssl" in reason.lower():
+                detail = (
+                    "SSL error connecting to huggingface.co. If you use a corporate "
+                    "proxy or VPN, it may be interfering with secure connections."
+                )
+            else:
+                detail = f"Cannot reach huggingface.co: {reason}"
+            logger.warning("Pre-flight failed for %s: %s", model_id, detail)
+            yield {"status": "error", "detail": detail}
+            self._active_downloads.pop(model_id, None)
+            return
+        except Exception as exc:
+            logger.warning("Pre-flight error for %s: %s", model_id, exc)
+
+        # ── Clear stale HF cache to avoid hangs on corrupted metadata ────
+        try:
+            from huggingface_hub import scan_cache_dir
+            cache_info = scan_cache_dir()
+            # If there's a stale incomplete download for this repo, clean it
+            for repo_info in cache_info.repos:
+                if repo_info.repo_id == repo_id:
+                    for revision in repo_info.revisions:
+                        if revision.size_on_disk == 0:
+                            logger.info("Cleaning stale cache for %s", repo_id)
+                            cache_info.delete_revisions(revision.commit_hash)
+        except Exception:
+            pass  # Cache cleanup is best-effort
 
         yield {
             "status": "connecting",
@@ -399,13 +399,16 @@ class ModelManager:
             if progress_queue is not None:
                 tqdm_cls = self._make_progress_tqdm(progress_queue, model_id)
 
+            logger.info("Starting hf_hub_download: %s/%s", repo_id, filename)
             downloaded_path = hf_hub_download(
                 repo_id=repo_id,
                 filename=filename,
                 local_dir=self.models_dir,
                 local_dir_use_symlinks=False,
+                resume_download=True,
                 tqdm_class=tqdm_cls,
             )
+            logger.info("hf_hub_download completed: %s", downloaded_path)
 
             size = os.path.getsize(downloaded_path)
             logger.info("Download complete: %s (%.2f GB)", downloaded_path, size / (1024**3))
