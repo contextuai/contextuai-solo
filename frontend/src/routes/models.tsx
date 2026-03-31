@@ -192,8 +192,8 @@ function ModelCard({
                 <Loader2 className="w-3.5 h-3.5 animate-spin text-primary-500" />
                 <span className="text-[10px] text-neutral-500">
                   {progress?.status === "connecting"
-                    ? "Connected, starting download..."
-                    : "Checking connection..."}
+                    ? "Starting download..."
+                    : "Preparing..."}
                 </span>
                 <button
                   onClick={() => onCancel(model.id)}
@@ -442,7 +442,7 @@ export default function ModelsPage() {
 
     setDownloads((prev) => ({
       ...prev,
-      [modelId]: { status: "starting", percent: 0 },
+      [modelId]: { status: "starting", percent: 0, detail: "Preparing..." },
     }));
 
     try {
@@ -452,6 +452,8 @@ export default function ModelsPage() {
           setDownloads((prev) => ({ ...prev, [modelId]: progress }));
 
           if (progress.status === "done") {
+            // If file already existed, skip animation and refresh immediately
+            const delay = (progress as Record<string, unknown>).already_exists ? 0 : 500;
             setTimeout(() => {
               setDownloads((prev) => {
                 const next = { ...prev };
@@ -459,7 +461,7 @@ export default function ModelsPage() {
                 return next;
               });
               loadData();
-            }, 500);
+            }, delay);
           } else if (progress.status === "error" || progress.status === "cancelled") {
             // Show error briefly, then clean up
             setTimeout(() => {

@@ -76,6 +76,7 @@ export interface DownloadProgress {
   total_mb?: number;
   path?: string;
   detail?: string;
+  already_exists?: boolean;
 }
 
 // ── API calls ──────────────────────────────────────────────────────────

@@ -227,7 +227,15 @@ class ModelManager:
 
         if os.path.isfile(dest_path):
             size = os.path.getsize(dest_path)
-            yield {"status": "done", "path": dest_path, "completed": size, "total": size, "percent": 100.0}
+            logger.info("Model %s already exists at %s (%.2f GB)", model_id, dest_path, size / (1024**3))
+            yield {
+                "status": "done",
+                "path": dest_path,
+                "completed": size,
+                "total": size,
+                "percent": 100.0,
+                "already_exists": True,
+            }
             return
 
         self._active_downloads[model_id] = False
