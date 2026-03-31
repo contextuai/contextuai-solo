@@ -227,7 +227,15 @@ class ModelManager:
 
         if os.path.isfile(dest_path):
             size = os.path.getsize(dest_path)
-            yield {"status": "done", "path": dest_path, "completed": size, "total": size, "percent": 100.0}
+            logger.info("Model %s already exists at %s (%.2f GB)", model_id, dest_path, size / (1024**3))
+            yield {
+                "status": "done",
+                "path": dest_path,
+                "completed": size,
+                "total": size,
+                "percent": 100.0,
+                "already_exists": True,
+            }
             return
 
         self._active_downloads[model_id] = False
@@ -242,6 +250,62 @@ class ModelManager:
             "percent": 0.0,
         }
 
+        # ── Pre-flight: verify HuggingFace is reachable ──────────────────
+        import urllib.request
+        import urllib.error
+
+        preflight_url = f"https://huggingface.co/api/models/{repo_id}"
+        try:
+            req = urllib.request.Request(preflight_url, method="HEAD")
+            urllib.request.urlopen(req, timeout=15)
+            logger.info("Pre-flight OK for %s", model_id)
+        except urllib.error.HTTPError:
+            pass  # HTTP errors mean the server is reachable
+        except (urllib.error.URLError, OSError) as exc:
+            reason = str(getattr(exc, "reason", exc))
+            if "getaddrinfo" in reason.lower() or "name or service" in reason.lower():
+                detail = (
+                    "Cannot reach huggingface.co — please check your internet connection."
+                )
+            elif "timed out" in reason.lower():
+                detail = (
+                    "Connection to huggingface.co timed out. Please check your "
+                    "internet connection and try again."
+                )
+            elif "certificate" in reason.lower() or "ssl" in reason.lower():
+                detail = (
+                    "SSL error connecting to huggingface.co. If you use a corporate "
+                    "proxy or VPN, it may be interfering with secure connections."
+                )
+            else:
+                detail = f"Cannot reach huggingface.co: {reason}"
+            logger.warning("Pre-flight failed for %s: %s", model_id, detail)
+            yield {"status": "error", "detail": detail}
+            self._active_downloads.pop(model_id, None)
+            return
+        except Exception as exc:
+            logger.warning("Pre-flight error for %s: %s", model_id, exc)
+
+        # ── Clear stale HF cache to avoid hangs on corrupted metadata ────
+        try:
+            from huggingface_hub import scan_cache_dir
+            cache_info = scan_cache_dir()
+            # If there's a stale incomplete download for this repo, clean it
+            for repo_info in cache_info.repos:
+                if repo_info.repo_id == repo_id:
+                    for revision in repo_info.revisions:
+                        if revision.size_on_disk == 0:
+                            logger.info("Cleaning stale cache for %s", repo_id)
+                            cache_info.delete_revisions(revision.commit_hash)
+        except Exception:
+            pass  # Cache cleanup is best-effort
+
+        yield {
+            "status": "connecting",
+            "model_id": model_id,
+            "detail": "Connected to HuggingFace, starting download...",
+        }
+
         # Thread-safe queue for progress updates from the blocking download
         progress_queue: _queue.Queue = _queue.Queue()
 
@@ -254,15 +318,47 @@ class ModelManager:
             )
 
             # Poll progress queue while download runs
+            last_progress_time = time.time()
+            got_first_progress = False
             while not download_future.done():
                 await asyncio.sleep(0.3)
                 # Drain all queued progress updates
+                drained_any = False
                 while True:
                     try:
                         update = progress_queue.get_nowait()
                         yield update
+                        drained_any = True
+                        got_first_progress = True
                     except _queue.Empty:
                         break
+                if drained_any:
+                    last_progress_time = time.time()
+                # If no progress for 60s and we never got any, the download is likely blocked
+                elif not got_first_progress and (time.time() - last_progress_time) > 60:
+                    logger.warning("Download stalled for %s — no progress after 60s", model_id)
+                    yield {
+                        "status": "error",
+                        "detail": (
+                            "Download appears stalled — no data received for 60 seconds. "
+                            "This is usually caused by a firewall or proxy blocking "
+                            "downloads from cdn-lfs.huggingface.co. Check your "
+                            "Windows Firewall outbound rules for port 443."
+                        ),
+                    }
+                    self._active_downloads[model_id] = True  # signal cancellation
+                    break
+
+            # If stall detector fired, don't wait for the thread — it may hang
+            if self._active_downloads.get(model_id):
+                # Thread is still blocking in hf_hub_download; clean up partial file
+                if os.path.isfile(dest_path):
+                    try:
+                        os.remove(dest_path)
+                    except OSError:
+                        pass
+                # Don't call download_future.result() — it may never return
+                return
 
             # Get final result
             result = download_future.result()
@@ -275,11 +371,7 @@ class ModelManager:
                 except _queue.Empty:
                     break
 
-            if self._active_downloads.get(model_id):
-                if os.path.isfile(dest_path):
-                    os.remove(dest_path)
-                yield {"status": "cancelled", "model_id": model_id}
-            elif result.get("error"):
+            if result.get("error"):
                 yield {"status": "error", "detail": result["error"]}
             else:
                 yield {
@@ -307,17 +399,24 @@ class ModelManager:
         try:
             from huggingface_hub import hf_hub_download
 
+            # Set a connection timeout so downloads don't hang forever
+            # if the CDN is unreachable after the pre-flight passed.
+            os.environ.setdefault("HF_HUB_DOWNLOAD_TIMEOUT", "30")
+
             tqdm_cls = None
             if progress_queue is not None:
                 tqdm_cls = self._make_progress_tqdm(progress_queue, model_id)
 
+            logger.info("Starting hf_hub_download: %s/%s", repo_id, filename)
             downloaded_path = hf_hub_download(
                 repo_id=repo_id,
                 filename=filename,
                 local_dir=self.models_dir,
                 local_dir_use_symlinks=False,
+                resume_download=True,
                 tqdm_class=tqdm_cls,
             )
+            logger.info("hf_hub_download completed: %s", downloaded_path)
 
             size = os.path.getsize(downloaded_path)
             logger.info("Download complete: %s (%.2f GB)", downloaded_path, size / (1024**3))
@@ -338,10 +437,25 @@ class ModelManager:
             def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
                 self._last_reported = 0.0
+                self._sent_initial = False
 
             def update(self, n=1):
                 super().update(n)
                 if self.total and self.total > 0:
+                    # Emit 0% immediately so frontend switches from "Preparing" to progress bar
+                    if not self._sent_initial:
+                        self._sent_initial = True
+                        total_mb = self.total / (1024 * 1024)
+                        completed_mb = self.n / (1024 * 1024)
+                        progress_queue.put({
+                            "status": "downloading",
+                            "model_id": model_id,
+                            "completed": self.n,
+                            "total": self.total,
+                            "percent": round((self.n / self.total) * 100, 1),
+                            "completed_mb": round(completed_mb, 1),
+                            "total_mb": round(total_mb, 1),
+                        })
                     percent = (self.n / self.total) * 100
                     # Throttle: only emit if progress changed by >= 0.5%
                     if percent - self._last_reported >= 0.5 or percent >= 100:

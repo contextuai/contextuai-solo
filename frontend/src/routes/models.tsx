@@ -181,13 +181,20 @@ function ModelCard({
         ) : downloading ? (
           <div className="flex items-center gap-2">
             {progress?.status === "error" ? (
-              <span className="text-[10px] text-red-500 font-medium">
-                {progress.detail || "Download failed"}
-              </span>
-            ) : progress?.status === "starting" ? (
+              <div className="flex flex-col gap-1 max-w-xs">
+                <span className="text-[11px] text-red-500 font-semibold">Download failed</span>
+                <span className="text-[10px] text-red-400 leading-tight">
+                  {progress.detail || "Unknown error"}
+                </span>
+              </div>
+            ) : progress?.status === "starting" || progress?.status === "connecting" ? (
               <>
                 <Loader2 className="w-3.5 h-3.5 animate-spin text-primary-500" />
-                <span className="text-[10px] text-neutral-500">Connecting...</span>
+                <span className="text-[10px] text-neutral-500">
+                  {progress?.status === "connecting"
+                    ? "Starting download..."
+                    : "Preparing..."}
+                </span>
                 <button
                   onClick={() => onCancel(model.id)}
                   className="p-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800"
@@ -203,11 +210,14 @@ function ModelCard({
                     style={{ width: `${percent}%` }}
                   />
                 </div>
-                <span className="text-[10px] text-neutral-500 tabular-nums">
-                  {progress?.total_mb
-                    ? `${progress.completed_mb ?? 0} / ${progress.total_mb} MB`
-                    : `${Math.round(percent)}%`}
+                <span className="text-[10px] text-neutral-500 tabular-nums font-medium">
+                  {Math.round(percent)}%
                 </span>
+                {progress?.total_mb ? (
+                  <span className="text-[10px] text-neutral-400 tabular-nums">
+                    {progress.completed_mb ?? 0} / {progress.total_mb} MB
+                  </span>
+                ) : null}
                 <button
                   onClick={() => onCancel(model.id)}
                   className="p-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800"
@@ -432,7 +442,7 @@ export default function ModelsPage() {
 
     setDownloads((prev) => ({
       ...prev,
-      [modelId]: { status: "starting", percent: 0 },
+      [modelId]: { status: "starting", percent: 0, detail: "Preparing..." },
     }));
 
     try {
@@ -442,6 +452,8 @@ export default function ModelsPage() {
           setDownloads((prev) => ({ ...prev, [modelId]: progress }));
 
           if (progress.status === "done") {
+            // If file already existed, skip animation and refresh immediately
+            const delay = progress.already_exists ? 0 : 500;
             setTimeout(() => {
               setDownloads((prev) => {
                 const next = { ...prev };
@@ -449,7 +461,7 @@ export default function ModelsPage() {
                 return next;
               });
               loadData();
-            }, 500);
+            }, delay);
           } else if (progress.status === "error" || progress.status === "cancelled") {
             // Show error briefly, then clean up
             setTimeout(() => {
