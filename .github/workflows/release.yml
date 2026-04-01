@@ -4,13 +4,37 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version (e.g. v0.2.0-beta)"
+        required: true
+        type: string
 
 permissions:
   contents: write
 
+env:
+  RELEASE_TAG: ${{ github.event.inputs.version || github.ref_name }}
+
 jobs:
+  tag:
+    name: Create Tag
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create and push tag
+        run: |
+          git tag "${{ github.event.inputs.version }}"
+          git push origin "${{ github.event.inputs.version }}"
+
   build:
     name: Build (${{ matrix.platform.name }})
+    needs: [tag]
+    if: always() && (needs.tag.result == 'success' || needs.tag.result == 'skipped')
     strategy:
       fail-fast: false
       matrix:
@@ -159,4 +183,5 @@ jobs:
           files: release-assets/*
           generate_release_notes: true
           draft: false
-          prerelease: ${{ contains(github.ref_name, '-') }}
+          tag_name: ${{ env.RELEASE_TAG }}
+          prerelease: ${{ contains(env.RELEASE_TAG, '-') }}
