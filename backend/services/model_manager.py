@@ -189,6 +189,12 @@ class ModelManager:
         if not entry:
             return False
         filename = entry["hf_filename"]
+        # For sharded files, check if the first shard exists
+        if self._is_sharded_filename(filename):
+            return (
+                (Path(self.models_dir) / filename).exists()
+                or (Path(self.models_dir) / "chat" / filename).exists()
+            )
         return (
             (Path(self.models_dir) / filename).exists()
             or (Path(self.models_dir) / "chat" / filename).exists()
@@ -300,6 +306,19 @@ class ModelManager:
         except Exception:
             pass  # Cache cleanup is best-effort
 
+        # ── Clear stale lock/incomplete files in local_dir cache ─────────
+        try:
+            local_cache = Path(self.models_dir) / ".cache" / "huggingface" / "download"
+            if local_cache.is_dir():
+                for lock_file in local_cache.glob(f"{filename}.lock"):
+                    logger.info("Removing stale lock file: %s", lock_file)
+                    lock_file.unlink(missing_ok=True)
+                for inc_file in local_cache.glob("*.incomplete"):
+                    logger.info("Removing incomplete download: %s", inc_file)
+                    inc_file.unlink(missing_ok=True)
+        except Exception:
+            pass  # Best-effort cleanup
+
         yield {
             "status": "connecting",
             "model_id": model_id,
@@ -387,6 +406,21 @@ class ModelManager:
         finally:
             self._active_downloads.pop(model_id, None)
 
+    @staticmethod
+    def _is_sharded_filename(filename: str) -> bool:
+        """Check if a filename is a sharded GGUF (e.g. model-00001-of-00003.gguf)."""
+        import re
+        return bool(re.search(r'-\d{5}-of-\d{5}\.gguf$', filename))
+
+    @staticmethod
+    def _shard_pattern(filename: str) -> str:
+        """Convert a shard filename to a glob pattern matching all shards.
+
+        e.g. 'model-00001-of-00003.gguf' -> 'model-*-of-*.gguf'
+        """
+        import re
+        return re.sub(r'-\d{5}-of-\d{5}\.gguf$', '-*-of-*.gguf', filename)
+
     def _download_with_progress(
         self, repo_id: str, filename: str, dest_path: str, model_id: str,
         progress_queue=None,
@@ -397,30 +431,54 @@ class ModelManager:
         pushed so the async caller can yield them as SSE events.
         """
         try:
-            from huggingface_hub import hf_hub_download
-
-            # Set a connection timeout so downloads don't hang forever
-            # if the CDN is unreachable after the pre-flight passed.
             os.environ.setdefault("HF_HUB_DOWNLOAD_TIMEOUT", "30")
 
             tqdm_cls = None
             if progress_queue is not None:
                 tqdm_cls = self._make_progress_tqdm(progress_queue, model_id)
 
-            logger.info("Starting hf_hub_download: %s/%s", repo_id, filename)
-            downloaded_path = hf_hub_download(
-                repo_id=repo_id,
-                filename=filename,
-                local_dir=self.models_dir,
-                local_dir_use_symlinks=False,
-                resume_download=True,
-                tqdm_class=tqdm_cls,
-            )
-            logger.info("hf_hub_download completed: %s", downloaded_path)
+            # Detect sharded GGUF files — download each shard individually
+            # so our byte-level tqdm progress tracking works
+            if self._is_sharded_filename(filename):
+                import re
+                from huggingface_hub import hf_hub_download
+                m = re.search(r'-(\d{5})-of-(\d{5})\.gguf$', filename)
+                total_shards = int(m.group(2))
+                base = re.sub(r'-\d{5}-of-\d{5}\.gguf$', '', filename)
 
-            size = os.path.getsize(downloaded_path)
-            logger.info("Download complete: %s (%.2f GB)", downloaded_path, size / (1024**3))
-            return {"path": downloaded_path, "size": size}
+                shard_paths = []
+                for i in range(1, total_shards + 1):
+                    shard_name = f"{base}-{i:05d}-of-{total_shards:05d}.gguf"
+                    logger.info("Downloading shard %d/%d: %s/%s", i, total_shards, repo_id, shard_name)
+                    path = hf_hub_download(
+                        repo_id=repo_id,
+                        filename=shard_name,
+                        local_dir=self.models_dir,
+                        local_dir_use_symlinks=False,
+                        resume_download=True,
+                        tqdm_class=tqdm_cls,
+                    )
+                    shard_paths.append(path)
+
+                total_size = sum(os.path.getsize(p) for p in shard_paths)
+                logger.info("Sharded download complete: %d shards, %.2f GB", len(shard_paths), total_size / (1024**3))
+                return {"path": shard_paths[0], "size": total_size}
+            else:
+                from huggingface_hub import hf_hub_download
+                logger.info("Starting hf_hub_download: %s/%s", repo_id, filename)
+                downloaded_path = hf_hub_download(
+                    repo_id=repo_id,
+                    filename=filename,
+                    local_dir=self.models_dir,
+                    local_dir_use_symlinks=False,
+                    resume_download=True,
+                    tqdm_class=tqdm_cls,
+                )
+                logger.info("hf_hub_download completed: %s", downloaded_path)
+
+                size = os.path.getsize(downloaded_path)
+                logger.info("Download complete: %s (%.2f GB)", downloaded_path, size / (1024**3))
+                return {"path": downloaded_path, "size": size}
 
         except Exception as exc:
             logger.exception("HuggingFace download error")
@@ -435,6 +493,8 @@ class ModelManager:
             """Custom tqdm that reports progress via a thread-safe queue."""
 
             def __init__(self, *args, **kwargs):
+                # huggingface_hub >= 0.25 passes 'name' which tqdm doesn't accept
+                kwargs.pop("name", None)
                 super().__init__(*args, **kwargs)
                 self._last_reported = 0.0
                 self._sent_initial = False

@@ -73,7 +73,7 @@ async def get_model_catalog(
         m["installed"] = model_manager.is_installed(m["id"])
 
     system_info = model_manager.get_system_info()
-    recommended = get_recommended(system_info["total_ram_gb"])
+    recommended = get_recommended(system_info["total_ram_gb"], limit=5)
     # Mark recommended models
     rec_ids = {r["id"] for r in recommended}
     for m in models:

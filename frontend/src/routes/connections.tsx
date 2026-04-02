@@ -398,7 +398,12 @@ export default function ConnectionsPage() {
       const { auth_url } = await getOAuthAuthorizeUrl(conn.oauthProvider);
 
       // Step 3: Open browser for user to authorize
-      window.open(auth_url, "_blank");
+      if ("__TAURI__" in window) {
+        const { open } = await import("@tauri-apps/plugin-shell");
+        await open(auth_url);
+      } else {
+        window.open(auth_url, "_blank");
+      }
 
       // The callback is handled by the backend.
       // We poll for status changes via the useEffect interval above.
