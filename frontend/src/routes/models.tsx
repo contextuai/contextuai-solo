@@ -37,6 +37,7 @@ import {
 import { getApiBaseUrl } from "@/lib/transport";
 import { useBackendStatus } from "@/contexts/backend-status-context";
 import { BackendWaiting } from "@/components/backend-waiting";
+import { Dialog } from "@/components/ui/dialog";
 
 // ── Constants ────────────────────────────────────────────────────────────
 
@@ -407,6 +408,7 @@ export default function ModelsPage() {
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [downloads, setDownloads] = useState<Record<string, DownloadProgress>>({});
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [errorModal, setErrorModal] = useState<{ title: string; message: string } | null>(null);
   const abortControllers = useRef<Record<string, AbortController>>({});
 
   // ── Load data ──────────────────────────────────────────────────────────
@@ -462,26 +464,37 @@ export default function ModelsPage() {
               });
               loadData();
             }, delay);
-          } else if (progress.status === "error" || progress.status === "cancelled") {
-            // Show error briefly, then clean up
-            setTimeout(() => {
-              setDownloads((prev) => {
-                const next = { ...prev };
-                delete next[modelId];
-                return next;
-              });
-            }, 3000);
+          } else if (progress.status === "error") {
+            setErrorModal({
+              title: "Download Failed",
+              message: progress.detail || "An unexpected error occurred during download.",
+            });
+            setDownloads((prev) => {
+              const next = { ...prev };
+              delete next[modelId];
+              return next;
+            });
+          } else if (progress.status === "cancelled") {
+            setDownloads((prev) => {
+              const next = { ...prev };
+              delete next[modelId];
+              return next;
+            });
           }
         },
         controller.signal
       );
-    } catch {
-      // Network error or fetch failure — clean up stuck download state
+    } catch (err) {
+      // Network error or fetch failure
       setDownloads((prev) => {
         const next = { ...prev };
         delete next[modelId];
         return next;
       });
+      const msg = err instanceof Error ? err.message : "Network error";
+      if (!controller.signal.aborted) {
+        setErrorModal({ title: "Download Failed", message: msg });
+      }
     }
   }, [loadData]);
 
@@ -506,6 +519,7 @@ export default function ModelsPage() {
       await loadData();
     } catch (err) {
       console.error("Delete failed:", err);
+      setErrorModal({ title: "Delete Failed", message: err instanceof Error ? err.message : "Could not delete model." });
     } finally {
       setDeletingId(null);
     }
@@ -823,6 +837,28 @@ export default function ModelsPage() {
           </>
         )}
       </div>
+
+      {/* Error modal */}
+      <Dialog
+        open={!!errorModal}
+        onClose={() => setErrorModal(null)}
+        title={errorModal?.title || "Error"}
+        actions={
+          <button
+            onClick={() => setErrorModal(null)}
+            className="px-4 py-2 text-sm font-medium text-white bg-primary-500 hover:bg-primary-600 rounded-lg transition-colors"
+          >
+            OK
+          </button>
+        }
+      >
+        <div className="flex items-start gap-3">
+          <AlertTriangle className="w-5 h-5 text-amber-500 mt-0.5 shrink-0" />
+          <p className="text-sm text-neutral-700 dark:text-neutral-300 whitespace-pre-wrap">
+            {errorModal?.message}
+          </p>
+        </div>
+      </Dialog>
     </div>
   );
 }

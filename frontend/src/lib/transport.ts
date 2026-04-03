@@ -183,12 +183,12 @@ export async function* streamRequest(
           if (parsed.thinking) {
             yield { type: "thinking", data: parsed.thinking };
           }
-          if (parsed.chunk) {
+          if (parsed.status === "error" || parsed.error) {
+            yield { type: "error", data: parsed.message || parsed.chunk || "An unexpected error occurred" };
+          } else if (parsed.chunk) {
             yield { type: "chunk", data: parsed.chunk };
           } else if (parsed.is_final) {
             yield { type: "metadata", data: JSON.stringify(parsed.metadata || {}) };
-          } else if (parsed.status === "error") {
-            yield { type: "error", data: parsed.metadata?.error || "Stream error" };
           }
         } catch {
           yield { type: "chunk", data: content };

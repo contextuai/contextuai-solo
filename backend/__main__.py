@@ -42,6 +42,10 @@ def main():
     if os.path.isdir(agent_lib):
         os.environ["AGENT_LIBRARY_PATH"] = agent_lib
 
+    blueprint_lib = os.path.join(base, "blueprints")
+    if os.path.isdir(blueprint_lib):
+        os.environ["BLUEPRINT_LIBRARY_PATH"] = blueprint_lib
+
     import uvicorn
     from app import app  # noqa: F401 — ensure PyInstaller includes it
 

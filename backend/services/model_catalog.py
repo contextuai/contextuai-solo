@@ -140,7 +140,7 @@ LOCAL_MODEL_CATALOG: List[Dict] = [
         "quality_tier": "great",
         "speed_tier": "medium",
         "hf_repo": "Qwen/Qwen2.5-14B-Instruct-GGUF",
-        "hf_filename": "qwen2.5-14b-instruct-q4_k_m.gguf",
+        "hf_filename": "qwen2.5-14b-instruct-q4_k_m-00001-of-00003.gguf",
         "chat_template": "chatml",
     },
     {
@@ -162,7 +162,7 @@ LOCAL_MODEL_CATALOG: List[Dict] = [
         "quality_tier": "best",
         "speed_tier": "medium",
         "hf_repo": "Qwen/Qwen2.5-32B-Instruct-GGUF",
-        "hf_filename": "qwen2.5-32b-instruct-q4_k_m.gguf",
+        "hf_filename": "qwen2.5-32b-instruct-q4_k_m-00001-of-00005.gguf",
         "chat_template": "chatml",
     },
     # ── Qwen Coder (Official GGUF) ─────────────────────────────────────────
@@ -207,7 +207,7 @@ LOCAL_MODEL_CATALOG: List[Dict] = [
         "quality_tier": "great",
         "speed_tier": "medium",
         "hf_repo": "Qwen/Qwen2.5-Coder-14B-Instruct-GGUF",
-        "hf_filename": "qwen2.5-coder-14b-instruct-q4_k_m.gguf",
+        "hf_filename": "qwen2.5-coder-14b-instruct-q4_k_m-00001-of-00003.gguf",
         "chat_template": "chatml",
     },
     {
@@ -229,10 +229,10 @@ LOCAL_MODEL_CATALOG: List[Dict] = [
         "quality_tier": "best",
         "speed_tier": "medium",
         "hf_repo": "Qwen/Qwen2.5-Coder-32B-Instruct-GGUF",
-        "hf_filename": "qwen2.5-coder-32b-instruct-q4_k_m.gguf",
+        "hf_filename": "qwen2.5-coder-32b-instruct-q4_k_m-00001-of-00004.gguf",
         "chat_template": "chatml",
     },
-    # ── Google Gemma 3 (Community GGUF — bartowski) ─────────────────────────
+    # ── Google Gemma (Gemma 3 + Gemma 4) ──────────────────────────────────────
     {
         "id": "gemma3-1b",
         "name": "Gemma 3 1B",
@@ -255,7 +255,6 @@ LOCAL_MODEL_CATALOG: List[Dict] = [
         "hf_filename": "google_gemma-3-1b-it-Q4_K_M.gguf",
         "chat_template": "gemma",
     },
-    # ── Google Gemma 3 (Official GGUF — Q4_0 QAT) ──────────────────────────
     {
         "id": "gemma3-4b",
         "name": "Gemma 3 4B",
@@ -311,7 +310,7 @@ LOCAL_MODEL_CATALOG: List[Dict] = [
         "ram_required_gb": 20,
         "ram_recommended_gb": 24,
         "categories": ["general", "reasoning", "multilingual"],
-        "description": "Google's most capable open model. Excellent across all tasks.",
+        "description": "Gemma 3 flagship. Excellent reasoning and multilingual support.",
         "quantization": "Q4_0",
         "context_window": 131072,
         "supports_vision": False,
@@ -322,6 +321,7 @@ LOCAL_MODEL_CATALOG: List[Dict] = [
         "hf_filename": "gemma-3-27b-it-qat-q4_0.gguf",
         "chat_template": "gemma",
     },
+    # ── Gemma 4 models excluded until llama-cpp-python adds 'gemma4' architecture support ──
     # ── Microsoft Phi-4 (Official GGUF) ─────────────────────────────────────
     {
         "id": "phi4-14b",
@@ -750,7 +750,6 @@ LOCAL_MODEL_CATALOG: List[Dict] = [
         "supports_thinking": True,
         "quality_tier": "basic",
         "speed_tier": "fast",
-        "recommended": True,
         "hf_repo": "unsloth/Qwen3.5-0.8B-GGUF",
         "hf_filename": "Qwen3.5-0.8B-Q4_K_M.gguf",
         "chat_template": "chatml",
@@ -774,7 +773,6 @@ LOCAL_MODEL_CATALOG: List[Dict] = [
         "supports_thinking": True,
         "quality_tier": "good",
         "speed_tier": "fast",
-        "recommended": True,
         "hf_repo": "unsloth/Qwen3.5-2B-GGUF",
         "hf_filename": "Qwen3.5-2B-Q4_K_M.gguf",
         "chat_template": "chatml",
@@ -798,7 +796,6 @@ LOCAL_MODEL_CATALOG: List[Dict] = [
         "supports_thinking": True,
         "quality_tier": "good",
         "speed_tier": "fast",
-        "recommended": True,
         "hf_repo": "unsloth/Qwen3.5-4B-GGUF",
         "hf_filename": "Qwen3.5-4B-Q4_K_M.gguf",
         "chat_template": "chatml",
@@ -822,7 +819,6 @@ LOCAL_MODEL_CATALOG: List[Dict] = [
         "supports_thinking": True,
         "quality_tier": "great",
         "speed_tier": "fast",
-        "recommended": True,
         "hf_repo": "unsloth/Qwen3.5-9B-GGUF",
         "hf_filename": "Qwen3.5-9B-Q4_K_M.gguf",
         "chat_template": "chatml",
@@ -846,7 +842,6 @@ LOCAL_MODEL_CATALOG: List[Dict] = [
         "supports_thinking": True,
         "quality_tier": "best",
         "speed_tier": "medium",
-        "recommended": True,
         "hf_repo": "unsloth/Qwen3.5-27B-GGUF",
         "hf_filename": "Qwen3.5-27B-Q4_K_M.gguf",
         "chat_template": "chatml",
@@ -870,7 +865,6 @@ LOCAL_MODEL_CATALOG: List[Dict] = [
         "supports_thinking": True,
         "quality_tier": "best",
         "speed_tier": "fast",
-        "recommended": True,
         "hf_repo": "unsloth/Qwen3.5-35B-A3B-GGUF",
         "hf_filename": "Qwen3.5-35B-A3B-Q4_K_M.gguf",
         "chat_template": "chatml",
@@ -910,13 +904,13 @@ def get_model(model_id: str) -> Optional[Dict]:
 def get_recommended(system_ram_gb: int, limit: int = 3) -> List[Dict]:
     """Pick the best models that fit comfortably in the user's RAM.
 
-    Prioritises models flagged ``recommended: True`` (Qwen 3.5 family),
+    Prioritises models flagged ``recommended: True`` (Gemma family),
     then sorts by quality tier and parameter count.
     """
     cap = min(system_ram_gb, RAM_CAP_GB)
     candidates = [
         m for m in LOCAL_MODEL_CATALOG
-        if m["ram_recommended_gb"] <= cap
+        if m["ram_required_gb"] <= cap
     ]
     tier_order = {t: i for i, t in enumerate(QUALITY_TIERS)}
     candidates.sort(

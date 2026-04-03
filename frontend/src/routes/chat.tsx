@@ -19,6 +19,8 @@ import ChatSidebar from "@/components/chat/chat-sidebar";
 import ChatHeader from "@/components/chat/chat-header";
 import ChatInput from "@/components/chat/chat-input";
 import MessageList from "@/components/chat/message-list";
+import { Dialog } from "@/components/ui/dialog";
+import { AlertTriangle } from "lucide-react";
 
 export default function ChatPage() {
   const { aiMode } = useAiMode();
@@ -41,6 +43,7 @@ export default function ChatPage() {
   const [streamingContent, setStreamingContent] = useState("");
   const [streamingThinking, setStreamingThinking] = useState("");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [errorModal, setErrorModal] = useState<string | null>(null);
 
   // Abort controller for stopping stream
   const abortRef = useRef(false);
@@ -252,8 +255,7 @@ export default function ChatPage() {
           fullResponse += chunk.data;
           setStreamingContent(fullResponse);
         } else if (chunk.type === "error") {
-          fullResponse += `\n\n**Error:** ${chunk.data}`;
-          setStreamingContent(fullResponse);
+          setErrorModal(chunk.data);
         }
         // metadata chunks are silently consumed
       }
@@ -261,9 +263,7 @@ export default function ChatPage() {
       // Ignore abort errors — those are intentional stops
       const isAbort = abortRef.current || (err instanceof DOMException && err.name === "AbortError");
       if (!isAbort) {
-        fullResponse +=
-          `\n\n**Error:** ${err instanceof Error ? err.message : "Unknown error"}`;
-        setStreamingContent(fullResponse);
+        setErrorModal(err instanceof Error ? err.message : "An unexpected error occurred");
       }
     }
     abortControllerRef.current = null;
@@ -397,6 +397,28 @@ export default function ChatPage() {
           onSelectPersona={setSelectedPersonaId}
         />
       </div>
+
+      {/* Error modal */}
+      <Dialog
+        open={!!errorModal}
+        onClose={() => setErrorModal(null)}
+        title="Model Error"
+        actions={
+          <button
+            onClick={() => setErrorModal(null)}
+            className="px-4 py-2 text-sm font-medium text-white bg-primary-500 hover:bg-primary-600 rounded-lg transition-colors"
+          >
+            OK
+          </button>
+        }
+      >
+        <div className="flex items-start gap-3">
+          <AlertTriangle className="w-5 h-5 text-amber-500 mt-0.5 shrink-0" />
+          <p className="text-sm text-neutral-700 dark:text-neutral-300 whitespace-pre-wrap">
+            {errorModal}
+          </p>
+        </div>
+      </Dialog>
     </div>
   );
 }

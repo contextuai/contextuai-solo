@@ -6,7 +6,9 @@ hiddenimports += collect_submodules('strands')
 hiddenimports += collect_submodules('strands_tools')
 hiddenimports += collect_submodules('pydantic')
 hiddenimports += collect_submodules('asyncpg')
-hiddenimports += ['llama_cpp', 'onnxruntime', 'huggingface_hub', 'tokenizers']
+hiddenimports += ['llama_cpp', 'onnxruntime', 'huggingface_hub', 'tokenizers', 'tqdm']
+hiddenimports += collect_submodules('huggingface_hub')
+hiddenimports += collect_submodules('tqdm')
 hiddenimports += collect_submodules('psutil')
 
 # Native libraries for llama-cpp-python and onnxruntime
@@ -25,7 +27,7 @@ a = Analysis(
     ['__main__.py'],
     pathex=['.'],
     binaries=extra_binaries,
-    datas=[('../agent-library', 'agent-library')],
+    datas=[('../agent-library', 'agent-library'), ('../blueprints', 'blueprints')],
     hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
