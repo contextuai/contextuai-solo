@@ -39,7 +39,7 @@ interface WizardData {
 }
 
 const LOCAL_MODELS = [
-  { id: "gemma-3-1b", name: "Gemma 3 1B", maker: "Google", size: "756 MB", ram: "2 GB", tag: "Starter", url: "https://huggingface.co/bartowski/google_gemma-3-1b-it-GGUF" },
+  { id: "gemma3-1b", name: "Gemma 3 1B", maker: "Google", size: "756 MB", ram: "2 GB", tag: "Starter", url: "https://huggingface.co/bartowski/google_gemma-3-1b-it-GGUF" },
   { id: "qwen2.5-3b", name: "Qwen 2.5 3B", maker: "Alibaba", size: "2 GB", ram: "4 GB", tag: "Good", url: "https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF" },
   { id: "qwen2.5-7b", name: "Qwen 2.5 7B", maker: "Alibaba", size: "4.7 GB", ram: "6 GB", tag: "Recommended", url: "https://huggingface.co/Qwen/Qwen2.5-7B-Instruct-GGUF" },
   { id: "qwen2.5-14b", name: "Qwen 2.5 14B", maker: "Alibaba", size: "9 GB", ram: "10 GB", tag: "Great", url: "https://huggingface.co/Qwen/Qwen2.5-14B-Instruct-GGUF" },
