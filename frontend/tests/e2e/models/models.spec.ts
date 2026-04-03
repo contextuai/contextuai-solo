@@ -50,9 +50,9 @@ test.describe("Model Hub catalog", () => {
     await models.clickCategory("Vision");
     const names = await models.getModelNames();
     expect(names.length).toBeGreaterThan(0);
-    // Gemma 4 models support vision
-    const hasGemma4 = names.some((n) => n.includes("Gemma 4"));
-    expect(hasGemma4).toBe(true);
+    // Qwen 3.5 models support vision
+    const hasVisionModel = names.some((n) => n.includes("Qwen 3.5"));
+    expect(hasVisionModel).toBe(true);
   });
 
   // DC-MODEL-05: Category filter hides recommended section
