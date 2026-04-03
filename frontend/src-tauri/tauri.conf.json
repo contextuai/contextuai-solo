@@ -54,6 +54,12 @@
     }
   },
   "plugins": {
-    "shell": { "open": true }
+    "shell": { "open": true },
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDc1RTNCOTU5QUQ1NURCQUYKUldTdjIxV3RXYm5qZGQvaEFTVjZnV1JFd1NiTkxxbUtPUHh0d0FGa2VwdnkxL3A0cEZFQWJ3dUkK",
+      "endpoints": [
+        "https://github.com/contextuai/contextuai-solo/releases/latest/download/latest.json"
+      ]
+    }
   }
 }

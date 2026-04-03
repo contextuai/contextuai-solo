@@ -1,0 +1,12 @@
+{
+  "identifier": "default",
+  "description": "Default capability for the main window",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "shell:allow-open",
+    "os:default",
+    "updater:default",
+    "process:allow-restart"
+  ]
+}

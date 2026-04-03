@@ -18,6 +18,7 @@ import SettingsPage from "@/routes/settings";
 import ApprovalsPage from "@/routes/approvals";
 import BlueprintsPage from "@/routes/blueprints";
 import WizardPage from "@/routes/wizard";
+import { UpdateNotifier } from "@/components/update-notifier";
 
 function isWizardComplete(): boolean {
   try {
@@ -94,6 +95,7 @@ function SidecarGate({ children }: { children: React.ReactNode }) {
 export default function App() {
   return (
     <SidecarGate>
+      <UpdateNotifier />
       <DesktopAuthProvider>
         <ThemeProvider>
           <AiModeProvider>
