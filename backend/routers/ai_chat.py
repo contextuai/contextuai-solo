@@ -464,7 +464,7 @@ async def ai_chat(request: ChatRequest, http_request: Request = None):
                         logger.info("Client disconnected during local model streaming")
                     except Exception as e:
                         logger.error(f"❌ Local model streaming error: {e}")
-                        yield f"data: {json.dumps({'chunk': f'Error: {e}', 'error': True})}\n\n"
+                        yield f"data: {json.dumps({'status': 'error', 'error': True, 'message': str(e)})}\n\n"
 
                     if not disconnected:
                         yield "data: [DONE]\n\n"
@@ -588,7 +588,7 @@ async def ai_chat(request: ChatRequest, http_request: Request = None):
                                 yield f"data: {json.dumps({'chunk': text})}\n\n"
                     except Exception as e:
                         logger.error(f"❌ Ollama streaming error: {e}")
-                        yield f"data: {json.dumps({'chunk': f'Error: {e}', 'error': True})}\n\n"
+                        yield f"data: {json.dumps({'status': 'error', 'error': True, 'message': str(e)})}\n\n"
 
                     yield "data: [DONE]\n\n"
 
@@ -828,7 +828,7 @@ async def ai_chat(request: ChatRequest, http_request: Request = None):
                     logger.info("Client disconnected during cloud model streaming")
                 except Exception as e:
                     logger.error(f"❌ Cloud model streaming error: {e}")
-                    yield f"data: {json.dumps({'chunk': f'Error: {e}', 'error': True})}\n\n"
+                    yield f"data: {json.dumps({'status': 'error', 'error': True, 'message': str(e)})}\n\n"
 
                 if not disconnected:
                     yield "data: [DONE]\n\n"

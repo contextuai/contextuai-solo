@@ -148,42 +148,77 @@ class LocalModelService:
             n_ctx = 4096
 
         try:
-            self._model = Llama(
-                model_path=model_path,
-                n_ctx=n_ctx,
-                n_threads=os.cpu_count() or 4,
-                use_mmap=True,
-                verbose=False,
-            )
+            import io, contextlib
+            stderr_capture = io.StringIO()
+            with contextlib.redirect_stderr(stderr_capture):
+                self._model = Llama(
+                    model_path=model_path,
+                    n_ctx=n_ctx,
+                    n_threads=os.cpu_count() or 4,
+                    use_mmap=True,
+                    verbose=True,
+                )
         except Exception as e:
             error_msg = str(e)
-            logger.error("Failed to load model %s: %s", model_path, error_msg)
+            stderr_output = stderr_capture.getvalue()
+            combined = f"{error_msg} {stderr_output}"
+            logger.error("Failed to load model %s: %s\nstderr: %s", model_path, error_msg, stderr_output)
 
-            # Check for unsupported architecture
-            if "unknown model architecture" in error_msg:
+            # Check for unsupported architecture (may appear in exception or stderr)
+            if "unknown model architecture" in combined:
+                import re
                 import llama_cpp as _lc
                 version = getattr(_lc, "__version__", "unknown")
+                arch_match = re.search(r"unknown model architecture: '(\w+)'", combined)
+                arch_name = arch_match.group(1) if arch_match else "unknown"
                 raise RuntimeError(
-                    f"This model requires a newer version of llama-cpp-python. "
-                    f"Current version: {version}. "
-                    f"Run: pip install --upgrade llama-cpp-python"
+                    f"This model uses the '{arch_name}' architecture which is not yet "
+                    f"supported by llama-cpp-python v{version}. This usually means the "
+                    f"model is very new. Support will be added in a future update. "
+                    f"Please try a different model for now."
+                ) from e
+
+            # Check for out-of-memory / allocation failures
+            if "failed to allocate" in combined.lower() or "out of memory" in combined.lower():
+                raise RuntimeError(
+                    f"Not enough RAM to load this model. "
+                    f"Try closing other applications or using a smaller model."
                 ) from e
 
             # Retry with minimal context if it failed for other reasons
             if n_ctx > 512:
                 logger.info("Retrying with n_ctx=512...")
                 try:
-                    self._model = Llama(
-                        model_path=model_path,
-                        n_ctx=512,
-                        n_threads=os.cpu_count() or 4,
-                        use_mmap=True,
-                        verbose=False,
-                    )
+                    stderr_retry = io.StringIO()
+                    with contextlib.redirect_stderr(stderr_retry):
+                        self._model = Llama(
+                            model_path=model_path,
+                            n_ctx=512,
+                            n_threads=os.cpu_count() or 4,
+                            use_mmap=True,
+                            verbose=True,
+                        )
                 except Exception as retry_err:
+                    retry_stderr = stderr_retry.getvalue()
+                    retry_combined = f"{retry_err} {retry_stderr}"
+
+                    # Check architecture on retry too
+                    if "unknown model architecture" in retry_combined:
+                        import re
+                        import llama_cpp as _lc
+                        version = getattr(_lc, "__version__", "unknown")
+                        arch_match = re.search(r"unknown model architecture: '(\w+)'", retry_combined)
+                        arch_name = arch_match.group(1) if arch_match else "unknown"
+                        raise RuntimeError(
+                            f"This model uses the '{arch_name}' architecture which is not yet "
+                            f"supported by llama-cpp-python v{version}. This usually means the "
+                            f"model is very new. Support will be added in a future update. "
+                            f"Please try a different model for now."
+                        ) from retry_err
+
                     raise RuntimeError(
-                        f"Failed to load model: {error_msg}. "
-                        f"Retry with n_ctx=512 also failed: {retry_err}"
+                        f"Failed to load this model. It may be corrupted or incompatible. "
+                        f"Try re-downloading or using a different model."
                     ) from retry_err
             else:
                 raise

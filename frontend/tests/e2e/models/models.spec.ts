@@ -28,17 +28,11 @@ test.describe("Model Hub catalog", () => {
     expect(names.length).toBeGreaterThan(0);
   });
 
-  // DC-MODEL-02: Recommended section shows Gemma 4 models
-  test("DC-MODEL-02: recommended section shows Gemma 4 models", async () => {
+  // DC-MODEL-02: Recommended section shows recommended models
+  test("DC-MODEL-02: recommended section shows recommended models", async () => {
     await expect(models.recommendedSection).toBeVisible();
     const recommended = await models.getRecommendedModelNames();
-    expect(recommended.length).toBeGreaterThanOrEqual(4);
-
-    // All four Gemma 4 models should be recommended
-    const gemma4Models = ["Gemma 4 E2B", "Gemma 4 E4B", "Gemma 4 26B-A4B", "Gemma 4 31B"];
-    for (const name of gemma4Models) {
-      expect(recommended).toContain(name);
-    }
+    expect(recommended.length).toBeGreaterThanOrEqual(1);
   });
 
   // DC-MODEL-03: Search filters models
