@@ -495,6 +495,9 @@ class ModelManager:
             def __init__(self, *args, **kwargs):
                 # huggingface_hub >= 0.25 passes 'name' which tqdm doesn't accept
                 kwargs.pop("name", None)
+                # huggingface_hub passes disable=None which tqdm treats as
+                # disable=True, preventing self.n from updating. Force enabled.
+                kwargs["disable"] = False
                 super().__init__(*args, **kwargs)
                 self._last_reported = 0.0
                 self._sent_initial = False
