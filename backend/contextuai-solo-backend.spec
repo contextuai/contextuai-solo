@@ -27,7 +27,7 @@ a = Analysis(
     ['__main__.py'],
     pathex=['.'],
     binaries=extra_binaries,
-    datas=[('../agent-library', 'agent-library')],
+    datas=[('../agent-library', 'agent-library'), ('../blueprints', 'blueprints')],
     hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
