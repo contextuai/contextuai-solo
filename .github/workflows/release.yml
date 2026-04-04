@@ -127,6 +127,8 @@ jobs:
 
       - name: Build Tauri app
         working-directory: frontend
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: npm run tauri build -- --target ${{ matrix.platform.rust-target }} ${{ matrix.platform.tauri-bundles && format('--bundles {0}', matrix.platform.tauri-bundles) || '' }}
 
       # ── Step 3: Collect installers ─────────────────────────────────────
@@ -135,23 +137,32 @@ jobs:
         shell: bash
         run: |
           mkdir -p release-assets
-          cp frontend/src-tauri/target/${{ matrix.platform.rust-target }}/release/bundle/msi/*.msi release-assets/ 2>/dev/null || true
-          cp frontend/src-tauri/target/${{ matrix.platform.rust-target }}/release/bundle/nsis/*setup.exe release-assets/ 2>/dev/null || true
+          BUNDLE_DIR="frontend/src-tauri/target/${{ matrix.platform.rust-target }}/release/bundle"
+          cp "$BUNDLE_DIR"/msi/*.msi release-assets/ 2>/dev/null || true
+          cp "$BUNDLE_DIR"/msi/*.msi.sig release-assets/ 2>/dev/null || true
+          cp "$BUNDLE_DIR"/nsis/*setup.exe release-assets/ 2>/dev/null || true
+          cp "$BUNDLE_DIR"/nsis/*setup.exe.sig release-assets/ 2>/dev/null || true
           ls -la release-assets/
 
       - name: Collect macOS installer
         if: matrix.platform.os == 'macos-latest'
         run: |
           mkdir -p release-assets
-          cp frontend/src-tauri/target/${{ matrix.platform.rust-target }}/release/bundle/dmg/*.dmg release-assets/ 2>/dev/null || true
+          BUNDLE_DIR="frontend/src-tauri/target/${{ matrix.platform.rust-target }}/release/bundle"
+          cp "$BUNDLE_DIR"/dmg/*.dmg release-assets/ 2>/dev/null || true
+          cp "$BUNDLE_DIR"/macos/*.app.tar.gz release-assets/ 2>/dev/null || true
+          cp "$BUNDLE_DIR"/macos/*.app.tar.gz.sig release-assets/ 2>/dev/null || true
           ls -la release-assets/
 
       - name: Collect Linux installers
         if: matrix.platform.os == 'ubuntu-22.04'
         run: |
           mkdir -p release-assets
-          cp frontend/src-tauri/target/${{ matrix.platform.rust-target }}/release/bundle/deb/*.deb release-assets/ 2>/dev/null || true
-          cp frontend/src-tauri/target/${{ matrix.platform.rust-target }}/release/bundle/rpm/*.rpm release-assets/ 2>/dev/null || true
+          BUNDLE_DIR="frontend/src-tauri/target/${{ matrix.platform.rust-target }}/release/bundle"
+          cp "$BUNDLE_DIR"/deb/*.deb release-assets/ 2>/dev/null || true
+          cp "$BUNDLE_DIR"/rpm/*.rpm release-assets/ 2>/dev/null || true
+          cp "$BUNDLE_DIR"/appimage/*.AppImage release-assets/ 2>/dev/null || true
+          cp "$BUNDLE_DIR"/appimage/*.AppImage.sig release-assets/ 2>/dev/null || true
           ls -la release-assets/
 
       - name: Upload build artifacts
@@ -185,3 +196,48 @@ jobs:
           draft: false
           tag_name: ${{ env.RELEASE_TAG }}
           prerelease: ${{ contains(env.RELEASE_TAG, '-') }}
+
+      - name: Generate and upload updater latest.json
+        shell: bash
+        run: |
+          VERSION="${RELEASE_TAG#v}"
+          REPO="contextuai/contextuai-solo"
+          BASE_URL="https://github.com/$REPO/releases/download/$RELEASE_TAG"
+          DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          NOTES=$(gh release view "$RELEASE_TAG" --json body -q .body 2>/dev/null || echo "")
+
+          # Read signature files
+          read_sig() { cat "release-assets/$1" 2>/dev/null || echo ""; }
+
+          NSIS_SIG=$(read_sig "ContextuAI Solo_${VERSION}_x64-setup.exe.sig")
+          MAC_SIG=$(read_sig "ContextuAI Solo.app.tar.gz.sig")
+          APPIMAGE_SIG=$(read_sig "ContextuAI Solo_${VERSION}_amd64.AppImage.sig")
+
+          python3 -c "
+          import json, sys
+          notes = sys.argv[1]
+          print(json.dumps({
+            'version': '$VERSION',
+            'notes': notes,
+            'pub_date': '$DATE',
+            'platforms': {
+              'windows-x86_64': {
+                'signature': '$NSIS_SIG',
+                'url': '$BASE_URL/ContextuAI+Solo_${VERSION}_x64-setup.exe'
+              },
+              'darwin-aarch64': {
+                'signature': '$MAC_SIG',
+                'url': '$BASE_URL/ContextuAI+Solo.app.tar.gz'
+              },
+              'linux-x86_64': {
+                'signature': '$APPIMAGE_SIG',
+                'url': '$BASE_URL/ContextuAI+Solo_${VERSION}_amd64.AppImage'
+              }
+            }
+          }, indent=2))
+          " "$NOTES" > latest.json
+
+          cat latest.json
+          gh release upload "$RELEASE_TAG" latest.json --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
