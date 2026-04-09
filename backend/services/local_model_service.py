@@ -455,15 +455,13 @@ class LocalModelService:
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Streaming inference, yielding SSE-compatible chunks.
 
-        On Windows, llama-cpp-python's streaming iterator uses C file
-        handles that cannot safely cross thread boundaries (causes
-        ``[Errno 22] Invalid argument``).  We consume the entire stream
-        in a single executor call, collecting all chunks, then yield
-        them back to the async generator.  This trades true token-by-
-        token streaming for reliability on Windows while still producing
-        progressive SSE output.
+        On Windows, llama-cpp-python's model object is not thread-safe.
+        All llama-cpp calls run on ``_LLAMA_EXECUTOR`` (a single-thread
+        pool).  We consume the stream on that thread and push chunks
+        through an :class:`asyncio.Queue` so the async generator can
+        yield them token-by-token for a progressive UI experience.
         """
-        loop = asyncio.get_event_loop()
+        import queue as _queue
 
         create_kwargs: Dict[str, Any] = {
             "messages": messages,
@@ -474,30 +472,45 @@ class LocalModelService:
         if tools:
             create_kwargs["tools"] = tools
 
-        # Use non-streaming completion to avoid Windows thread-safety issues
-        # with llama-cpp-python's streaming iterator, then yield the result
-        # as progressive chunks for SSE compatibility.
-        non_stream_kwargs = {**create_kwargs, "stream": False}
-        response = await loop.run_in_executor(
-            _LLAMA_EXECUTOR,
-            partial(self._model.create_chat_completion, **non_stream_kwargs),
-        )
+        # Thread-safe queue bridges the llama executor thread → async loop.
+        chunk_queue: _queue.Queue = _queue.Queue()
+        _SENTINEL = object()
 
-        choice = response["choices"][0] if response.get("choices") else {}
-        full_text = (choice.get("message", {}).get("content") or "")
+        def _produce():
+            """Runs on _LLAMA_EXECUTOR: consume stream, push chunks."""
+            try:
+                for chunk in self._model.create_chat_completion(**create_kwargs):
+                    chunk_queue.put(chunk)
+            except Exception as exc:
+                chunk_queue.put(exc)
+            finally:
+                chunk_queue.put(_SENTINEL)
 
-        # Simulate chunked output by splitting into word-boundary segments
-        all_chunks = []
-        for i, char in enumerate(full_text):
-            all_chunks.append({
-                "choices": [{"delta": {"content": char}, "finish_reason": None}]
-            })
-        if all_chunks:
-            all_chunks[-1]["choices"][0]["finish_reason"] = "stop"
+        # Fire-and-forget on the dedicated llama thread.  Because the
+        # executor has max_workers=1 and _ensure_model already ran on it,
+        # this is guaranteed to be the same OS thread.
+        loop = asyncio.get_event_loop()
+        fut = loop.run_in_executor(_LLAMA_EXECUTOR, _produce)
 
         think_parser = StreamingThinkParser()
 
-        for chunk in all_chunks:
+        while True:
+            # Block briefly in a thread so we don't starve the event loop
+            try:
+                chunk = await loop.run_in_executor(
+                    None, lambda: chunk_queue.get(timeout=0.1)
+                )
+            except _queue.Empty:
+                if fut.done():
+                    break
+                continue
+
+            if chunk is _SENTINEL:
+                break
+
+            if isinstance(chunk, Exception):
+                raise chunk
+
             delta = chunk.get("choices", [{}])[0].get("delta", {})
             text = delta.get("content") or ""
 
