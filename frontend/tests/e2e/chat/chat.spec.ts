@@ -19,10 +19,10 @@ let aiAvailable: boolean | null = null;
 async function hasAI(): Promise<boolean> {
   if (aiAvailable !== null) return aiAvailable;
   try {
-    const models = await fetch("http://127.0.0.1:18741/api/v1/desktop/local-models", {
+    const models = await fetch("http://127.0.0.1:18741/api/v1/local-models/installed", {
       signal: AbortSignal.timeout(3000),
     }).then((r) => r.json());
-    if (models?.models?.some((m: { downloaded: boolean }) => m.downloaded)) {
+    if (models?.models?.length > 0) {
       return (aiAvailable = true);
     }
     const settings = await fetch("http://127.0.0.1:18741/api/v1/desktop/settings", {

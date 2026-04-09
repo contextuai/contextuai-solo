@@ -128,9 +128,14 @@ class ModelManager:
         if not models_path.exists():
             return []
 
+        from .local_model_seeder import _strip_vendor_prefix
         filename_to_catalog = {}
         for entry in LOCAL_MODEL_CATALOG:
-            filename_to_catalog[entry["hf_filename"].lower()] = entry
+            fn = entry["hf_filename"].lower()
+            filename_to_catalog[fn] = entry
+            stripped = _strip_vendor_prefix(fn)
+            if stripped != fn:
+                filename_to_catalog[stripped] = entry
 
         # Scan both root and chat/ subdirectory (legacy download location)
         gguf_files = list(sorted(models_path.glob("*.gguf")))
@@ -183,34 +188,48 @@ class ModelManager:
         return installed
 
     def is_installed(self, model_id: str) -> bool:
-        """Check if a catalog model is already downloaded (root or chat/ subdir)."""
+        """Check if a catalog model is already downloaded (root or chat/ subdir).
+
+        Also checks for files without vendor prefix (e.g. manually downloaded
+        ``gemma-4-...`` matching catalog entry ``google_gemma-4-...``).
+        """
         from .model_catalog import get_model
+        from .local_model_seeder import _strip_vendor_prefix
         entry = get_model(model_id)
         if not entry:
             return False
         filename = entry["hf_filename"]
-        # For sharded files, check if the first shard exists
-        if self._is_sharded_filename(filename):
-            return (
-                (Path(self.models_dir) / filename).exists()
-                or (Path(self.models_dir) / "chat" / filename).exists()
-            )
-        return (
-            (Path(self.models_dir) / filename).exists()
-            or (Path(self.models_dir) / "chat" / filename).exists()
-        )
+        stripped = _strip_vendor_prefix(filename)
+        candidates = [filename] if stripped == filename else [filename, stripped]
+
+        for name in candidates:
+            # For sharded files, check if the first shard exists
+            if self._is_sharded_filename(name):
+                if (Path(self.models_dir) / name).exists() or (Path(self.models_dir) / "chat" / name).exists():
+                    return True
+            else:
+                if (Path(self.models_dir) / name).exists() or (Path(self.models_dir) / "chat" / name).exists():
+                    return True
+        return False
 
     def get_model_path(self, model_id: str) -> Optional[str]:
-        """Get the local path for an installed model (checks root and chat/)."""
+        """Get the local path for an installed model (checks root and chat/).
+
+        Also checks for files without vendor prefix.
+        """
         from .model_catalog import get_model
+        from .local_model_seeder import _strip_vendor_prefix
         entry = get_model(model_id)
         if not entry:
             return None
         filename = entry["hf_filename"]
-        for search_dir in [Path(self.models_dir), Path(self.models_dir) / "chat"]:
-            path = search_dir / filename
-            if path.exists():
-                return str(path)
+        stripped = _strip_vendor_prefix(filename)
+        candidates = [filename] if stripped == filename else [filename, stripped]
+        for name in candidates:
+            for search_dir in [Path(self.models_dir), Path(self.models_dir) / "chat"]:
+                path = search_dir / name
+                if path.exists():
+                    return str(path)
         return None
 
     # ── Download ────────────────────────────────────────────────────────────
@@ -560,9 +579,10 @@ class ModelManager:
                     return {"status": "deleted", "model_id": model_id, "path": path}
             return {"status": "error", "detail": f"Model '{model_id}' not found"}
 
-        path = Path(self.models_dir) / entry["hf_filename"]
-        if not path.exists():
+        model_path = self.get_model_path(model_id)
+        if not model_path:
             return {"status": "error", "detail": f"Model '{model_id}' is not installed"}
+        path = Path(model_path)
 
         freed_gb = round(path.stat().st_size / (1024 ** 3), 2)
         os.remove(path)

@@ -10,10 +10,20 @@ import os
 import asyncio
 import logging
 import pathlib
+import concurrent.futures
 from typing import Dict, Any, List, Optional, Union, AsyncGenerator
 from functools import partial
 
 from services.think_tag_parser import parse_think_tags, StreamingThinkParser
+
+# Dedicated single-thread executor for all llama-cpp operations.
+# llama-cpp-python's Llama object is NOT thread-safe — using it from
+# different threads causes [Errno 22] on Windows.  A single-thread
+# executor ensures every call (load, create_chat_completion, etc.)
+# runs on the same OS thread.
+_LLAMA_EXECUTOR = concurrent.futures.ThreadPoolExecutor(
+    max_workers=1, thread_name_prefix="llama-worker"
+)
 
 logger = logging.getLogger(__name__)
 
@@ -88,11 +98,19 @@ class LocalModelService:
             return gguf_path
 
         # 2. HuggingFace filename from catalog seeder — check MODELS_DIR root
+        #    Also try without vendor prefix (e.g. "google_gemma-4-..." → "gemma-4-...")
         hf_filename = metadata.get("hf_filename")
         if hf_filename:
             path = os.path.join(MODELS_DIR, hf_filename)
             if os.path.isfile(path):
                 return path
+            # Try stripped-prefix variant for manually downloaded models
+            from services.local_model_seeder import _strip_vendor_prefix
+            stripped = _strip_vendor_prefix(hf_filename)
+            if stripped != hf_filename:
+                path = os.path.join(MODELS_DIR, stripped)
+                if os.path.isfile(path):
+                    return path
 
         # 3. Legacy local_model_file — check MODELS_DIR/chat/
         local_file = metadata.get("local_model_file")
@@ -148,21 +166,17 @@ class LocalModelService:
             n_ctx = 4096
 
         try:
-            import io, contextlib
-            stderr_capture = io.StringIO()
-            with contextlib.redirect_stderr(stderr_capture):
-                self._model = Llama(
-                    model_path=model_path,
-                    n_ctx=n_ctx,
-                    n_threads=os.cpu_count() or 4,
-                    use_mmap=True,
-                    verbose=True,
-                )
+            self._model = Llama(
+                model_path=model_path,
+                n_ctx=n_ctx,
+                n_threads=os.cpu_count() or 4,
+                use_mmap=True,
+                verbose=False,
+            )
         except Exception as e:
             error_msg = str(e)
-            stderr_output = stderr_capture.getvalue()
-            combined = f"{error_msg} {stderr_output}"
-            logger.error("Failed to load model %s: %s\nstderr: %s", model_path, error_msg, stderr_output)
+            combined = error_msg
+            logger.error("Failed to load model %s: %s", model_path, error_msg)
 
             # Check for unsupported architecture (may appear in exception or stderr)
             if "unknown model architecture" in combined:
@@ -189,18 +203,15 @@ class LocalModelService:
             if n_ctx > 512:
                 logger.info("Retrying with n_ctx=512...")
                 try:
-                    stderr_retry = io.StringIO()
-                    with contextlib.redirect_stderr(stderr_retry):
-                        self._model = Llama(
-                            model_path=model_path,
-                            n_ctx=512,
-                            n_threads=os.cpu_count() or 4,
-                            use_mmap=True,
-                            verbose=True,
-                        )
+                    self._model = Llama(
+                        model_path=model_path,
+                        n_ctx=512,
+                        n_threads=os.cpu_count() or 4,
+                        use_mmap=True,
+                        verbose=False,
+                    )
                 except Exception as retry_err:
-                    retry_stderr = stderr_retry.getvalue()
-                    retry_combined = f"{retry_err} {retry_stderr}"
+                    retry_combined = str(retry_err)
 
                     # Check architecture on retry too
                     if "unknown model architecture" in retry_combined:
@@ -342,7 +353,10 @@ class LocalModelService:
         Signature and return shapes intentionally match ``OllamaService.call_model``.
         """
         model_path = self._resolve_model_path(model_id, model_config)
-        self._ensure_model(model_path)
+        # Run model loading on the dedicated llama thread to ensure all
+        # llama-cpp operations happen on the same OS thread (Windows).
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(_LLAMA_EXECUTOR, self._ensure_model, model_path)
         self._loaded_model_id = model_id
 
         messages = self._build_messages(prompt, persona_context, conversation_history)
@@ -398,7 +412,7 @@ class LocalModelService:
             create_kwargs["tools"] = tools
 
         response = await loop.run_in_executor(
-            None,
+            _LLAMA_EXECUTOR,
             partial(self._model.create_chat_completion, **create_kwargs),
         )
 
@@ -439,8 +453,15 @@ class LocalModelService:
         temperature: float,
         tools: Optional[List[Dict[str, Any]]] = None,
     ) -> AsyncGenerator[Dict[str, Any], None]:
-        """Streaming inference, yielding SSE-compatible chunks."""
-        loop = asyncio.get_event_loop()
+        """Streaming inference, yielding SSE-compatible chunks.
+
+        On Windows, llama-cpp-python's model object is not thread-safe.
+        All llama-cpp calls run on ``_LLAMA_EXECUTOR`` (a single-thread
+        pool).  We consume the stream on that thread and push chunks
+        through an :class:`asyncio.Queue` so the async generator can
+        yield them token-by-token for a progressive UI experience.
+        """
+        import queue as _queue
 
         create_kwargs: Dict[str, Any] = {
             "messages": messages,
@@ -451,46 +472,47 @@ class LocalModelService:
         if tools:
             create_kwargs["tools"] = tools
 
-        # llama-cpp-python returns a blocking iterator when stream=True;
-        # we pull chunks one-at-a-time from the executor.
-        stream_iter = await loop.run_in_executor(
-            None,
-            partial(self._model.create_chat_completion, **create_kwargs),
-        )
+        # Thread-safe queue bridges the llama executor thread → async loop.
+        chunk_queue: _queue.Queue = _queue.Queue()
+        _SENTINEL = object()
+
+        def _produce():
+            """Runs on _LLAMA_EXECUTOR: consume stream, push chunks."""
+            try:
+                for chunk in self._model.create_chat_completion(**create_kwargs):
+                    chunk_queue.put(chunk)
+            except Exception as exc:
+                chunk_queue.put(exc)
+            finally:
+                chunk_queue.put(_SENTINEL)
+
+        # Fire-and-forget on the dedicated llama thread.  Because the
+        # executor has max_workers=1 and _ensure_model already ran on it,
+        # this is guaranteed to be the same OS thread.
+        loop = asyncio.get_event_loop()
+        fut = loop.run_in_executor(_LLAMA_EXECUTOR, _produce)
 
         think_parser = StreamingThinkParser()
 
-        def _next_chunk(it):
-            """Pull one chunk from the blocking iterator (runs in executor)."""
-            try:
-                return next(it)
-            except StopIteration:
-                return None
-
         while True:
-            chunk = await loop.run_in_executor(None, _next_chunk, stream_iter)
-            if chunk is None:
-                # Flush remaining buffered text
-                for kind, segment_text in think_parser.finish():
-                    if segment_text:
-                        yield {
-                            "chunk": segment_text if kind == "content" else "",
-                            "thinking": segment_text if kind == "thinking" else "",
-                            "model_id": model_id,
-                            "is_final": False,
-                            "status": "streaming",
-                        }
-                yield {
-                    "chunk": "",
-                    "model_id": model_id,
-                    "is_final": True,
-                    "status": "complete",
-                }
-                return
+            # Block briefly in a thread so we don't starve the event loop
+            try:
+                chunk = await loop.run_in_executor(
+                    None, lambda: chunk_queue.get(timeout=0.1)
+                )
+            except _queue.Empty:
+                if fut.done():
+                    break
+                continue
+
+            if chunk is _SENTINEL:
+                break
+
+            if isinstance(chunk, Exception):
+                raise chunk
 
             delta = chunk.get("choices", [{}])[0].get("delta", {})
             text = delta.get("content") or ""
-            finish_reason = chunk.get("choices", [{}])[0].get("finish_reason")
 
             if text:
                 for kind, segment_text in think_parser.feed(text):
@@ -503,23 +525,23 @@ class LocalModelService:
                             "status": "streaming",
                         }
 
-            if finish_reason:
-                for kind, segment_text in think_parser.finish():
-                    if segment_text:
-                        yield {
-                            "chunk": segment_text if kind == "content" else "",
-                            "thinking": segment_text if kind == "thinking" else "",
-                            "model_id": model_id,
-                            "is_final": False,
-                            "status": "streaming",
-                        }
+        # Flush remaining buffered text from the think parser
+        for kind, segment_text in think_parser.finish():
+            if segment_text:
                 yield {
-                    "chunk": "",
+                    "chunk": segment_text if kind == "content" else "",
+                    "thinking": segment_text if kind == "thinking" else "",
                     "model_id": model_id,
-                    "is_final": True,
-                    "status": "complete",
+                    "is_final": False,
+                    "status": "streaming",
                 }
-                return
+
+        yield {
+            "chunk": "",
+            "model_id": model_id,
+            "is_final": True,
+            "status": "complete",
+        }
 
 
     async def generate(self, model_id: str, prompt: str, max_tokens: int = 2048) -> str:
