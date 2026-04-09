@@ -10,10 +10,20 @@ import os
 import asyncio
 import logging
 import pathlib
+import concurrent.futures
 from typing import Dict, Any, List, Optional, Union, AsyncGenerator
 from functools import partial
 
 from services.think_tag_parser import parse_think_tags, StreamingThinkParser
+
+# Dedicated single-thread executor for all llama-cpp operations.
+# llama-cpp-python's Llama object is NOT thread-safe — using it from
+# different threads causes [Errno 22] on Windows.  A single-thread
+# executor ensures every call (load, create_chat_completion, etc.)
+# runs on the same OS thread.
+_LLAMA_EXECUTOR = concurrent.futures.ThreadPoolExecutor(
+    max_workers=1, thread_name_prefix="llama-worker"
+)
 
 logger = logging.getLogger(__name__)
 
@@ -88,11 +98,19 @@ class LocalModelService:
             return gguf_path
 
         # 2. HuggingFace filename from catalog seeder — check MODELS_DIR root
+        #    Also try without vendor prefix (e.g. "google_gemma-4-..." → "gemma-4-...")
         hf_filename = metadata.get("hf_filename")
         if hf_filename:
             path = os.path.join(MODELS_DIR, hf_filename)
             if os.path.isfile(path):
                 return path
+            # Try stripped-prefix variant for manually downloaded models
+            from services.local_model_seeder import _strip_vendor_prefix
+            stripped = _strip_vendor_prefix(hf_filename)
+            if stripped != hf_filename:
+                path = os.path.join(MODELS_DIR, stripped)
+                if os.path.isfile(path):
+                    return path
 
         # 3. Legacy local_model_file — check MODELS_DIR/chat/
         local_file = metadata.get("local_model_file")
@@ -148,21 +166,17 @@ class LocalModelService:
             n_ctx = 4096
 
         try:
-            import io, contextlib
-            stderr_capture = io.StringIO()
-            with contextlib.redirect_stderr(stderr_capture):
-                self._model = Llama(
-                    model_path=model_path,
-                    n_ctx=n_ctx,
-                    n_threads=os.cpu_count() or 4,
-                    use_mmap=True,
-                    verbose=True,
-                )
+            self._model = Llama(
+                model_path=model_path,
+                n_ctx=n_ctx,
+                n_threads=os.cpu_count() or 4,
+                use_mmap=True,
+                verbose=False,
+            )
         except Exception as e:
             error_msg = str(e)
-            stderr_output = stderr_capture.getvalue()
-            combined = f"{error_msg} {stderr_output}"
-            logger.error("Failed to load model %s: %s\nstderr: %s", model_path, error_msg, stderr_output)
+            combined = error_msg
+            logger.error("Failed to load model %s: %s", model_path, error_msg)
 
             # Check for unsupported architecture (may appear in exception or stderr)
             if "unknown model architecture" in combined:
@@ -189,18 +203,15 @@ class LocalModelService:
             if n_ctx > 512:
                 logger.info("Retrying with n_ctx=512...")
                 try:
-                    stderr_retry = io.StringIO()
-                    with contextlib.redirect_stderr(stderr_retry):
-                        self._model = Llama(
-                            model_path=model_path,
-                            n_ctx=512,
-                            n_threads=os.cpu_count() or 4,
-                            use_mmap=True,
-                            verbose=True,
-                        )
+                    self._model = Llama(
+                        model_path=model_path,
+                        n_ctx=512,
+                        n_threads=os.cpu_count() or 4,
+                        use_mmap=True,
+                        verbose=False,
+                    )
                 except Exception as retry_err:
-                    retry_stderr = stderr_retry.getvalue()
-                    retry_combined = f"{retry_err} {retry_stderr}"
+                    retry_combined = str(retry_err)
 
                     # Check architecture on retry too
                     if "unknown model architecture" in retry_combined:
@@ -342,7 +353,10 @@ class LocalModelService:
         Signature and return shapes intentionally match ``OllamaService.call_model``.
         """
         model_path = self._resolve_model_path(model_id, model_config)
-        self._ensure_model(model_path)
+        # Run model loading on the dedicated llama thread to ensure all
+        # llama-cpp operations happen on the same OS thread (Windows).
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(_LLAMA_EXECUTOR, self._ensure_model, model_path)
         self._loaded_model_id = model_id
 
         messages = self._build_messages(prompt, persona_context, conversation_history)
@@ -398,7 +412,7 @@ class LocalModelService:
             create_kwargs["tools"] = tools
 
         response = await loop.run_in_executor(
-            None,
+            _LLAMA_EXECUTOR,
             partial(self._model.create_chat_completion, **create_kwargs),
         )
 
@@ -439,7 +453,16 @@ class LocalModelService:
         temperature: float,
         tools: Optional[List[Dict[str, Any]]] = None,
     ) -> AsyncGenerator[Dict[str, Any], None]:
-        """Streaming inference, yielding SSE-compatible chunks."""
+        """Streaming inference, yielding SSE-compatible chunks.
+
+        On Windows, llama-cpp-python's streaming iterator uses C file
+        handles that cannot safely cross thread boundaries (causes
+        ``[Errno 22] Invalid argument``).  We consume the entire stream
+        in a single executor call, collecting all chunks, then yield
+        them back to the async generator.  This trades true token-by-
+        token streaming for reliability on Windows while still producing
+        progressive SSE output.
+        """
         loop = asyncio.get_event_loop()
 
         create_kwargs: Dict[str, Any] = {
@@ -451,46 +474,32 @@ class LocalModelService:
         if tools:
             create_kwargs["tools"] = tools
 
-        # llama-cpp-python returns a blocking iterator when stream=True;
-        # we pull chunks one-at-a-time from the executor.
-        stream_iter = await loop.run_in_executor(
-            None,
-            partial(self._model.create_chat_completion, **create_kwargs),
+        # Use non-streaming completion to avoid Windows thread-safety issues
+        # with llama-cpp-python's streaming iterator, then yield the result
+        # as progressive chunks for SSE compatibility.
+        non_stream_kwargs = {**create_kwargs, "stream": False}
+        response = await loop.run_in_executor(
+            _LLAMA_EXECUTOR,
+            partial(self._model.create_chat_completion, **non_stream_kwargs),
         )
+
+        choice = response["choices"][0] if response.get("choices") else {}
+        full_text = (choice.get("message", {}).get("content") or "")
+
+        # Simulate chunked output by splitting into word-boundary segments
+        all_chunks = []
+        for i, char in enumerate(full_text):
+            all_chunks.append({
+                "choices": [{"delta": {"content": char}, "finish_reason": None}]
+            })
+        if all_chunks:
+            all_chunks[-1]["choices"][0]["finish_reason"] = "stop"
 
         think_parser = StreamingThinkParser()
 
-        def _next_chunk(it):
-            """Pull one chunk from the blocking iterator (runs in executor)."""
-            try:
-                return next(it)
-            except StopIteration:
-                return None
-
-        while True:
-            chunk = await loop.run_in_executor(None, _next_chunk, stream_iter)
-            if chunk is None:
-                # Flush remaining buffered text
-                for kind, segment_text in think_parser.finish():
-                    if segment_text:
-                        yield {
-                            "chunk": segment_text if kind == "content" else "",
-                            "thinking": segment_text if kind == "thinking" else "",
-                            "model_id": model_id,
-                            "is_final": False,
-                            "status": "streaming",
-                        }
-                yield {
-                    "chunk": "",
-                    "model_id": model_id,
-                    "is_final": True,
-                    "status": "complete",
-                }
-                return
-
+        for chunk in all_chunks:
             delta = chunk.get("choices", [{}])[0].get("delta", {})
             text = delta.get("content") or ""
-            finish_reason = chunk.get("choices", [{}])[0].get("finish_reason")
 
             if text:
                 for kind, segment_text in think_parser.feed(text):
@@ -503,23 +512,23 @@ class LocalModelService:
                             "status": "streaming",
                         }
 
-            if finish_reason:
-                for kind, segment_text in think_parser.finish():
-                    if segment_text:
-                        yield {
-                            "chunk": segment_text if kind == "content" else "",
-                            "thinking": segment_text if kind == "thinking" else "",
-                            "model_id": model_id,
-                            "is_final": False,
-                            "status": "streaming",
-                        }
+        # Flush remaining buffered text from the think parser
+        for kind, segment_text in think_parser.finish():
+            if segment_text:
                 yield {
-                    "chunk": "",
+                    "chunk": segment_text if kind == "content" else "",
+                    "thinking": segment_text if kind == "thinking" else "",
                     "model_id": model_id,
-                    "is_final": True,
-                    "status": "complete",
+                    "is_final": False,
+                    "status": "streaming",
                 }
-                return
+
+        yield {
+            "chunk": "",
+            "model_id": model_id,
+            "is_final": True,
+            "status": "complete",
+        }
 
 
     async def generate(self, model_id: str, prompt: str, max_tokens: int = 2048) -> str:

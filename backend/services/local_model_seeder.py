@@ -17,6 +17,19 @@ logger = logging.getLogger(__name__)
 
 MODELS_DIR = os.path.join(os.path.expanduser("~"), ".contextuai-solo", "models")
 
+# Vendor prefixes used by community quantisers (e.g. bartowski).
+# When matching filenames, we strip these so "gemma-4-..." matches "google_gemma-4-...".
+_VENDOR_PREFIXES = ("google_", "meta-llama_", "microsoft_", "qwen_", "mistralai_")
+
+
+def _strip_vendor_prefix(filename: str) -> str:
+    """Remove a known vendor prefix from a GGUF filename for fuzzy matching."""
+    lower = filename.lower()
+    for prefix in _VENDOR_PREFIXES:
+        if lower.startswith(prefix):
+            return filename[len(prefix):]
+    return filename
+
 
 async def sync_local_models_to_db(db) -> int:
     """
@@ -33,10 +46,16 @@ async def sync_local_models_to_db(db) -> int:
         models_path.mkdir(parents=True, exist_ok=True)
         return 0
 
-    # Build filename → catalog lookup
+    # Build filename → catalog lookup (exact match + stripped-prefix match)
     filename_to_catalog: Dict[str, Dict] = {}
     for entry in LOCAL_MODEL_CATALOG:
-        filename_to_catalog[entry["hf_filename"].lower()] = entry
+        fn = entry["hf_filename"].lower()
+        filename_to_catalog[fn] = entry
+        # Also index without vendor prefix (e.g. "google_gemma-4-..." → "gemma-4-...")
+        # so manually downloaded files without the prefix still match.
+        stripped = _strip_vendor_prefix(fn)
+        if stripped != fn:
+            filename_to_catalog[stripped] = entry
 
     collection = db["models"]
 
