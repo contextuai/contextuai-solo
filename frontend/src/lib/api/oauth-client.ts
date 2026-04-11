@@ -40,6 +40,22 @@ export async function getOAuthStatus(provider: string): Promise<OAuthStatus> {
   return data;
 }
 
+export interface OAuthTestResult {
+  provider: string;
+  success: boolean;
+  message: string;
+  profile_name?: string;
+  profile_id?: string;
+  response_time_ms?: number;
+}
+
+export async function testOAuthConnection(
+  provider: string
+): Promise<OAuthTestResult> {
+  const { data } = await api.post<OAuthTestResult>(`/oauth/${provider}/test`);
+  return data;
+}
+
 export async function disconnectOAuth(provider: string): Promise<void> {
   await api.delete(`/oauth/${provider}`);
 }

@@ -19,13 +19,16 @@ import {
   ArrowUpFromLine,
   LogIn,
   User,
+  Copy,
 } from "lucide-react";
 import {
   configureOAuthClient,
   getOAuthAuthorizeUrl,
   getOAuthStatus,
   disconnectOAuth,
+  testOAuthConnection,
   type OAuthStatus,
+  type OAuthTestResult,
 } from "@/lib/api/oauth-client";
 import {
   listTriggers,
@@ -270,6 +273,9 @@ export default function ConnectionsPage() {
   const [testing, setTesting] = useState<ConnectionId | null>(null);
   const [oauthStatuses, setOauthStatuses] = useState<Record<string, OAuthStatus>>({});
   const [oauthLoading, setOauthLoading] = useState<ConnectionId | null>(null);
+  const [oauthTesting, setOauthTesting] = useState<ConnectionId | null>(null);
+  const [oauthTestResult, setOauthTestResult] = useState<Record<string, OAuthTestResult>>({});
+  const [copiedUrl, setCopiedUrl] = useState<ConnectionId | null>(null);
   const [triggers, setTriggers] = useState<Trigger[]>([]);
 
   const getConnection = (id: ConnectionId) => connections.find((c) => c.id === id);
@@ -435,6 +441,37 @@ export default function ConnectionsPage() {
     saveConnections(updated);
   };
 
+  const handleTestOAuth = async (conn: ConnectionConfig) => {
+    if (!conn.oauthProvider) return;
+    setOauthTesting(conn.id);
+    setOauthTestResult((prev) => {
+      const next = { ...prev };
+      delete next[conn.id];
+      return next;
+    });
+    try {
+      const result = await testOAuthConnection(conn.oauthProvider);
+      setOauthTestResult((prev) => ({ ...prev, [conn.id]: result }));
+      // If test revealed token is invalid, sync disconnect state
+      if (!result.success && result.message.includes("expired")) {
+        setOauthStatuses((prev) => ({
+          ...prev,
+          [conn.id]: { ...prev[conn.id], connected: false, provider: conn.oauthProvider! },
+        }));
+        const updated = connections.filter((c) => c.id !== conn.id);
+        setConnections(updated);
+        saveConnections(updated);
+      }
+    } catch {
+      setOauthTestResult((prev) => ({
+        ...prev,
+        [conn.id]: { provider: conn.oauthProvider!, success: false, message: "Failed to reach backend" },
+      }));
+    } finally {
+      setOauthTesting(null);
+    }
+  };
+
   const inputCls = cn(
     "w-full px-4 py-2.5 rounded-xl text-sm",
     "bg-neutral-50 dark:bg-neutral-800",
@@ -531,6 +568,33 @@ export default function ConnectionsPage() {
                     >
                       <ExternalLink className="w-4 h-4" />
                     </a>
+                    {isConnected && !isEditing && isOAuth && (
+                      <button
+                        onClick={() => handleTestOAuth(conn)}
+                        disabled={oauthTesting === conn.id}
+                        className={cn(
+                          "px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all",
+                          oauthTestResult[conn.id]?.success
+                            ? "bg-green-100 dark:bg-green-500/15 text-green-600 dark:text-green-400"
+                            : oauthTestResult[conn.id] && !oauthTestResult[conn.id].success
+                              ? "bg-red-100 dark:bg-red-500/15 text-red-600 dark:text-red-400"
+                              : "bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                        )}
+                        title="Test connection"
+                      >
+                        {oauthTesting === conn.id ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : oauthTestResult[conn.id]?.success ? (
+                          <span className="flex items-center gap-1">
+                            <Check className="w-3 h-3" /> Verified
+                          </span>
+                        ) : oauthTestResult[conn.id] && !oauthTestResult[conn.id].success ? (
+                          "Failed"
+                        ) : (
+                          "Test"
+                        )}
+                      </button>
+                    )}
                     {isConnected && !isEditing && (
                       <button
                         onClick={() => handleDisconnect(conn)}
@@ -559,6 +623,23 @@ export default function ConnectionsPage() {
                     )}
                   </div>
                 </div>
+
+                {/* Test Connection Result */}
+                {!isEditing && oauthTestResult[conn.id] && (
+                  <div className={cn(
+                    "mx-5 mb-3 px-3 py-2 rounded-xl text-xs flex items-center justify-between",
+                    oauthTestResult[conn.id].success
+                      ? "bg-green-50 dark:bg-green-500/5 border border-green-200 dark:border-green-800/50 text-green-700 dark:text-green-400"
+                      : "bg-red-50 dark:bg-red-500/5 border border-red-200 dark:border-red-800/50 text-red-700 dark:text-red-400"
+                  )}>
+                    <span>{oauthTestResult[conn.id].message}</span>
+                    {oauthTestResult[conn.id].response_time_ms != null && (
+                      <span className="text-[10px] text-neutral-400 ml-2">
+                        {oauthTestResult[conn.id].response_time_ms}ms
+                      </span>
+                    )}
+                  </div>
+                )}
 
                 {/* Expanded Edit Form */}
                 {isEditing && (
@@ -592,17 +673,56 @@ export default function ConnectionsPage() {
                                     </a>
                                   </li>
                                 )}
-                                <li>
-                                  Add <code className="bg-neutral-200 dark:bg-neutral-700 px-1 rounded text-[11px]">
-                                    http://localhost:18741{conn.oauthHelp.callbackPath}
-                                  </code> as an authorized redirect URL
-                                </li>
+                                <li>Add the redirect URL below to your app&apos;s authorized redirect URIs</li>
                                 <li>Copy your credentials below</li>
                                 <li>Click &quot;Sign in with {conn.name}&quot; to authorize</li>
                               </ol>
                             </div>
                           </div>
                           )}
+
+                          {/* Prominent callback URL with copy button */}
+                          {conn.oauthHelp && (() => {
+                            const callbackUrl = `http://localhost:18741${conn.oauthHelp.callbackPath}`;
+                            return (
+                              <div>
+                                <label className="block text-xs font-medium text-neutral-600 dark:text-neutral-400 mb-1.5">
+                                  Redirect URL (paste this into {conn.name})
+                                </label>
+                                <div className="flex items-center gap-2 p-2.5 rounded-xl bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700">
+                                  <code className="flex-1 text-[11px] font-mono text-neutral-800 dark:text-neutral-200 break-all">
+                                    {callbackUrl}
+                                  </code>
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      try {
+                                        await navigator.clipboard.writeText(callbackUrl);
+                                        setCopiedUrl(conn.id);
+                                        setTimeout(() => setCopiedUrl(null), 1500);
+                                      } catch {
+                                        // ignore
+                                      }
+                                    }}
+                                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors flex-shrink-0"
+                                  >
+                                    {copiedUrl === conn.id ? (
+                                      <>
+                                        <Check className="w-3 h-3 text-green-500" /> Copied
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Copy className="w-3 h-3" /> Copy
+                                      </>
+                                    )}
+                                  </button>
+                                </div>
+                                <p className="text-[10px] text-neutral-400 mt-1">
+                                  Same URL for dev and production — the backend always listens on port 18741.
+                                </p>
+                              </div>
+                            );
+                          })()}
 
                           {conn.oauthSetupFields?.map((field) => (
                             <div key={field.key}>

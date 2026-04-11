@@ -14,6 +14,7 @@ import os
 import secrets
 from datetime import datetime
 from typing import Optional
+from urllib.parse import urlencode
 
 import httpx
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -116,7 +117,7 @@ SUCCESS_HTML = """<!DOCTYPE html>
 <body>
   <div class="card">
     <div class="icon">&#x2705;</div>
-    <h1>{provider} Connected</h1>
+    <h1>__PROVIDER__ Connected</h1>
     <p>Your account has been linked successfully. You can close this window and return to the app.</p>
     <script>
       // Try to close the tab automatically after a short delay
@@ -140,18 +141,33 @@ ERROR_HTML = """<!DOCTYPE html>
     h1 { font-size: 24px; margin: 0 0 8px; }
     p { color: #a3a3a3; font-size: 14px; margin: 0; }
     .error { color: #ef4444; font-size: 12px; margin-top: 12px;
-             background: #1c1c1c; padding: 12px; border-radius: 8px; }
+             background: #1c1c1c; padding: 12px; border-radius: 8px;
+             text-align: left; word-break: break-word; }
   </style>
 </head>
 <body>
   <div class="card">
     <div class="icon">&#x274C;</div>
     <h1>Connection Failed</h1>
-    <p>{error}</p>
-    <p class="error">{detail}</p>
+    <p>__ERROR__</p>
+    <p class="error">__DETAIL__</p>
   </div>
 </body>
 </html>"""
+
+
+def _render_success(provider_name: str) -> str:
+    import html as _html
+    return SUCCESS_HTML.replace("__PROVIDER__", _html.escape(provider_name))
+
+
+def _render_error(error: str, detail: str) -> str:
+    import html as _html
+    return (
+        ERROR_HTML
+        .replace("__ERROR__", _html.escape(error))
+        .replace("__DETAIL__", _html.escape(detail))
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -213,7 +229,7 @@ async def initiate_oauth(provider: str):
         "created_at": datetime.utcnow().isoformat(),
     }
 
-    # Build authorization URL
+    # Build authorization URL (urlencode handles spaces in scope and special chars in redirect_uri)
     params = {
         "response_type": "code",
         "client_id": doc["client_id"],
@@ -221,8 +237,7 @@ async def initiate_oauth(provider: str):
         "state": state,
         "scope": " ".join(provider_config["scopes"]),
     }
-    query = "&".join(f"{k}={v}" for k, v in params.items())
-    auth_url = f"{provider_config['authorize_url']}?{query}"
+    auth_url = f"{provider_config['authorize_url']}?{urlencode(params)}"
 
     return OAuthAuthorizeResponse(
         auth_url=auth_url,
@@ -245,26 +260,31 @@ async def oauth_callback(
     """
     if provider not in OAUTH_PROVIDERS:
         return HTMLResponse(
-            ERROR_HTML.format(error="Unknown provider", detail=provider),
+            _render_error("Unknown provider", provider),
             status_code=400,
         )
 
     # Handle error from provider
     if error:
+        # Provide helpful hint for LinkedIn's most common scope error
+        detail = error_description or error
+        if provider == "linkedin" and "openid" in detail.lower() and "not authorized" in detail.lower():
+            detail += (
+                " — Open your LinkedIn app → Products tab, and add both "
+                "'Sign In with LinkedIn using OpenID Connect' and 'Share on LinkedIn'. "
+                "Wait a few seconds after adding, then try again."
+            )
         return HTMLResponse(
-            ERROR_HTML.format(
-                error=f"{provider.title()} denied the request",
-                detail=error_description or error,
-            ),
+            _render_error(f"{provider.title()} denied the request", detail),
             status_code=400,
         )
 
     # Verify state
     if not state or state not in _pending_states:
         return HTMLResponse(
-            ERROR_HTML.format(
-                error="Invalid state parameter",
-                detail="The authorization request may have expired. Please try again.",
+            _render_error(
+                "Invalid state parameter",
+                "The authorization request may have expired. Please try again.",
             ),
             status_code=400,
         )
@@ -274,7 +294,7 @@ async def oauth_callback(
 
     if not code:
         return HTMLResponse(
-            ERROR_HTML.format(error="No authorization code", detail="Missing code parameter."),
+            _render_error("No authorization code", "Missing code parameter."),
             status_code=400,
         )
 
@@ -285,7 +305,7 @@ async def oauth_callback(
 
     if not doc or not doc.get("client_id"):
         return HTMLResponse(
-            ERROR_HTML.format(error="Client not configured", detail="OAuth client credentials missing."),
+            _render_error("Client not configured", "OAuth client credentials missing."),
             status_code=500,
         )
 
@@ -310,9 +330,9 @@ async def oauth_callback(
         if token_response.status_code != 200:
             logger.error("Token exchange failed: %s %s", token_response.status_code, token_response.text)
             return HTMLResponse(
-                ERROR_HTML.format(
-                    error="Token exchange failed",
-                    detail=f"Status {token_response.status_code}: {token_response.text[:200]}",
+                _render_error(
+                    "Token exchange failed",
+                    f"Status {token_response.status_code}: {token_response.text[:200]}",
                 ),
                 status_code=400,
             )
@@ -324,7 +344,7 @@ async def oauth_callback(
 
         if not access_token:
             return HTMLResponse(
-                ERROR_HTML.format(error="No access token", detail="Provider did not return an access token."),
+                _render_error("No access token", "Provider did not return an access token."),
                 status_code=400,
             )
 
@@ -369,15 +389,126 @@ async def oauth_callback(
         logger.info("OAuth connected: %s (profile: %s)", provider, profile_name)
 
         return HTMLResponse(
-            SUCCESS_HTML.format(provider=provider_config["name"]),
+            _render_success(provider_config["name"]),
             status_code=200,
         )
 
     except Exception as e:
         logger.exception("OAuth callback error for %s", provider)
         return HTMLResponse(
-            ERROR_HTML.format(error="Connection error", detail=str(e)[:200]),
+            _render_error("Connection error", str(e)[:200]),
             status_code=500,
+        )
+
+
+class OAuthTestResponse(BaseModel):
+    provider: str
+    success: bool
+    message: str
+    profile_name: Optional[str] = None
+    profile_id: Optional[str] = None
+    response_time_ms: Optional[int] = None
+
+
+@router.post("/{provider}/test", response_model=OAuthTestResponse)
+async def test_oauth_connection(provider: str):
+    """
+    Test an OAuth connection by making a real API call to the provider.
+    Validates that the stored access token is still valid.
+    """
+    if provider not in OAUTH_PROVIDERS:
+        raise HTTPException(404, f"Unknown provider: {provider}")
+
+    db = await get_database()
+    collection = db["oauth_connections"]
+    doc = await collection.find_one({"_id": provider})
+
+    if not doc or doc.get("status") != "connected" or not doc.get("access_token"):
+        return OAuthTestResponse(
+            provider=provider,
+            success=False,
+            message="Not connected. Please complete the OAuth flow first.",
+        )
+
+    provider_config = OAUTH_PROVIDERS[provider]
+    access_token = doc["access_token"]
+
+    import time
+    start = time.monotonic()
+
+    try:
+        userinfo_params = provider_config.get("userinfo_params", {})
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            if provider in ("instagram", "facebook"):
+                resp = await client.get(
+                    provider_config["userinfo_url"],
+                    params={"access_token": access_token, **userinfo_params},
+                )
+            else:
+                resp = await client.get(
+                    provider_config["userinfo_url"],
+                    headers={"Authorization": f"Bearer {access_token}"},
+                )
+
+        elapsed_ms = int((time.monotonic() - start) * 1000)
+
+        if resp.status_code == 200:
+            userinfo = resp.json()
+            profile_name = userinfo.get("name") or userinfo.get("localizedFirstName", "")
+            profile_id = userinfo.get("sub") or userinfo.get("id")
+
+            # Update profile info in DB if changed
+            await collection.find_one_and_update(
+                {"_id": provider},
+                {"$set": {
+                    "profile_name": profile_name,
+                    "profile_id": profile_id,
+                    "updated_at": datetime.utcnow().isoformat() + "Z",
+                }},
+            )
+
+            return OAuthTestResponse(
+                provider=provider,
+                success=True,
+                message=f"Connected to {provider_config['name']} as {profile_name}",
+                profile_name=profile_name,
+                profile_id=profile_id,
+                response_time_ms=elapsed_ms,
+            )
+
+        elif resp.status_code == 401:
+            # Token expired or revoked
+            await collection.find_one_and_update(
+                {"_id": provider},
+                {"$set": {"status": "disconnected", "access_token": None}},
+            )
+            return OAuthTestResponse(
+                provider=provider,
+                success=False,
+                message="Access token expired or revoked. Please reconnect.",
+                response_time_ms=elapsed_ms,
+            )
+
+        else:
+            return OAuthTestResponse(
+                provider=provider,
+                success=False,
+                message=f"API returned status {resp.status_code}: {resp.text[:200]}",
+                response_time_ms=elapsed_ms,
+            )
+
+    except httpx.TimeoutException:
+        return OAuthTestResponse(
+            provider=provider,
+            success=False,
+            message=f"Connection to {provider_config['name']} timed out after 10 seconds.",
+        )
+    except Exception as e:
+        logger.exception("Test connection failed for %s", provider)
+        return OAuthTestResponse(
+            provider=provider,
+            success=False,
+            message=f"Connection error: {str(e)[:200]}",
         )
 
 
