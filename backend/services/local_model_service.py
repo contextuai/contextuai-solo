@@ -549,12 +549,24 @@ class LocalModelService:
 
         Returns the generated text as a plain string.
         """
+        # Look up model config from DB so _resolve_model_path gets the correct gguf_path
+        model_config = None
+        try:
+            from database import get_database
+            db = await get_database()
+            model_config = await db["models"].find_one({"_id": f"local:{model_id}"})
+            if not model_config:
+                model_config = await db["models"].find_one({"_id": model_id})
+        except Exception:
+            pass
+
         result = await self.call_model(
             prompt=prompt,
             model_id=model_id,
             max_tokens=max_tokens,
             temperature=0.3,
             stream=False,
+            model_config=model_config,
         )
         return result.get("content", "")
 
