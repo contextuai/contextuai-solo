@@ -130,6 +130,13 @@ class CrewOrchestrator:
                 except Exception as e:
                     logger.warning(f"Failed to store run summary in memory: {e}")
 
+            # Publish to bound channels (outbound distribution)
+            if final_output:
+                try:
+                    await self._publish_to_bound_channels(crew, final_output, run_id)
+                except Exception as e:
+                    logger.warning(f"Channel publish failed for run {run_id}: {e}")
+
             logger.info(f"Crew run {run_id} completed. tokens={total_tokens}, cost=${total_cost:.4f}")
             return final_run
 
@@ -792,3 +799,94 @@ class CrewOrchestrator:
         summary += f"Tokens: {tokens}, Cost: ${cost:.4f}. "
         summary += f"Output preview: {output[:300]}"
         return summary
+
+    async def _publish_to_bound_channels(
+        self, crew: Dict[str, Any], content: str, run_id: str
+    ) -> None:
+        """
+        Publish crew output to all enabled channel_bindings.
+
+        For each binding, finds a matching distribution channel (by channel_type)
+        and publishes the raw agent output. If approval_required, routes to the
+        approval queue instead.
+        """
+        bindings = crew.get("channel_bindings", [])
+        if not bindings:
+            return
+
+        from database import get_database
+        from services.distribution_service import DistributionService
+
+        db = await get_database()
+        dist_svc = DistributionService(db)
+
+        for binding in bindings:
+            if not binding.get("enabled", True):
+                continue
+
+            channel_type = binding.get("channel_type")
+            if not channel_type:
+                continue
+
+            # Find a distribution channel matching this channel_type
+            dist_coll = db["distribution_channels"]
+            channel_doc = await dist_coll.find_one({
+                "channel_type": channel_type,
+                "enabled": True,
+            })
+
+            if not channel_doc:
+                logger.info(
+                    f"No distribution channel for '{channel_type}' — "
+                    f"skipping publish for crew '{crew.get('name')}'"
+                )
+                continue
+
+            channel_id = channel_doc.get("channel_id")
+
+            if binding.get("approval_required"):
+                # Route to approval queue instead of publishing directly
+                try:
+                    approval_coll = db["approvals"]
+                    import uuid
+                    await approval_coll.insert_one({
+                        "_id": str(uuid.uuid4()),
+                        "approval_id": str(uuid.uuid4()),
+                        "type": "crew_publish",
+                        "crew_id": crew.get("crew_id"),
+                        "crew_name": crew.get("name"),
+                        "run_id": run_id,
+                        "channel_type": channel_type,
+                        "channel_id": channel_id,
+                        "content": content,
+                        "status": "pending",
+                        "created_at": datetime.utcnow().isoformat(),
+                    })
+                    logger.info(
+                        f"Crew '{crew.get('name')}' output routed to approval queue "
+                        f"for {channel_type}"
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to create approval for {channel_type}: {e}")
+                continue
+
+            # Publish directly
+            try:
+                result = await dist_svc.publish(
+                    channel_id=channel_id,
+                    content=content,
+                    title=f"Crew: {crew.get('name', 'Untitled')}",
+                    published_by=f"crew:{crew.get('crew_id')}",
+                )
+                success = result.get("result", {}).get("success", False)
+                if success:
+                    logger.info(
+                        f"Published crew '{crew.get('name')}' output to {channel_type}"
+                    )
+                else:
+                    logger.warning(
+                        f"Publish to {channel_type} returned: "
+                        f"{result.get('result', {}).get('error', 'unknown')}"
+                    )
+            except Exception as e:
+                logger.warning(f"Failed to publish to {channel_type}: {e}")

@@ -388,6 +388,43 @@ async def oauth_callback(
 
         logger.info("OAuth connected: %s (profile: %s)", provider, profile_name)
 
+        # Auto-register a distribution channel so crew publishing works
+        # without the user having to register credentials in two places
+        try:
+            dist_coll = db["distribution_channels"]
+            existing = await dist_coll.find_one({"channel_type": provider})
+            if not existing:
+                import uuid
+                channel_config = {"access_token": access_token}
+                if provider == "linkedin" and profile_id:
+                    channel_config["author_urn"] = f"urn:li:person:{profile_id}"
+                await dist_coll.insert_one({
+                    "_id": str(uuid.uuid4()),
+                    "channel_id": str(uuid.uuid4()),
+                    "channel_type": provider,
+                    "name": f"{profile_name or provider_config['name']} (auto)",
+                    "config": channel_config,
+                    "organization": "solo",
+                    "enabled": True,
+                    "publish_count": 0,
+                    "last_published_at": None,
+                    "created_at": datetime.utcnow().isoformat(),
+                    "updated_at": datetime.utcnow().isoformat(),
+                    "created_by": "oauth-auto",
+                })
+                logger.info("Auto-created distribution channel for %s", provider)
+            else:
+                # Update access token on existing channel
+                await dist_coll.update_one(
+                    {"channel_type": provider},
+                    {"$set": {
+                        "config.access_token": access_token,
+                        "updated_at": datetime.utcnow().isoformat(),
+                    }},
+                )
+        except Exception as e:
+            logger.warning("Failed to auto-register distribution channel for %s: %s", provider, e)
+
         return HTMLResponse(
             _render_success(provider_config["name"]),
             status_code=200,
