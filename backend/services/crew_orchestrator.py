@@ -17,6 +17,7 @@ Execution flow:
 """
 
 import os
+import re
 import logging
 import asyncio
 from datetime import datetime
@@ -240,7 +241,7 @@ class CrewOrchestrator:
                 # Execute agent
                 result = await self._invoke_agent(agent_cfg, prompt)
 
-                agent_output = result.get("output", "")
+                agent_output = self._clean_output(result.get("output", ""))
                 agent_tokens = result.get("tokens_used", 0)
                 agent_cost = result.get("cost", 0.0)
 
@@ -319,7 +320,7 @@ class CrewOrchestrator:
                 )
                 result = await self._invoke_agent(agent_cfg, prompt)
 
-                agent_output = result.get("output", "")
+                agent_output = self._clean_output(result.get("output", ""))
                 agent_tokens = result.get("tokens_used", 0)
                 agent_cost = result.get("cost", 0.0)
 
@@ -651,7 +652,7 @@ class CrewOrchestrator:
             loop = asyncio.get_event_loop()
             result = await loop.run_in_executor(None, coordinator, task_prompt)
 
-            coordinator_output = str(result) if result else ""
+            coordinator_output = self._clean_output(str(result) if result else "")
 
             # Extract coordinator's own token usage
             coordinator_tokens = 0
@@ -799,6 +800,16 @@ class CrewOrchestrator:
             sections.append(f"## Task\n{user_input}")
 
         return "\n\n".join(sections) if sections else "Please complete the task as described in your instructions."
+
+    @staticmethod
+    def _clean_output(text: str) -> str:
+        """Strip reasoning tokens (<think>...</think>) from model output."""
+        if not text:
+            return text
+        cleaned = re.sub(r"<think>[\s\S]*?</think>", "", text).strip()
+        # Handle unclosed <think> tag (model started reasoning but didn't close)
+        cleaned = re.sub(r"<think>[\s\S]*$", "", cleaned).strip()
+        return cleaned or text
 
     def _generate_run_summary(self, output: str, result: Dict[str, Any]) -> str:
         """Generate a brief summary of the run for memory storage."""
