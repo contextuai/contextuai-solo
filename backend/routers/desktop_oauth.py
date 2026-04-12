@@ -37,7 +37,7 @@ OAUTH_PROVIDERS = {
         "authorize_url": "https://www.linkedin.com/oauth/v2/authorization",
         "token_url": "https://www.linkedin.com/oauth/v2/accessToken",
         "userinfo_url": "https://api.linkedin.com/v2/userinfo",
-        "scopes": ["openid", "profile", "w_member_social"],
+        "scopes": ["openid", "profile", "w_member_social", "w_organization_social"],
         "docs_url": "https://learn.microsoft.com/en-us/linkedin/marketing/getting-started",
     },
     "instagram": {
@@ -85,11 +85,14 @@ class OAuthStatusResponse(BaseModel):
     profile_id: Optional[str] = None
     connected_at: Optional[str] = None
     scopes: Optional[list[str]] = None
+    expires_at: Optional[str] = None
+    org_id: Optional[str] = None
 
 
 class OAuthClientConfig(BaseModel):
     client_id: str
     client_secret: str
+    org_id: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -186,13 +189,17 @@ async def configure_oauth_client(provider: str, config: OAuthClientConfig):
     db = await get_database()
     collection = db["oauth_connections"]
 
+    update_fields = {
+        "client_id": config.client_id,
+        "client_secret": config.client_secret,
+        "updated_at": datetime.utcnow().isoformat() + "Z",
+    }
+    if config.org_id is not None:
+        update_fields["org_id"] = config.org_id.strip() or None
+
     await collection.find_one_and_update(
         {"_id": provider},
-        {"$set": {
-            "client_id": config.client_id,
-            "client_secret": config.client_secret,
-            "updated_at": datetime.utcnow().isoformat() + "Z",
-        }},
+        {"$set": update_fields},
         upsert=True,
     )
 
@@ -397,7 +404,12 @@ async def oauth_callback(
                 import uuid
                 channel_config = {"access_token": access_token}
                 if provider == "linkedin" and profile_id:
-                    channel_config["author_urn"] = f"urn:li:person:{profile_id}"
+                    # Use org_id for company page, profile_id for personal
+                    org_id = doc.get("org_id")
+                    if org_id:
+                        channel_config["author_urn"] = f"urn:li:organization:{org_id}"
+                    else:
+                        channel_config["author_urn"] = f"urn:li:person:{profile_id}"
                 await dist_coll.insert_one({
                     "_id": str(uuid.uuid4()),
                     "channel_id": str(uuid.uuid4()),
@@ -414,13 +426,20 @@ async def oauth_callback(
                 })
                 logger.info("Auto-created distribution channel for %s", provider)
             else:
-                # Update access token on existing channel
+                # Update access token and author_urn on existing channel
+                update_set = {
+                    "config.access_token": access_token,
+                    "updated_at": datetime.utcnow().isoformat(),
+                }
+                if provider == "linkedin":
+                    org_id = doc.get("org_id")
+                    if org_id:
+                        update_set["config.author_urn"] = f"urn:li:organization:{org_id}"
+                    elif profile_id:
+                        update_set["config.author_urn"] = f"urn:li:person:{profile_id}"
                 await dist_coll.update_one(
                     {"channel_type": provider},
-                    {"$set": {
-                        "config.access_token": access_token,
-                        "updated_at": datetime.utcnow().isoformat(),
-                    }},
+                    {"$set": update_set},
                 )
         except Exception as e:
             logger.warning("Failed to auto-register distribution channel for %s: %s", provider, e)
@@ -562,13 +581,27 @@ async def get_oauth_status(provider: str):
     if not doc or doc.get("status") != "connected":
         return OAuthStatusResponse(provider=provider, connected=False)
 
+    # Compute token expiry from connected_at + expires_in
+    expires_at = None
+    connected_at = doc.get("connected_at")
+    expires_in = doc.get("expires_in")
+    if connected_at and expires_in:
+        try:
+            from datetime import timedelta
+            ca = datetime.fromisoformat(connected_at.replace("Z", "+00:00"))
+            expires_at = (ca + timedelta(seconds=expires_in)).isoformat()
+        except Exception:
+            pass
+
     return OAuthStatusResponse(
         provider=provider,
         connected=True,
         profile_name=doc.get("profile_name"),
         profile_id=doc.get("profile_id"),
-        connected_at=doc.get("connected_at"),
+        connected_at=connected_at,
         scopes=doc.get("scopes"),
+        expires_at=expires_at,
+        org_id=doc.get("org_id"),
     )
 
 

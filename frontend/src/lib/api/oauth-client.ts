@@ -7,6 +7,8 @@ export interface OAuthStatus {
   profile_id?: string;
   connected_at?: string;
   scopes?: string[];
+  expires_at?: string;
+  org_id?: string;
 }
 
 export interface OAuthAuthorizeResponse {
@@ -18,11 +20,13 @@ export interface OAuthAuthorizeResponse {
 export async function configureOAuthClient(
   provider: string,
   clientId: string,
-  clientSecret: string
+  clientSecret: string,
+  extraFields?: Record<string, string>
 ): Promise<void> {
   await api.post(`/oauth/${provider}/configure`, {
     client_id: clientId,
     client_secret: clientSecret,
+    ...extraFields,
   });
 }
 

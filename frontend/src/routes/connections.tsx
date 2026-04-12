@@ -152,6 +152,11 @@ const CONNECTIONS: ConnectionConfig[] = [
         placeholder: "Your LinkedIn App Client Secret",
         secret: true,
       },
+      {
+        key: "org_id",
+        label: "Company Page ID (optional — leave empty for personal profile)",
+        placeholder: "e.g. 98765432 (from linkedin.com/company/YOUR-ID/admin)",
+      },
     ],
     oauthHelp: {
       title: "How to connect LinkedIn:",
@@ -398,7 +403,14 @@ export default function ConnectionsPage() {
     setOauthLoading(conn.id);
     try {
       // Step 1: Save client credentials to backend
-      await configureOAuthClient(conn.oauthProvider, clientId, clientSecret);
+      // Collect extra fields (e.g. org_id for LinkedIn company page)
+      const extraFields: Record<string, string> = {};
+      for (const field of conn.oauthSetupFields ?? []) {
+        if (field.key !== "client_id" && field.key !== "client_secret" && formData[field.key]?.trim()) {
+          extraFields[field.key] = formData[field.key].trim();
+        }
+      }
+      await configureOAuthClient(conn.oauthProvider, clientId, clientSecret, extraFields);
 
       // Step 2: Get authorization URL
       const { auth_url } = await getOAuthAuthorizeUrl(conn.oauthProvider);
@@ -537,8 +549,19 @@ export default function ConnectionsPage() {
                             {oauthStatus?.profile_name && (
                               <span className="flex items-center gap-1 text-[10px] font-medium text-blue-600 dark:text-blue-400 bg-blue-100 dark:bg-blue-500/15 px-2 py-0.5 rounded-full">
                                 <User className="w-2.5 h-2.5" /> {oauthStatus.profile_name}
+                                {oauthStatus.org_id && " (Company)"}
                               </span>
                             )}
+                            {oauthStatus?.expires_at && (() => {
+                              const days = Math.floor((new Date(oauthStatus.expires_at).getTime() - Date.now()) / 86400000);
+                              if (days < 0) return (
+                                <span className="text-[10px] font-medium text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-500/15 px-2 py-0.5 rounded-full">Token expired</span>
+                              );
+                              if (days < 7) return (
+                                <span className="text-[10px] font-medium text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-500/15 px-2 py-0.5 rounded-full">Expires in {days}d</span>
+                              );
+                              return null;
+                            })()}
                             {(saved?.inbound || conn.defaultInbound) && conn.supportsInbound && (
                               <span className="flex items-center gap-1 text-[10px] font-medium text-sky-600 dark:text-sky-400 bg-sky-100 dark:bg-sky-500/15 px-2 py-0.5 rounded-full">
                                 <ArrowDownToLine className="w-2.5 h-2.5" /> Inbound
