@@ -10,6 +10,7 @@ export interface CrewAgent {
   role: string;
   custom_role?: string;
   instructions?: string;
+  model_id?: string;
   order: number;
   tools?: string[];
   library_agent_id?: string;

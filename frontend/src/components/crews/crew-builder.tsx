@@ -428,7 +428,9 @@ export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderP
   const [blueprintSelectorOpen, setBlueprintSelectorOpen] = useState(false);
   const [selectedBlueprint, setSelectedBlueprint] = useState<BlueprintSelection | null>(null);
   const [models, setModels] = useState<ModelConfig[]>([]);
-  const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
+  const [selectedModelId, setSelectedModelId] = useState<string | null>(
+    editCrew?.agents?.[0]?.model_id ?? null
+  );
   const [oauthConnected, setOauthConnected] = useState<Record<string, boolean>>({});
 
   // Check OAuth connection status for OAuth-based channels
