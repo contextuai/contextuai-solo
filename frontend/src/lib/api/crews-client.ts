@@ -116,7 +116,7 @@ export const crewsApi = {
   },
 
   update: async (id: string, payload: Record<string, unknown>): Promise<Crew> => {
-    const { data } = await api.put<{ data: Crew }>(`/crews/${id}`, payload);
+    const { data } = await api.patch<{ data: Crew }>(`/crews/${id}`, payload);
     return (data as { data: Crew }).data;
   },
 
