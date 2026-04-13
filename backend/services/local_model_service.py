@@ -6,6 +6,7 @@ Mirrors the OllamaService interface so the universal model adapter can route
 to local models transparently.
 """
 
+import gc
 import os
 import asyncio
 import logging
@@ -165,11 +166,15 @@ class LocalModelService:
         else:
             n_ctx = 4096
 
+        n_threads = os.cpu_count() or 4
+        n_batch = 1024 if file_size_gb < 10 else 512
+
         try:
             self._model = Llama(
                 model_path=model_path,
                 n_ctx=n_ctx,
-                n_threads=os.cpu_count() or 4,
+                n_batch=n_batch,
+                n_threads=n_threads,
                 use_mmap=True,
                 verbose=False,
             )
@@ -206,7 +211,8 @@ class LocalModelService:
                     self._model = Llama(
                         model_path=model_path,
                         n_ctx=512,
-                        n_threads=os.cpu_count() or 4,
+                        n_batch=512,
+                        n_threads=n_threads,
                         use_mmap=True,
                         verbose=False,
                     )
@@ -248,11 +254,18 @@ class LocalModelService:
         """Free RAM by releasing the loaded model."""
         if self._model is not None:
             model_path = self._loaded_model_path
-            del self._model
+            try:
+                if hasattr(self._model, "close"):
+                    self._model.close()
+                elif hasattr(self._model, "__del__"):
+                    self._model.__del__()
+            except Exception as e:
+                logger.warning("Error closing model: %s", e)
             self._model = None
             self._loaded_model_path = None
             self._loaded_model_id = None
-            logger.info("Model unloaded: %s", model_path)
+            gc.collect()
+            logger.info("Model unloaded and memory released: %s", model_path)
 
     # ------------------------------------------------------------------
     # Status / discovery
