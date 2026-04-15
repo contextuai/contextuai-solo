@@ -18,8 +18,9 @@ from typing import Any, AsyncGenerator, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_MODELS_DIR = os.path.join(
-    os.path.expanduser("~"), ".contextuai-solo", "models"
+DEFAULT_MODELS_DIR = os.getenv(
+    "MODELS_DIR",
+    os.path.join(os.path.expanduser("~"), ".contextuai-solo", "models"),
 )
 
 RAM_CAP_GB = 64

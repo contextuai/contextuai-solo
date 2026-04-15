@@ -7,6 +7,8 @@ export interface OAuthStatus {
   profile_id?: string;
   connected_at?: string;
   scopes?: string[];
+  expires_at?: string;
+  org_id?: string;
 }
 
 export interface OAuthAuthorizeResponse {
@@ -18,11 +20,13 @@ export interface OAuthAuthorizeResponse {
 export async function configureOAuthClient(
   provider: string,
   clientId: string,
-  clientSecret: string
+  clientSecret: string,
+  extraFields?: Record<string, string>
 ): Promise<void> {
   await api.post(`/oauth/${provider}/configure`, {
     client_id: clientId,
     client_secret: clientSecret,
+    ...extraFields,
   });
 }
 
@@ -37,6 +41,22 @@ export async function getOAuthAuthorizeUrl(
 
 export async function getOAuthStatus(provider: string): Promise<OAuthStatus> {
   const { data } = await api.get<OAuthStatus>(`/oauth/${provider}/status`);
+  return data;
+}
+
+export interface OAuthTestResult {
+  provider: string;
+  success: boolean;
+  message: string;
+  profile_name?: string;
+  profile_id?: string;
+  response_time_ms?: number;
+}
+
+export async function testOAuthConnection(
+  provider: string
+): Promise<OAuthTestResult> {
+  const { data } = await api.post<OAuthTestResult>(`/oauth/${provider}/test`);
   return data;
 }
 

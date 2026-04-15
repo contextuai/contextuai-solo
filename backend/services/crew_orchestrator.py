@@ -17,6 +17,7 @@ Execution flow:
 """
 
 import os
+import re
 import logging
 import asyncio
 from datetime import datetime
@@ -130,6 +131,24 @@ class CrewOrchestrator:
                 except Exception as e:
                     logger.warning(f"Failed to store run summary in memory: {e}")
 
+            # Publish to bound channels (outbound distribution)
+            publish_results = []
+            if final_output:
+                try:
+                    publish_results = await self._publish_to_bound_channels(
+                        crew, final_output, run_id
+                    )
+                except Exception as e:
+                    logger.warning(f"Channel publish failed for run {run_id}: {e}")
+
+            if publish_results:
+                try:
+                    await self.run_repo.update_run(run_id, {
+                        "publish_results": publish_results,
+                    })
+                except Exception as e:
+                    logger.warning(f"Failed to store publish results on run {run_id}: {e}")
+
             logger.info(f"Crew run {run_id} completed. tokens={total_tokens}, cost=${total_cost:.4f}")
             return final_run
 
@@ -222,7 +241,7 @@ class CrewOrchestrator:
                 # Execute agent
                 result = await self._invoke_agent(agent_cfg, prompt)
 
-                agent_output = result.get("output", "")
+                agent_output = self._clean_output(result.get("output", ""))
                 agent_tokens = result.get("tokens_used", 0)
                 agent_cost = result.get("cost", 0.0)
 
@@ -301,7 +320,7 @@ class CrewOrchestrator:
                 )
                 result = await self._invoke_agent(agent_cfg, prompt)
 
-                agent_output = result.get("output", "")
+                agent_output = self._clean_output(result.get("output", ""))
                 agent_tokens = result.get("tokens_used", 0)
                 agent_cost = result.get("cost", 0.0)
 
@@ -633,7 +652,7 @@ class CrewOrchestrator:
             loop = asyncio.get_event_loop()
             result = await loop.run_in_executor(None, coordinator, task_prompt)
 
-            coordinator_output = str(result) if result else ""
+            coordinator_output = self._clean_output(str(result) if result else "")
 
             # Extract coordinator's own token usage
             coordinator_tokens = 0
@@ -782,6 +801,16 @@ class CrewOrchestrator:
 
         return "\n\n".join(sections) if sections else "Please complete the task as described in your instructions."
 
+    @staticmethod
+    def _clean_output(text: str) -> str:
+        """Strip reasoning tokens (<think>...</think>) from model output."""
+        if not text:
+            return text
+        cleaned = re.sub(r"<think>[\s\S]*?</think>", "", text).strip()
+        # Handle unclosed <think> tag (model started reasoning but didn't close)
+        cleaned = re.sub(r"<think>[\s\S]*$", "", cleaned).strip()
+        return cleaned or text
+
     def _generate_run_summary(self, output: str, result: Dict[str, Any]) -> str:
         """Generate a brief summary of the run for memory storage."""
         agent_count = len(result.get("agent_summaries", []))
@@ -792,3 +821,122 @@ class CrewOrchestrator:
         summary += f"Tokens: {tokens}, Cost: ${cost:.4f}. "
         summary += f"Output preview: {output[:300]}"
         return summary
+
+    async def _publish_to_bound_channels(
+        self, crew: Dict[str, Any], content: str, run_id: str
+    ) -> List[Dict[str, Any]]:
+        """
+        Publish crew output to all enabled channel_bindings.
+
+        For each binding, finds a matching distribution channel (by channel_type)
+        and publishes the raw agent output. If approval_required, routes to the
+        approval queue instead.
+
+        Returns a list of publish result dicts for tracking.
+        """
+        bindings = crew.get("channel_bindings", [])
+        if not bindings:
+            return []
+
+        publish_results: List[Dict[str, Any]] = []
+
+        from database import get_database
+        from services.distribution_service import DistributionService
+
+        db = await get_database()
+        dist_svc = DistributionService(db)
+
+        for binding in bindings:
+            if not binding.get("enabled", True):
+                continue
+
+            channel_type = binding.get("channel_type")
+            if not channel_type:
+                continue
+
+            # Find a distribution channel matching this channel_type
+            dist_coll = db["distribution_channels"]
+            channel_doc = await dist_coll.find_one({
+                "channel_type": channel_type,
+                "enabled": True,
+            })
+
+            if not channel_doc:
+                logger.info(
+                    f"No distribution channel for '{channel_type}' — "
+                    f"skipping publish for crew '{crew.get('name')}'"
+                )
+                continue
+
+            channel_id = channel_doc.get("channel_id")
+
+            if binding.get("approval_required"):
+                # Route to approval queue instead of publishing directly
+                try:
+                    approval_coll = db["approval_queue"]
+                    import uuid
+                    await approval_coll.insert_one({
+                        "_id": str(uuid.uuid4()),
+                        "approval_id": str(uuid.uuid4()),
+                        "type": "crew_publish",
+                        "crew_id": crew.get("crew_id"),
+                        "crew_name": crew.get("name"),
+                        "run_id": run_id,
+                        "channel_type": channel_type,
+                        "channel_id": channel_id,
+                        "draft_response": content,
+                        "content": content,
+                        "status": "pending",
+                        "created_at": datetime.utcnow().isoformat(),
+                    })
+                    publish_results.append({
+                        "channel_type": channel_type,
+                        "status": "pending_approval",
+                    })
+                    logger.info(
+                        f"Crew '{crew.get('name')}' output routed to approval queue "
+                        f"for {channel_type}"
+                    )
+                except Exception as e:
+                    publish_results.append({
+                        "channel_type": channel_type,
+                        "status": "error",
+                        "error": str(e),
+                    })
+                    logger.warning(f"Failed to create approval for {channel_type}: {e}")
+                continue
+
+            # Publish directly
+            try:
+                result = await dist_svc.publish(
+                    channel_id=channel_id,
+                    content=content,
+                    title=f"Crew: {crew.get('name', 'Untitled')}",
+                    published_by=f"crew:{crew.get('crew_id')}",
+                )
+                pub_result = result.get("result", {})
+                success = pub_result.get("success", False)
+                publish_results.append({
+                    "channel_type": channel_type,
+                    "status": "published" if success else "failed",
+                    "post_id": pub_result.get("post_id"),
+                    "error": pub_result.get("error") if not success else None,
+                })
+                if success:
+                    logger.info(
+                        f"Published crew '{crew.get('name')}' output to {channel_type}"
+                    )
+                else:
+                    logger.warning(
+                        f"Publish to {channel_type} returned: "
+                        f"{pub_result.get('error', 'unknown')}"
+                    )
+            except Exception as e:
+                publish_results.append({
+                    "channel_type": channel_type,
+                    "status": "error",
+                    "error": str(e),
+                })
+                logger.warning(f"Failed to publish to {channel_type}: {e}")
+
+        return publish_results

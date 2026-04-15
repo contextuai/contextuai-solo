@@ -15,7 +15,10 @@ from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
-MODELS_DIR = os.path.join(os.path.expanduser("~"), ".contextuai-solo", "models")
+MODELS_DIR = os.getenv(
+    "MODELS_DIR",
+    os.path.join(os.path.expanduser("~"), ".contextuai-solo", "models"),
+)
 
 # Vendor prefixes used by community quantisers (e.g. bartowski).
 # When matching filenames, we strip these so "gemma-4-..." matches "google_gemma-4-...".

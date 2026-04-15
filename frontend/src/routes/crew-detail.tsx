@@ -22,6 +22,8 @@ import {
   Settings,
   Trash2,
   Pencil,
+  Cable,
+  Check,
 } from "lucide-react";
 
 // ---------------------------------------------------------------------------
@@ -311,6 +313,7 @@ export default function CrewDetailPage() {
               budget_limit_usd?: number;
             },
             agents: crew.agents,
+            channel_bindings: crew.channel_bindings,
           }}
         />
       )}
@@ -465,6 +468,37 @@ function OverviewTab({ crew, isAutonomous }: { crew: Crew; isAutonomous: boolean
                   </div>
                 )}
               </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Channels */}
+      {crew.channel_bindings && crew.channel_bindings.length > 0 && (
+        <div className="bg-white dark:bg-neutral-900 rounded-xl p-5 border border-neutral-200 dark:border-neutral-800">
+          <h3 className="font-medium text-neutral-900 dark:text-white mb-3 flex items-center gap-2">
+            <Cable className="w-4 h-4 text-neutral-400" />
+            Channels ({crew.channel_bindings.length})
+          </h3>
+          <div className="flex flex-wrap gap-2">
+            {crew.channel_bindings.map((b) => (
+              <span
+                key={b.channel_type}
+                className={cn(
+                  "px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5",
+                  b.enabled
+                    ? "bg-green-50 dark:bg-green-500/10 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800/50"
+                    : "bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400"
+                )}
+              >
+                {b.enabled && <Check className="w-3 h-3" />}
+                <span className="capitalize">{b.channel_type}</span>
+                {b.approval_required && (
+                  <span className="text-[9px] bg-amber-100 dark:bg-amber-500/15 text-amber-600 dark:text-amber-400 px-1.5 py-0.5 rounded-full ml-1">
+                    Approval
+                  </span>
+                )}
+              </span>
             ))}
           </div>
         </div>

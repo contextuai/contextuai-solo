@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { crewsApi, type CrewAgent, type LibraryAgent, type ChannelBinding } from "@/lib/api/crews-client";
 import { getModels, type ModelConfig } from "@/lib/api/models-client";
+import { getOAuthStatus } from "@/lib/api/oauth-client";
 import {
   BlueprintSelector,
   type BlueprintSelection,
@@ -427,7 +428,21 @@ export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderP
   const [blueprintSelectorOpen, setBlueprintSelectorOpen] = useState(false);
   const [selectedBlueprint, setSelectedBlueprint] = useState<BlueprintSelection | null>(null);
   const [models, setModels] = useState<ModelConfig[]>([]);
-  const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
+  const [selectedModelId, setSelectedModelId] = useState<string | null>(
+    editCrew?.agents?.[0]?.model_id ?? null
+  );
+  const [oauthConnected, setOauthConnected] = useState<Record<string, boolean>>({});
+
+  // Check OAuth connection status for OAuth-based channels
+  const OAUTH_CHANNELS = ["linkedin", "instagram", "facebook"] as const;
+  useEffect(() => {
+    if (!open) return;
+    for (const provider of OAUTH_CHANNELS) {
+      getOAuthStatus(provider)
+        .then((s) => setOauthConnected((prev) => ({ ...prev, [provider]: s.connected })))
+        .catch(() => setOauthConnected((prev) => ({ ...prev, [provider]: false })));
+    }
+  }, [open]);
 
   // Fetch available models when dialog opens
   useEffect(() => {
@@ -1021,6 +1036,8 @@ export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderP
                   {CONNECTION_TYPES.map((conn) => {
                     const isSelected = channelBindings.some((b) => b.channel_type === conn.id);
                     const binding = channelBindings.find((b) => b.channel_type === conn.id);
+                    const isOAuth = OAUTH_CHANNELS.includes(conn.id as typeof OAUTH_CHANNELS[number]);
+                    const isConnected = isOAuth ? oauthConnected[conn.id] : true;
                     return (
                       <div
                         key={conn.id}
@@ -1044,6 +1061,14 @@ export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderP
                               <p className="text-sm font-medium text-neutral-900 dark:text-white">
                                 {conn.name}
                               </p>
+                              {isOAuth && !isConnected && (
+                                <p className="text-[10px] text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                                  <AlertCircle className="w-3 h-3" /> Not connected
+                                </p>
+                              )}
+                              {isOAuth && isConnected && (
+                                <p className="text-[10px] text-green-600 dark:text-green-400">Connected</p>
+                              )}
                             </div>
                             {isSelected && (
                               <div className="w-5 h-5 rounded-full bg-primary-500 flex items-center justify-center flex-shrink-0">

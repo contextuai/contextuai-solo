@@ -10,6 +10,7 @@ export interface CrewAgent {
   role: string;
   custom_role?: string;
   instructions?: string;
+  model_id?: string;
   order: number;
   tools?: string[];
   library_agent_id?: string;
@@ -116,7 +117,7 @@ export const crewsApi = {
   },
 
   update: async (id: string, payload: Record<string, unknown>): Promise<Crew> => {
-    const { data } = await api.put<{ data: Crew }>(`/crews/${id}`, payload);
+    const { data } = await api.patch<{ data: Crew }>(`/crews/${id}`, payload);
     return (data as { data: Crew }).data;
   },
 
