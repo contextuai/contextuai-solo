@@ -213,39 +213,6 @@
 
 ---
 
-## PHASE 3: LAUNCH
-
-### P3-1: Record Demo Video
-**Status:** [ ] Not Started
-**Effort:** 0.5 day
-- [ ] 90-second screen recording (see MOONSHOT.md demo script)
-- [ ] Show full flow: Telegram → crew thinking → approval → reply
-- [ ] Highlight: model hub, agent library, crew builder, thinking mode
-
-### P3-2: Hacker News Post
-**Status:** [ ] Not Started
-- [ ] Title: "Show HN: 96 AI agents + multi-agent crews running 100% locally on your desktop"
-- [ ] Post at 9am ET on a weekday (best HN timing)
-- [ ] Include demo video + GitHub link
-
-### P3-3: Reddit Launch Posts
-**Status:** [ ] Not Started
-- [ ] r/LocalLLaMA — focus on Qwen 3.5 + GGUF + thinking mode
-- [ ] r/selfhosted — focus on replacing SaaS subscriptions
-- [ ] r/artificial — focus on visible AI deliberation
-- [ ] r/SideProject — focus on solo dev story
-- [ ] r/opensource — focus on free/open-source
-- [ ] r/ChatGPT — focus on "ChatGPT but local with 96 agents"
-- [ ] r/Entrepreneur — focus on social media automation
-
-### P3-4: Twitter/X Launch
-**Status:** [ ] Not Started
-- [ ] Launch thread with demo video
-- [ ] Tag AI influencers
-- [ ] Pin tweet
-
----
-
 ## BACKLOG — Post-Launch
 
 ### BL-2: Coding Agents (Agent Library)
