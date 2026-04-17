@@ -42,6 +42,7 @@ from routers.openai_compat import router as openai_compat_router
 from routers.triggers import router as triggers_router
 from routers.approvals import router as approvals_router
 from routers.blueprints import router as blueprints_router
+from routers.reddit import router as reddit_router
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -90,6 +91,7 @@ app.include_router(openai_compat_router)
 app.include_router(triggers_router)
 app.include_router(approvals_router)
 app.include_router(blueprints_router)
+app.include_router(reddit_router)
 
 
 # ---------------------------------------------------------------------------
@@ -437,6 +439,12 @@ async def startup_event():
         # Seed model configs for any already-downloaded local GGUF models
         await _seed_local_models(proxy)
 
+        # Start Reddit poller (runs only when a Reddit account is configured)
+        from services.reddit_poller import get_poller
+
+        app.state.reddit_poller = get_poller(proxy)
+        await app.state.reddit_poller.start()
+
         logger.info("ContextuAI Solo backend ready")
 
     except Exception:
@@ -458,6 +466,13 @@ async def shutdown_event():
         logger.info("Scheduler adapter closed")
     except Exception:
         logger.exception("Error closing scheduler adapter")
+
+    try:
+        poller = getattr(app.state, "reddit_poller", None)
+        if poller:
+            await poller.stop()
+    except Exception:
+        logger.exception("Error stopping Reddit poller")
 
 
 # ---------------------------------------------------------------------------

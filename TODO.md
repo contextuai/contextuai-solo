@@ -1,7 +1,7 @@
 # TODO — ContextuAI Solo Moonshot
 
 > Master task list. Prioritized by phases. Check off as completed.
-> **Created:** 2026-03-19 | **Last synced with code:** 2026-04-14
+> **Created:** 2026-03-19 | **Last synced with code:** 2026-04-15
 
 ---
 
@@ -108,21 +108,27 @@
 
 ## PHASE 2.5: DIFFERENTIATORS (Next Up — Before Launch)
 
-### P2.5-1: Reddit Connection ⭐ NEXT
-**Status:** [ ] Not Started
-**Effort:** 2-3 days
+### P2.5-1: Reddit Connection ⭐
+**Status:** [x] COMPLETE (2026-04-15)
+**Effort:** 2-3 days → done in 1 session
 **Why:** r/LocalLLaMA + r/selfhosted are the exact ICP. Same trigger+approval pipeline as Telegram/Discord. Highest-signal inbound channel for a local-AI product.
 
-- [ ] Reddit OAuth2 integration (script-type app → refresh token)
-- [ ] Add to `backend/routers/desktop_oauth.py` providers dict
-- [ ] Add to Connections UI (`frontend/src/routes/connections.tsx`)
-- [ ] Inbound: `backend/services/reddit_poller.py` — background poll subreddits + keyword mentions + inbox DMs every 60s
-- [ ] Store `last_seen_id` per subreddit to dedupe
-- [ ] Outbound: `POST /api/comment`, `POST /api/compose` for DMs
-- [ ] Wire into trigger system (`channel_service.handle_message()`)
-- [ ] Trigger example: "When someone mentions 'local LLM' in r/LocalLLaMA → run Crew"
-- [ ] Distribution service: outbound post/comment publishing
-- [ ] Respect Reddit rate limits (60 req/min OAuth)
+**What was built:**
+- [x] Reddit script-app auth via praw (token-paste flow, not browser OAuth)
+- [x] `backend/models/reddit_models.py` — Pydantic v2 models (account, update, reply)
+- [x] `backend/repositories/reddit_repository.py` — CRUD + `get_active()` + `update_last_seen()`
+- [x] `backend/services/reddit_client.py` — async praw wrapper (comments, inbox, reply, DM)
+- [x] `backend/services/reddit_poller.py` — 60s background poll subreddits + keyword filter + inbox DMs
+- [x] `backend/routers/reddit.py` — REST API: account CRUD, test connection, reply
+- [x] `ChannelType.REDDIT` added to `channel_service.py`
+- [x] Poller dispatches through `channel_service.handle_message()` → triggers + approval pipeline
+- [x] `last_seen_ids` per subreddit + inbox for dedupe
+- [x] Outbound: `POST /api/v1/reddit/reply` (comment + DM)
+- [x] Frontend: Reddit card in Connections UI (orange Flame icon, token-paste)
+- [x] `frontend/src/lib/api/reddit-client.ts` — full API client
+- [x] `backend/tests/test_reddit.py` — 6 passing tests
+- [x] praw==7.8.1 added to requirements.txt
+- [x] Respects Reddit rate limits (praw handles 60 req/min internally)
 
 ### P2.5-2: Knowledge Base (Local RAG) ⭐⭐ MAJOR DIFFERENTIATOR
 **Status:** [ ] Not Started
@@ -257,7 +263,7 @@
 
 ## QUICK REFERENCE
 
-**Total models in catalog:** 37 (6 families: Qwen 2.5, Qwen 3, Qwen 3.5, Gemma, Llama, Mistral, Phi, DeepSeek)
+**Total models in catalog:** 41 (8 families: Qwen 2.5, Qwen 3, Qwen 3.5, Gemma 3, Gemma 4, Llama, Mistral, Phi, DeepSeek)
 **Total agents:** 105 markdown files across 13 categories (incl. 12/15 social in `social-engagement/`)
 **Moonshot pick model:** Qwen 3.5 35B-A3B (MoE) — 35B brain, 3B speed, thinking + vision + 256K context
 **Backend port:** 18741
@@ -275,8 +281,8 @@
 - `frontend/src/routes/knowledge.tsx` (new)
 
 **Next up order:**
-1. Merge `feat/crew-channel-wiring` → main + cut `v1.0.0-beta.4` (8 commits unreleased)
-2. P2.5-1 Reddit Connection
+1. ~~Merge `feat/crew-channel-wiring` → main + cut `v1.0.0-beta.4`~~ DONE (#17 merged, beta.6 tagged)
+2. ~~P2.5-1 Reddit Connection~~ DONE (2026-04-15)
 3. P2.5-2 Knowledge Base (RAG) — reuse existing `embedding_service.py`
 4. Phase 2 remainder: Twitter inbound poller, IG/FB publishing fixes, Distribution UI, 3 missing social agents, crew template seeding
 5. Phase 3 Launch

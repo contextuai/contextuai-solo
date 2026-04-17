@@ -1,6 +1,6 @@
 # ContextuAI Solo — User Guide
 
-Welcome to ContextuAI Solo, your private desktop AI assistant with 81 pre-built business agents. This guide covers every module in the app to help you get started quickly.
+Welcome to ContextuAI Solo, your private desktop AI assistant with 93 pre-built business agents. This guide covers every module in the app to help you get started quickly.
 
 ## Modules
 
@@ -9,7 +9,7 @@ Welcome to ContextuAI Solo, your private desktop AI assistant with 81 pre-built 
 | 1 | [Chat](01-chat.md) | Have conversations with AI models, manage sessions, pick personas |
 | 2 | [Model Hub](02-model-hub.md) | Configure cloud AI providers and download local models |
 | 3 | [Personas](03-personas.md) | Create specialized AI personalities with custom instructions |
-| 4 | [Agents](04-agents.md) | Browse 81 business agents and create your own |
+| 4 | [Agents](04-agents.md) | Browse 93 business agents and create your own |
 | 5 | [Crews](05-crews.md) | Build multi-agent teams that work together on tasks |
 | 6 | [Blueprints](06-blueprints.md) | Use workflow templates to jumpstart projects |
 | 7 | [Workspace](07-workspace.md) | Run multi-agent projects and review results |

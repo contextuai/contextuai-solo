@@ -1,6 +1,6 @@
 # Agents
 
-The Agent Library contains 81 pre-built business agents organized by department. Each agent is a specialized AI role with a detailed system prompt, recommended tools, and domain expertise. You can also create your own custom agents.
+The Agent Library contains 93 pre-built business agents organized by department. Each agent is a specialized AI role with a detailed system prompt, recommended tools, and domain expertise. You can also create your own custom agents.
 
 ![Agent Library](../screenshots/006-AgentLibrary.png)
 
@@ -95,7 +95,7 @@ When you select a role, a suggested system prompt template appears. Click **"Use
 
 ## Tips
 
-- **Don't create agents from scratch** unless you need something unique — the 81 pre-built agents cover most business functions.
+- **Don't create agents from scratch** unless you need something unique — the 93 pre-built agents cover most business functions.
 - **Combine agents in Crews** for multi-step tasks. For example, pair a "Market Researcher" with a "Content Strategist" and a "Copywriter" for end-to-end content creation.
 - **Customize system prompts** in the detail panel to fine-tune an existing agent's behavior for your specific business context.
 - **Use the search** when you know roughly what you need — typing "pricing" will find the Pricing Strategist even if you don't know the exact name.

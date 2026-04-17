@@ -71,6 +71,40 @@ curl "https://api.telegram.org/botYOUR_BOT_TOKEN/deleteWebhook"
 
 ---
 
+## Reddit
+
+**Type:** Token paste (script app) | **Inbound + Outbound**
+
+### Setup Steps
+
+1. Go to [reddit.com/prefs/apps](https://www.reddit.com/prefs/apps)
+2. Scroll down and click **"create another app…"**
+3. Fill in:
+   - **Name:** ContextuAI Solo (or whatever you like)
+   - **Type:** select **script**
+   - **Redirect URI:** `http://localhost:18741` (not used, but required)
+4. Click **Create app**
+5. Copy your **Client ID** (under the app name, ~14 chars) and **Secret**
+6. In Solo, go to **Connections** → click **Reddit**
+7. Fill in:
+   - **Client ID** and **Client Secret** from step 5
+   - **Reddit Username** and **Reddit Password** (your account credentials)
+   - **Subreddits** — comma-separated list to monitor (e.g., `LocalLLaMA,selfhosted`)
+   - **Keywords** — only comments matching these words trigger the pipeline (leave empty to get all)
+8. Click **Save** — Solo tests the connection and starts polling every 60 seconds
+
+### How It Works
+
+- **Inbound:** `RedditPoller` runs a 60-second background loop, fetching new comments from your configured subreddits (filtered by keywords) and unread inbox DMs. Each new item dispatches through the trigger + approval pipeline.
+- **Outbound:** Reply to comments or send DMs via `POST /api/v1/reddit/reply`.
+- **Rate limits:** praw handles Reddit's 60 req/min OAuth limit internally.
+
+### Reference
+
+- [Reddit — API Documentation](https://www.reddit.com/dev/api/)
+
+---
+
 ## LinkedIn
 
 **Type:** OAuth | **Outbound only**

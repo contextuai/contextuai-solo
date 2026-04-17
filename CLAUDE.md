@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-ContextuAI Solo is a single-user desktop AI assistant with 81 pre-built business agents. It's a Tauri v2 desktop app with a React 19 frontend and a FastAPI Python backend running as a sidecar process. Data is stored locally in SQLite. Supports both cloud AI providers (Anthropic, AWS Bedrock) and local GGUF models via llama-cpp-python.
+ContextuAI Solo is a single-user desktop AI assistant with 93 pre-built business agents (105 in repo, engineering category excluded from desktop). It's a Tauri v2 desktop app with a React 19 frontend and a FastAPI Python backend running as a sidecar process. Data is stored locally in SQLite. Supports both cloud AI providers (Anthropic, AWS Bedrock) and local GGUF models via llama-cpp-python.
 
 ## Commands
 
@@ -77,7 +77,7 @@ GGUF models downloaded from HuggingFace, stored in `~/.contextuai-solo/models/`.
 - Models appear in chat dropdown after sync
 
 ### Agent Library (`agent-library/`)
-81 business agents as markdown files organized by category (c-suite, marketing-sales, finance-operations, etc.). Engineering category is excluded from desktop mode. Each markdown file contains a system prompt, recommended model, and tool configs. Auto-seeded into `workspace_agents` collection on first startup. Re-seed via `POST /api/v1/desktop/reseed`.
+105 business agents as markdown files across 13 categories (c-suite, marketing-sales, finance-operations, etc.). Engineering category (12 agents) is excluded from desktop mode, so users see 93 across 12 categories. Each markdown file contains a system prompt, recommended model, and tool configs. Auto-seeded into `workspace_agents` collection on first startup. Re-seed via `POST /api/v1/desktop/reseed`.
 
 ### Crew System
 Multi-agent teams with persistent memory. Crew builder (`components/crews/crew-builder.tsx`) is a 5-step wizard:
@@ -92,8 +92,11 @@ Channel bindings stored as `channel_bindings[]` on the crew document (`ChannelBi
 ### Blueprint Library (`blueprints/`)
 10 pre-built workflow templates across 5 categories (strategy, content, marketing, product, research). Markdown files auto-seeded into `blueprints` collection on startup. Integrated into crew builder and workspace project dialog via `BlueprintSelector` component. API: `GET /api/v1/blueprints/`, `GET /api/v1/blueprints/{id}`.
 
+### Reddit Connection (`routers/reddit.py`, `services/reddit_poller.py`)
+Inbound polling via praw (Reddit API wrapper). `RedditPoller` runs a 60s background loop, fetching new comments from configured subreddits (filtered by keywords) and inbox DMs. Dispatches through `channel_service.handle_message()` so triggers + approval pipeline apply. Account config stored in `reddit_accounts` collection. REST API: `GET/POST/PUT/DELETE /api/v1/reddit/account`, `POST /api/v1/reddit/test`, `POST /api/v1/reddit/reply`.
+
 ### Connections (`routes/connections.tsx`)
-External platform integrations: Telegram, Discord, LinkedIn (OAuth), Twitter/X, Instagram (OAuth), Facebook (OAuth). Token-paste flow for Telegram/Discord/Twitter; OAuth2 flow for LinkedIn/Instagram/Facebook with provider-specific setup instructions.
+External platform integrations: Telegram, Discord, Reddit, LinkedIn (OAuth), Twitter/X, Instagram (OAuth), Facebook (OAuth). Token-paste flow for Telegram/Discord/Twitter/Reddit; OAuth2 flow for LinkedIn/Instagram/Facebook with provider-specific setup instructions.
 
 ### Authentication
 Desktop mode uses a static admin user — no login required. Auth is bypassed via dependency overrides in `app.py`. The `auth_service.py` has Cognito JWT support for the enterprise edition.
