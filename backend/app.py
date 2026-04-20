@@ -42,6 +42,9 @@ from routers.openai_compat import router as openai_compat_router
 from routers.triggers import router as triggers_router
 from routers.approvals import router as approvals_router
 from routers.blueprints import router as blueprints_router
+from routers.reddit import router as reddit_router
+from routers.twitter import router as twitter_router
+from routers.scheduled_jobs import router as scheduled_jobs_router
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -90,6 +93,9 @@ app.include_router(openai_compat_router)
 app.include_router(triggers_router)
 app.include_router(approvals_router)
 app.include_router(blueprints_router)
+app.include_router(reddit_router)
+app.include_router(twitter_router)
+app.include_router(scheduled_jobs_router)
 
 
 # ---------------------------------------------------------------------------
@@ -389,6 +395,28 @@ async def _seed_local_models(db):
         logger.exception("Failed to seed local model configs")
 
 
+async def _seed_crew_templates(db):
+    """
+    Seed crew templates from the on-disk JSON library into the
+    ``crew_templates`` collection (separate from user-created ``crews``).
+    """
+    try:
+        from services.crew_template_seeder import CrewTemplateSeeder
+        seeder = CrewTemplateSeeder()
+
+        from pathlib import Path as _Path
+        library_path = _Path(os.environ.get("CREW_TEMPLATE_LIBRARY_PATH", seeder.LIBRARY_PATH))
+        if not library_path.exists():
+            logger.warning("Crew template library not found at %s — skipping seed", library_path)
+            return
+
+        collection = db["crew_templates"]
+        seeded = await seeder.sync_library_to_db(collection)
+        logger.info("Crew template library: seeded %d new template(s)", seeded)
+    except Exception:
+        logger.exception("Failed to seed crew template library")
+
+
 # ---------------------------------------------------------------------------
 # Lifecycle events
 # ---------------------------------------------------------------------------
@@ -402,6 +430,8 @@ async def startup_event():
             os.environ["AGENT_LIBRARY_PATH"] = os.path.join(_repo_root, "agent-library")
         if "BLUEPRINT_LIBRARY_PATH" not in os.environ:
             os.environ["BLUEPRINT_LIBRARY_PATH"] = os.path.join(_repo_root, "blueprints")
+        if "CREW_TEMPLATE_LIBRARY_PATH" not in os.environ:
+            os.environ["CREW_TEMPLATE_LIBRARY_PATH"] = os.path.join(_repo_root, "backend", "crew-templates")
 
         # Database adapter (SQLite)
         adapter = await get_database_adapter()
@@ -434,8 +464,29 @@ async def startup_event():
         # Seed blueprint library
         await _seed_blueprints(proxy)
 
+        # Seed crew templates library
+        await _seed_crew_templates(proxy)
+
         # Seed model configs for any already-downloaded local GGUF models
         await _seed_local_models(proxy)
+
+        # Start Reddit poller (runs only when a Reddit account is configured)
+        from services.reddit_poller import get_poller
+
+        app.state.reddit_poller = get_poller(proxy)
+        await app.state.reddit_poller.start()
+
+        # Start Twitter poller (runs only when a Twitter account is configured)
+        from services.twitter_poller import get_poller as get_twitter_poller
+
+        app.state.twitter_poller = get_twitter_poller(proxy)
+        await app.state.twitter_poller.start()
+
+        # Scheduled jobs (cron-based posts + crew runs)
+        from services.scheduler_service import SchedulerService
+        scheduler_service = SchedulerService(proxy, scheduler)
+        await scheduler_service.load_all()
+        app.state.scheduler_service = scheduler_service
 
         logger.info("ContextuAI Solo backend ready")
 
@@ -458,6 +509,20 @@ async def shutdown_event():
         logger.info("Scheduler adapter closed")
     except Exception:
         logger.exception("Error closing scheduler adapter")
+
+    try:
+        poller = getattr(app.state, "reddit_poller", None)
+        if poller:
+            await poller.stop()
+    except Exception:
+        logger.exception("Error stopping Reddit poller")
+
+    try:
+        poller = getattr(app.state, "twitter_poller", None)
+        if poller:
+            await poller.stop()
+    except Exception:
+        logger.exception("Error stopping Twitter poller")
 
 
 # ---------------------------------------------------------------------------
@@ -548,15 +613,22 @@ async def reseed_data():
         await bp_collection.delete_many({})
         await _seed_blueprints(db)
 
+        # Clear and re-seed crew templates library
+        ct_collection = db["crew_templates"]
+        await ct_collection.delete_many({})
+        await _seed_crew_templates(db)
+
         pt_count = await pt_collection.count_documents({})
         agent_count = await agent_collection.count_documents({})
         bp_count = await bp_collection.count_documents({})
+        ct_count = await ct_collection.count_documents({})
 
         return {
             "status": "success",
             "persona_types_seeded": pt_count,
             "agents_seeded": agent_count,
             "blueprints_seeded": bp_count,
+            "crew_templates_seeded": ct_count,
         }
     except Exception as e:
         logger.exception("Reseed failed")

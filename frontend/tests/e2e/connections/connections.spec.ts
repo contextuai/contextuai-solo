@@ -23,19 +23,20 @@ test.beforeEach(async ({ page }) => {
 // ==========================================================================
 
 test.describe("CRUD via UI", () => {
-  // DC-CONN-01: View all 6 connection cards
-  test("DC-CONN-01: view all 6 connection cards", async ({ page }) => {
+  // DC-CONN-01: View all 7 connection cards
+  test("DC-CONN-01: view all 7 connection cards", async ({ page }) => {
     await expect(page.locator("h1", { hasText: "Connections" })).toBeVisible();
 
     await expect(page.locator("h3", { hasText: "Telegram Bot" })).toBeVisible();
     await expect(page.locator("h3", { hasText: "Discord Bot" })).toBeVisible();
+    await expect(page.locator("h3", { hasText: "Reddit" })).toBeVisible();
     await expect(page.locator("h3", { hasText: "LinkedIn" })).toBeVisible();
     await expect(page.locator("h3", { hasText: "Twitter / X" })).toBeVisible();
     await expect(page.locator("h3", { hasText: "Instagram" })).toBeVisible();
     await expect(page.locator("h3", { hasText: "Facebook" })).toBeVisible();
 
     const count = await connections.connectionCards.count();
-    expect(count).toBe(6);
+    expect(count).toBe(7);
   });
 
   // DC-CONN-02: Expand Telegram connection form
@@ -168,7 +169,7 @@ test.describe("Positive Workflows", () => {
   test("DC-CONN-09: external docs links are present", async ({ page }) => {
     const docsLinks = page.locator("a[title='Setup guide']");
     const count = await docsLinks.count();
-    expect(count).toBe(6);
+    expect(count).toBe(7);
 
     const links = await docsLinks.all();
     for (const link of links) {

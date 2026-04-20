@@ -72,7 +72,7 @@ You define the crew once. Run it whenever you need it.
 
 ### Publish to your channels
 
-Connect Solo to **Telegram, Discord, LinkedIn, Twitter/X, Instagram, and Facebook**. Your crews can draft and post content — with optional approval gates so nothing goes live without your sign-off.
+Connect Solo to **Telegram, Discord, Reddit, LinkedIn, Twitter/X, Instagram, and Facebook**. Your crews can draft and post content — with optional approval gates so nothing goes live without your sign-off.
 
 ---
 
@@ -100,7 +100,7 @@ Your client proposals, financial models, legal reviews, and business strategies 
 
 ---
 
-## 81 Business Agents, Ready to Work
+## 93 Business Agents, Ready to Work
 
 Solo ships with specialized agents across every business function:
 
@@ -151,7 +151,7 @@ Solo exposes an **OpenAI-compatible API endpoint** (`/v1/chat/completions`) on y
 - **10 Blueprint Templates** — Pre-built workflow templates across strategy, content, marketing, product, and research
 - **Workshop Mode** — Run multi-agent brainstorming sessions with structured outputs
 - **10 Persona Types** — Nexus Agent, Web Researcher, database connectors (PostgreSQL, MySQL, MSSQL, Snowflake, MongoDB), MCP Server, API Connector, File Operations
-- **6 Platform Connections** — Telegram, Discord, LinkedIn, Twitter/X, Instagram, Facebook with approval gates. See the [Connections Guide](CONNECTIONS-GUIDE.md) for setup
+- **7 Platform Connections** — Telegram, Discord, Reddit, LinkedIn, Twitter/X, Instagram, Facebook with approval gates. See the [Connections Guide](CONNECTIONS-GUIDE.md) for setup
 - **Brand Voice** — Define your business identity so every response sounds like you
 - **Dark/Light Theme** — Easy on the eyes, day or night
 
@@ -164,8 +164,16 @@ Solo exposes an **OpenAI-compatible API endpoint** (`/v1/chat/completions`) on y
 | Platform | Installer | How to Install |
 |----------|-----------|----------------|
 | **Windows** | `.exe` or `.msi` | Run the installer. If SmartScreen warns "Windows protected your PC", click **"More info"** → **"Run anyway"** |
-| **macOS** | `.dmg` | Open the DMG, drag to Applications. On first launch: **right-click** the app → **"Open"** → **"Open"** again |
+| **macOS** | `.dmg` | Open the DMG, drag to Applications. Then run the command below in Terminal to clear Gatekeeper's quarantine flag, and launch the app normally |
 | **Linux** | `.deb` / `.rpm` | `sudo dpkg -i contextuai-solo_*.deb` or `sudo rpm -i contextuai-solo-*.rpm` |
+
+**macOS Gatekeeper fix** — After dragging the app to Applications, run this once in Terminal:
+
+```bash
+xattr -cr "/Applications/ContextuAI Solo.app"
+```
+
+Without this, macOS may silently refuse to launch the app (or show "app is damaged and can't be opened") because the `.dmg` isn't Apple-notarized yet. The command strips the quarantine attribute so the app opens normally on every launch afterward.
 
 > **Note:** Windows SmartScreen and macOS Gatekeeper warnings are normal for new open-source software that isn't yet EV code-signed. You only need to bypass them once.
 
@@ -190,14 +198,14 @@ This is an active beta — we'd love your feedback! If you run into any issues:
 | Feature | Solo (Free) | Enterprise |
 |---------|:-----------:|:----------:|
 | AI Chat with Streaming | Yes | Yes |
-| 81 Business Agents | Yes | Yes |
+| 93 Business Agents | Yes | Yes |
 | 10 Persona Types | Yes | Yes |
 | Multi-Agent Crews | Yes | Yes |
 | Workshop (Brainstorming) | Yes | Yes |
 | BYOK (Bring Your Own Key) | Yes | Yes |
 | Local AI Models (GGUF) | Yes | Yes |
 | Dark/Light Theme | Yes | Yes |
-| 6 Platform Connections | Yes | Yes |
+| 7 Platform Connections | Yes | Yes |
 | SQLite (Local Storage) | Yes | -- |
 | MongoDB + Cloud Infra | -- | Yes |
 | Multi-User / Teams | -- | Yes |
@@ -256,7 +264,7 @@ contextuai-solo/
 │   ├── routers/        # API route handlers
 │   ├── services/       # Business logic and AI orchestration
 │   └── requirements.txt
-├── agent-library/      # Built-in agent templates (81 agents across 12 categories)
+├── agent-library/      # Built-in agent templates (105 agents across 13 categories; engineering excluded from desktop → 93 visible)
 ├── docs/user-guide/    # Per-module user guides
 ├── run.sh              # One-command backend launcher (Linux/macOS)
 ├── run-tests.ps1       # One-click test runner (backend + frontend)

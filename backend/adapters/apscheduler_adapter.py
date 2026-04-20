@@ -75,6 +75,17 @@ class APSchedulerAdapter(SchedulerAdapter):
             self._scheduler = None
             logger.info("APSchedulerAdapter stopped")
 
+    def scheduler(self):
+        """Return the underlying AsyncIOScheduler for advanced use.
+
+        Services that need richer APScheduler features (cron triggers,
+        interval triggers, job introspection) can obtain the live
+        scheduler through this helper instead of reaching into the
+        private ``_scheduler`` attribute.
+        """
+        self._require_running()
+        return self._scheduler
+
     # ------------------------------------------------------------------
     # Task scheduling
     # ------------------------------------------------------------------

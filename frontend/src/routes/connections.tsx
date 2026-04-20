@@ -6,6 +6,7 @@ import {
   Linkedin,
   AtSign,
   Camera,
+  Flame,
   Globe,
   Check,
   Eye,
@@ -40,7 +41,7 @@ import {
 
 // ─── Types ──────────────────────────────────────────────────────
 
-type ConnectionId = "telegram" | "discord" | "linkedin" | "twitter" | "instagram" | "facebook";
+type ConnectionId = "telegram" | "discord" | "linkedin" | "twitter" | "instagram" | "facebook" | "reddit";
 
 interface ConnectionConfig {
   id: ConnectionId;
@@ -250,6 +251,28 @@ const CONNECTIONS: ConnectionConfig[] = [
     defaultInbound: false,
     defaultOutbound: true,
   },
+  {
+    id: "reddit",
+    name: "Reddit",
+    description: "Poll subreddits and your inbox; auto-reply to comments and DMs with approval gating.",
+    icon: Flame,
+    iconBg: "bg-orange-100 dark:bg-orange-500/20",
+    iconColor: "text-orange-600 dark:text-orange-400",
+    docsUrl: "https://www.reddit.com/prefs/apps",
+    oauthProvider: null,
+    supportsInbound: true,
+    supportsOutbound: true,
+    defaultInbound: true,
+    defaultOutbound: true,
+    fields: [
+      { key: "client_id", label: "Client ID", placeholder: "From reddit.com/prefs/apps (script app)" },
+      { key: "client_secret", label: "Client Secret", placeholder: "Script app secret", secret: true },
+      { key: "username", label: "Reddit Username", placeholder: "your_reddit_handle" },
+      { key: "password", label: "Reddit Password", placeholder: "Account password", secret: true },
+      { key: "subreddits", label: "Subreddits (comma-separated)", placeholder: "LocalLLaMA,selfhosted" },
+      { key: "keywords", label: "Keywords (comma-separated)", placeholder: "local LLM, ollama, gguf" },
+    ],
+  },
 ];
 
 // ─── Helpers ────────────────────────────────────────────────────
@@ -364,10 +387,38 @@ export default function ConnectionsPage() {
     setShowSecrets({});
   };
 
-  // Token-paste save (Telegram/Discord)
+  // Token-paste save (Telegram/Discord/Reddit)
   const handleSave = async (connId: ConnectionId) => {
     setTesting(connId);
-    await new Promise((r) => setTimeout(r, 1500));
+
+    // Reddit has a dedicated backend endpoint — save there too so the poller picks it up.
+    if (connId === "reddit") {
+      try {
+        const { createRedditAccount, testRedditConnection } = await import(
+          "@/lib/api/reddit-client"
+        );
+        await createRedditAccount({
+          client_id: formData.client_id?.trim() || "",
+          client_secret: formData.client_secret?.trim() || "",
+          username: formData.username?.trim() || "",
+          password: formData.password?.trim() || "",
+          subreddits: (formData.subreddits || "")
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean),
+          keywords: (formData.keywords || "")
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean),
+          poll_inbox: formInbound,
+        });
+        await testRedditConnection();
+      } catch (e) {
+        console.error("Reddit save/test failed", e);
+      }
+    } else {
+      await new Promise((r) => setTimeout(r, 1500));
+    }
 
     const hasValues = Object.values(formData).some((v) => v.trim());
     const status = hasValues ? "connected" : "disconnected";

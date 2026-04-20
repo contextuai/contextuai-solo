@@ -1,0 +1,18 @@
+{
+  "id": "content-distribution-crew",
+  "name": "Content Distribution Crew",
+  "description": "Takes a single source piece of content and distributes it across LinkedIn, Twitter/X, and Instagram in platform-native formats. The repurposer adapts the core idea for each surface; the thread composer structures the long-form narrative sequence. Runs in parallel so all channels publish together.",
+  "execution_mode": "parallel",
+  "agents": [
+    "social_engagement-content-repurposer",
+    "social_engagement-thread-composer"
+  ],
+  "channel_bindings": [
+    { "channel_type": "linkedin", "enabled": true, "approval_required": false },
+    { "channel_type": "twitter", "enabled": true, "approval_required": false },
+    { "channel_type": "instagram", "enabled": true, "approval_required": false }
+  ],
+  "tags": ["content", "distribution", "cross-post", "outbound"],
+  "is_template": true,
+  "is_system": true
+}

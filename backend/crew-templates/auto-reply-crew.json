@@ -1,0 +1,20 @@
+{
+  "id": "auto-reply-crew",
+  "name": "Auto-Reply Crew",
+  "description": "Sequential triage-to-response pipeline for inbound messages across Telegram, Discord, Reddit, and Twitter/X. Classifies each incoming message, drafts a brand-voice reply, and scores the outgoing sentiment before dispatch so complaints never slip past and responses never miss the mark.",
+  "execution_mode": "sequential",
+  "agents": [
+    "social_engagement-triage-agent",
+    "social_engagement-social-media-responder",
+    "social_engagement-sentiment-analyzer"
+  ],
+  "channel_bindings": [
+    { "channel_type": "telegram", "enabled": true, "approval_required": false },
+    { "channel_type": "discord", "enabled": true, "approval_required": false },
+    { "channel_type": "reddit", "enabled": true, "approval_required": true },
+    { "channel_type": "twitter", "enabled": true, "approval_required": true }
+  ],
+  "tags": ["social", "inbound", "auto-reply", "triage"],
+  "is_template": true,
+  "is_system": true
+}

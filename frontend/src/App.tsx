@@ -16,6 +16,8 @@ import ConnectionsPage from "@/routes/connections";
 import ModelsPage from "@/routes/models";
 import SettingsPage from "@/routes/settings";
 import ApprovalsPage from "@/routes/approvals";
+import SchedulePage from "@/routes/schedule";
+import DistributionPage from "@/routes/distribution";
 import BlueprintsPage from "@/routes/blueprints";
 import WizardPage from "@/routes/wizard";
 import { UpdateNotifier } from "@/components/update-notifier";
@@ -116,6 +118,8 @@ export default function App() {
                 <Route path="/workspace/:id" element={<WorkspacePage />} />
                 <Route path="/connections" element={<ConnectionsPage />} />
                 <Route path="/approvals" element={<ApprovalsPage />} />
+                <Route path="/schedule" element={<SchedulePage />} />
+                <Route path="/distribution" element={<DistributionPage />} />
                 <Route path="/analytics" element={<AnalyticsPage />} />
                 <Route path="/settings" element={<SettingsPage />} />
               </Route>

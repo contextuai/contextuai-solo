@@ -24,7 +24,7 @@ export async function createSession(opts?: {
   personaId?: string;
   modelId?: string;
 }): Promise<ChatSession> {
-  const { data } = await api.post<ChatSession>(
+  const { data } = await api.post<{ success: boolean; session: ChatSession }>(
     `/chat-sessions/?user_id=${encodeURIComponent(USER_ID)}`,
     {
       userId: USER_ID,
@@ -33,7 +33,7 @@ export async function createSession(opts?: {
       modelId: opts?.modelId,
     }
   );
-  return data;
+  return data.session;
 }
 
 export async function listUserSessions(options?: {

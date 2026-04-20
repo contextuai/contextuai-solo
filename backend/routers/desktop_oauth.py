@@ -395,6 +395,86 @@ async def oauth_callback(
 
         logger.info("OAuth connected: %s (profile: %s)", provider, profile_name)
 
+        # Resolve provider-specific channel config extras (Meta pages, IG biz id)
+        extra_config: dict = {}
+        if provider in ("instagram", "facebook"):
+            try:
+                async with httpx.AsyncClient(timeout=15.0) as mc:
+                    pages_resp = await mc.get(
+                        "https://graph.facebook.com/v21.0/me/accounts",
+                        params={"access_token": access_token},
+                    )
+                if pages_resp.status_code == 200:
+                    pages = (pages_resp.json().get("data") or [])
+                    if pages:
+                        # TODO: multi-page selection UI — for now pick the first page
+                        first_page = pages[0]
+                        page_id = first_page.get("id")
+                        page_access_token = first_page.get("access_token")
+
+                        if provider == "facebook":
+                            if page_id:
+                                extra_config["page_id"] = page_id
+                            if page_access_token:
+                                extra_config["page_access_token"] = page_access_token
+                            if not page_id or not page_access_token:
+                                logger.warning(
+                                    "Facebook page info incomplete (page_id=%s, token=%s)",
+                                    bool(page_id), bool(page_access_token),
+                                )
+
+                        elif provider == "instagram":
+                            # IG business account is linked to a FB page;
+                            # fetch it via the page-level token.
+                            if page_id and page_access_token:
+                                try:
+                                    async with httpx.AsyncClient(timeout=15.0) as mc2:
+                                        ig_resp = await mc2.get(
+                                            f"https://graph.facebook.com/v21.0/{page_id}",
+                                            params={
+                                                "fields": "instagram_business_account",
+                                                "access_token": page_access_token,
+                                            },
+                                        )
+                                    if ig_resp.status_code == 200:
+                                        ig_biz = (ig_resp.json() or {}).get(
+                                            "instagram_business_account"
+                                        )
+                                        if ig_biz and ig_biz.get("id"):
+                                            extra_config["instagram_user_id"] = ig_biz["id"]
+                                            extra_config["page_access_token"] = page_access_token
+                                            extra_config["page_id"] = page_id
+                                        else:
+                                            logger.warning(
+                                                "Facebook page %s has no linked Instagram "
+                                                "business account — IG publishing disabled",
+                                                page_id,
+                                            )
+                                    else:
+                                        logger.warning(
+                                            "Failed to fetch IG business account from page %s: "
+                                            "%s %s",
+                                            page_id, ig_resp.status_code, ig_resp.text[:200],
+                                        )
+                                except Exception as ig_err:
+                                    logger.warning(
+                                        "IG business-account lookup failed: %s", ig_err
+                                    )
+                    else:
+                        logger.warning(
+                            "%s OAuth: user has no Facebook pages (required for publishing)",
+                            provider,
+                        )
+                else:
+                    logger.warning(
+                        "%s OAuth: /me/accounts call failed %s: %s",
+                        provider, pages_resp.status_code, pages_resp.text[:200],
+                    )
+            except Exception as meta_err:
+                logger.warning(
+                    "%s OAuth: page-info lookup failed: %s", provider, meta_err
+                )
+
         # Auto-register a distribution channel so crew publishing works
         # without the user having to register credentials in two places
         try:
@@ -402,7 +482,7 @@ async def oauth_callback(
             existing = await dist_coll.find_one({"channel_type": provider})
             if not existing:
                 import uuid
-                channel_config = {"access_token": access_token}
+                channel_config = {"access_token": access_token, **extra_config}
                 if provider == "linkedin" and profile_id:
                     # Use org_id for company page, profile_id for personal
                     org_id = doc.get("org_id")
@@ -437,6 +517,8 @@ async def oauth_callback(
                         update_set["config.author_urn"] = f"urn:li:organization:{org_id}"
                     elif profile_id:
                         update_set["config.author_urn"] = f"urn:li:person:{profile_id}"
+                for k, v in extra_config.items():
+                    update_set[f"config.{k}"] = v
                 await dist_coll.update_one(
                     {"channel_type": provider},
                     {"$set": update_set},
