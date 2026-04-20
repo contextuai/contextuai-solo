@@ -24,6 +24,9 @@ class RedditAccount(BaseModel):
     enabled: bool = Field(default=True)
     last_seen_ids: dict = Field(default_factory=dict)
 
+    inbound_enabled: bool = Field(default=True)
+    outbound_enabled: bool = Field(default=True)
+
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
@@ -44,6 +47,8 @@ class RedditAccountUpdate(BaseModel):
     keywords: Optional[List[str]] = None
     poll_inbox: Optional[bool] = None
     enabled: Optional[bool] = None
+    inbound_enabled: Optional[bool] = None
+    outbound_enabled: Optional[bool] = None
 
 
 class RedditPostReply(BaseModel):

@@ -6,8 +6,8 @@ and maintain shared memory across runs.
 """
 
 from enum import Enum
-from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, Field, model_validator
+from typing import Optional, List, Dict, Any, Literal, Union, Annotated
+from pydantic import BaseModel, Field, model_validator, Discriminator
 
 
 # =============================================================================
@@ -116,6 +116,50 @@ class DistributionChannel(BaseModel):
     enabled: bool = True
 
 
+class ConnectionBinding(BaseModel):
+    """Binds a crew to a connection (platform auth) with a direction.
+
+    Direction controls whether the crew listens on inbound messages from this
+    connection, publishes outbound via it, or both.
+    """
+    connection_id: str = Field(..., description="ID of the underlying connection record (oauth_tokens.id, reddit_accounts.id, etc.)")
+    platform: str = Field(..., description="telegram | discord | reddit | linkedin | twitter | instagram | facebook | blog | email | slack_webhook")
+    direction: Literal["inbound", "outbound", "both"] = "both"
+
+
+class ReactiveTrigger(BaseModel):
+    """Fires when an inbound message on `connection_id` matches any keyword/hashtag/mention."""
+    type: Literal["reactive"] = "reactive"
+    connection_id: str
+    keywords: List[str] = Field(default_factory=list)
+    hashtags: List[str] = Field(default_factory=list)
+    mentions: List[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def require_at_least_one_match(self):
+        if not (self.keywords or self.hashtags or self.mentions):
+            raise ValueError("Reactive trigger requires at least one of keywords, hashtags, or mentions")
+        return self
+
+
+class ScheduledTrigger(BaseModel):
+    """Fires on a cron schedule (repeating) or at `run_at` (one-shot)."""
+    type: Literal["scheduled"] = "scheduled"
+    connection_ids: List[str] = Field(default_factory=list)
+    cron: Optional[str] = None
+    run_at: Optional[str] = Field(None, description="ISO-8601 datetime for one-shot scheduling")
+    content_brief: Optional[str] = None
+
+    @model_validator(mode="after")
+    def require_exactly_one_schedule(self):
+        if bool(self.cron) == bool(self.run_at):
+            raise ValueError("Scheduled trigger requires exactly one of `cron` or `run_at`")
+        return self
+
+
+CrewTrigger = Annotated[Union[ReactiveTrigger, ScheduledTrigger], Discriminator("type")]
+
+
 # =============================================================================
 # Request Models
 # =============================================================================
@@ -129,6 +173,9 @@ class CreateCrewRequest(BaseModel):
     schedule: Optional[CrewSchedule] = None
     channel_bindings: List[ChannelBinding] = Field(default_factory=list)
     distribution_channels: List[DistributionChannel] = Field(default_factory=list)
+    connection_bindings: List[ConnectionBinding] = Field(default_factory=list)
+    triggers: List[CrewTrigger] = Field(default_factory=list)
+    approval_required: bool = False
     memory_enabled: bool = True
     tags: List[str] = Field(default_factory=list)
 
@@ -177,6 +224,9 @@ class UpdateCrewRequest(BaseModel):
     schedule: Optional[CrewSchedule] = None
     channel_bindings: Optional[List[ChannelBinding]] = None
     distribution_channels: Optional[List[DistributionChannel]] = None
+    connection_bindings: Optional[List[ConnectionBinding]] = None
+    triggers: Optional[List[CrewTrigger]] = None
+    approval_required: Optional[bool] = None
     memory_enabled: Optional[bool] = None
     tags: Optional[List[str]] = None
     status: Optional[CrewStatus] = None
@@ -206,6 +256,9 @@ class CrewResponse(BaseModel):
     schedule: Optional[CrewSchedule] = None
     channel_bindings: List[ChannelBinding] = Field(default_factory=list)
     distribution_channels: List[DistributionChannel] = Field(default_factory=list)
+    connection_bindings: List[ConnectionBinding] = Field(default_factory=list)
+    triggers: List[CrewTrigger] = Field(default_factory=list)
+    approval_required: bool = False
     memory_enabled: bool = True
     tags: List[str] = Field(default_factory=list)
     total_runs: int = 0
@@ -281,6 +334,11 @@ class CrewRunResponse(BaseModel):
     completed_at: Optional[str] = None
     created_at: Optional[str] = None
     duration_ms: Optional[int] = None
+    trigger_type: Literal["reactive", "scheduled", "manual"] = "manual"
+    trigger_source: Optional[str] = Field(
+        None,
+        description="connection_id (reactive), cron expression or run_at (scheduled), or 'manual' (button)"
+    )
 
     class Config:
         from_attributes = True
@@ -298,6 +356,8 @@ class CrewRunListItem(BaseModel):
     completed_at: Optional[str] = None
     duration_ms: Optional[int] = None
     created_at: Optional[str] = None
+    trigger_type: Literal["reactive", "scheduled", "manual"] = "manual"
+    trigger_source: Optional[str] = None
 
 
 class CrewRunListResponse(BaseModel):

@@ -470,6 +470,15 @@ async def startup_event():
         # Seed model configs for any already-downloaded local GGUF models
         await _seed_local_models(proxy)
 
+        # Phase 3 PR 1: backfill crew.connection_bindings / triggers / approval_required
+        try:
+            from services.migrations.unify_connections_migration import (
+                run_unify_connections_migration,
+            )
+            await run_unify_connections_migration(proxy)
+        except Exception:
+            logger.exception("unify_connections migration failed; continuing startup")
+
         # Start Reddit poller (runs only when a Reddit account is configured)
         from services.reddit_poller import get_poller
 
