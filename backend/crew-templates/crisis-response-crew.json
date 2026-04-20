@@ -1,0 +1,21 @@
+{
+  "id": "crisis-response-crew",
+  "name": "Crisis Response Crew",
+  "description": "Triggered by negative sentiment spikes or brand-safety events. Detects the crisis signal, enforces brand voice and legal-safe language on every outgoing message, and drafts calibrated responses for each affected channel. Approval-gated by default so nothing ships without a human in the loop.",
+  "execution_mode": "sequential",
+  "agents": [
+    "social_engagement-crisis-monitor",
+    "social_engagement-brand-voice-guardian",
+    "social_engagement-social-media-responder"
+  ],
+  "channel_bindings": [
+    { "channel_type": "twitter", "enabled": true, "approval_required": true },
+    { "channel_type": "linkedin", "enabled": true, "approval_required": true },
+    { "channel_type": "instagram", "enabled": true, "approval_required": true },
+    { "channel_type": "facebook", "enabled": true, "approval_required": true },
+    { "channel_type": "reddit", "enabled": true, "approval_required": true }
+  ],
+  "tags": ["crisis", "brand-safety", "escalation", "approval-required"],
+  "is_template": true,
+  "is_system": true
+}

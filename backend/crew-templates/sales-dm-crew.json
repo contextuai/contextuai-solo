@@ -1,0 +1,19 @@
+{
+  "id": "sales-dm-crew",
+  "name": "Sales DM Crew",
+  "description": "Converts inbound direct messages into qualified pipeline on LinkedIn, Instagram, and Twitter/X. Qualifies the lead's fit and intent, moves the conversation toward a booked call or purchase, and covers predictable FAQs without losing the warm thread.",
+  "execution_mode": "sequential",
+  "agents": [
+    "social_engagement-lead-qualifier",
+    "social_engagement-dm-closer",
+    "social_engagement-faq-auto-responder"
+  ],
+  "channel_bindings": [
+    { "channel_type": "linkedin", "enabled": true, "approval_required": true },
+    { "channel_type": "instagram", "enabled": true, "approval_required": true },
+    { "channel_type": "twitter", "enabled": true, "approval_required": true }
+  ],
+  "tags": ["sales", "dm", "qualification", "closing"],
+  "is_template": true,
+  "is_system": true
+}

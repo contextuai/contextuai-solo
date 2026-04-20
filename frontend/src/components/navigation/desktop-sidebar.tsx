@@ -9,6 +9,8 @@ import {
   FlaskConical,
   Cable,
   ClipboardCheck,
+  Clock,
+  Send,
   Settings,
   ChevronLeft,
   ChevronRight,
@@ -38,6 +40,8 @@ const navItems: NavItem[] = [
   { label: "Workspace", path: "/workspace", icon: FlaskConical },
   { label: "Connections", path: "/connections", icon: Cable },
   { label: "Approvals", path: "/approvals", icon: ClipboardCheck },
+  { label: "Schedule", path: "/schedule", icon: Clock },
+  { label: "Distribution", path: "/distribution", icon: Send },
   { label: "Settings", path: "/settings", icon: Settings },
 ];
 

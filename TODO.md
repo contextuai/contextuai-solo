@@ -169,53 +169,41 @@
 ## PHASE 2: EXPAND REACH
 
 ### P2-1: Twitter/X Inbound Polling (GAP 3)
-**Status:** [ ] Not Started
-**Effort:** 1 day
-- [ ] `backend/services/twitter_poller.py` — background polling `GET /2/users/:id/mentions` every 60s
-- [ ] Store `last_seen_id` to avoid duplicate processing
-- [ ] Feed new mentions into trigger system
-- [ ] Also poll `GET /2/dm_events` for DM auto-reply
+**Status:** [x] COMPLETE (2026-04-19)
+- [x] `backend/services/twitter_poller.py` — 90s poll cycle (tighter than Twitter free-tier cap)
+- [x] `backend/models/twitter_models.py`, `backend/repositories/twitter_repository.py`, `backend/services/twitter_client.py` (OAuth 1.0a HMAC-SHA1 signing reused from distribution_service)
+- [x] `backend/routers/twitter.py` — REST CRUD + `/test` + `/reply`
+- [x] `ChannelType.TWITTER` added; poller dispatches through `channel_service.handle_message()`
+- [x] `frontend/src/lib/api/twitter-client.ts`
 
 ### P2-2: Fix Instagram Publishing (GAP 4)
-**Status:** [ ] Not Started
-**Effort:** 0.5 day
-- [ ] After Facebook OAuth, call Instagram Graph API to get `instagram_business_account`
-- [ ] Store correct `instagram_user_id` (not `profile_id`) — currently still reads profile_id in `distribution_service.py:443`
-- [ ] File: `backend/routers/desktop_oauth.py`
+**Status:** [x] COMPLETE (2026-04-19)
+- [x] OAuth callback now calls `GET /me/accounts` → `GET /{page_id}?fields=instagram_business_account`
+- [x] Stores `instagram_user_id`, `page_access_token`, `page_id` in the auto-created distribution channel
+- [x] Graceful no-op + warning if user has no IG-linked pages
 
 ### P2-3: Fix Facebook Publishing (GAP 4)
-**Status:** [ ] Not Started
-**Effort:** 0.5 day
-- [ ] Auto-populate `page_id` from OAuth token (no population currently in `desktop_oauth.py`)
-- [ ] Or add page selection step in connection flow
+**Status:** [x] COMPLETE (2026-04-19)
+- [x] OAuth callback calls `GET /me/accounts`, stores `page_id` + `page_access_token` (first page)
+- [x] TODO: multi-page selection UI (future)
 
 ### P2-4: Distribution UI (GAP 5)
-**Status:** [ ] Not Started
-**Effort:** 1 day
-- [ ] New frontend route `/distribution` (no route exists yet)
-- [ ] List distribution channels, manual publish button
-- [ ] Publish history view
-- [ ] Backend API already exists: `POST /api/v1/distribution/publish`
+**Status:** [x] COMPLETE (2026-04-19)
+- [x] `frontend/src/routes/distribution.tsx` — Channels list + Delivery history tabs
+- [x] Dynamic per-type config fields (LinkedIn / Twitter OAuth1+bearer / IG / FB / Blog / Email / Slack)
+- [x] Multi-channel Publish dialog with per-channel success/fail summary
+- [x] Enable/disable toggle, edit/delete, masked credentials on edit
+- [x] Route + sidebar (Send icon) wired
 
 ### P2-5: Add 15 Social Media Agents
-**Status:** [~] 12/15 DONE (folder: `agent-library/social-engagement/`)
-**Effort:** 0.2 day remaining
-
-**Already present:** social-media-responder, sentiment-analyzer, triage-agent, brand-voice-guardian, troll-detector, lead-qualifier, faq-auto-responder, engagement-strategist, content-repurposer, crisis-monitor, competitor-watcher, hashtag-optimizer
-
-**Missing (add these):**
-- [ ] `thread-composer.md`
-- [ ] `dm-closer.md`
-- [ ] `community-manager.md`
+**Status:** [x] COMPLETE 15/15 (2026-04-19)
+- [x] Added: `thread-composer.md`, `dm-closer.md`, `community-manager.md`
 
 ### P2-6: Pre-built Crew Templates
-**Status:** [ ] Not Started (only a frontend helper exists at `frontend/src/lib/crews/marketing-crew-template.ts` — no DB seeding)
-**Effort:** 0.5 day
-- [ ] Seed 4 crew templates on startup (like agent seeding)
-- [ ] Auto-Reply Crew (3 agents, sequential)
-- [ ] Sales DM Crew (3 agents, sequential)
-- [ ] Content Distribution Crew (2 agents, sequential)
-- [ ] Crisis Response Crew (3 agents, sequential)
+**Status:** [x] COMPLETE (2026-04-19)
+- [x] 4 JSON templates in `backend/crew-templates/`: auto-reply, sales-dm, content-distribution, crisis-response
+- [x] `backend/services/crew_template_seeder.py` — seeds into separate `crew_templates` collection on startup
+- [x] Re-seed via `POST /api/v1/desktop/reseed` (includes crew_templates_seeded count)
 
 ---
 
@@ -227,12 +215,14 @@
 - [ ] Code Reviewer, Bug Analyzer, Test Writer, Doc Generator, Refactoring Advisor
 - [ ] Crew template: Code Review Crew (sequential)
 
-### BL-3: Scheduled Crews (Cron-style)
-**Status:** [ ] Not Started
-**Effort:** 2-3 days
-- [ ] `crew_scheduler_service.py` with APScheduler
-- [ ] UI: cron picker in crew config
-- [ ] "Run this crew every morning at 9am"
+### BL-3: Scheduled Crews + Scheduled Posts (Cron-style)
+**Status:** [x] COMPLETE (2026-04-19)
+- [x] `backend/services/scheduler_service.py` — APScheduler-backed, supports `job_type=post` (via DistributionService) and `job_type=crew` (via CrewService.start_run)
+- [x] `backend/models/scheduled_job.py`, `backend/repositories/scheduled_job_repository.py`, `backend/routers/scheduled_jobs.py`
+- [x] REST: CRUD + `/run-now` + `/toggle` + `/validate-cron` (returns next 5 fire times)
+- [x] Frontend `/schedule` route — cron picker with presets (daily 9am, weekdays, hourly, Monday), timezone select, live preview of next runs
+- [x] Publishes on behalf of user to LinkedIn / Twitter / Instagram / Facebook / Slack / Blog / Email via existing DistributionService
+- [x] Survives restarts (APScheduler SQLite jobstore)
 
 ### BL-4: Crew Templates Marketplace
 **Status:** [ ] Not Started
@@ -283,8 +273,8 @@
 **Next up order:**
 1. ~~Merge `feat/crew-channel-wiring` → main + cut `v1.0.0-beta.4`~~ DONE (#17 merged, beta.6 tagged)
 2. ~~P2.5-1 Reddit Connection~~ DONE (2026-04-15)
-3. P2.5-2 Knowledge Base (RAG) — reuse existing `embedding_service.py`
-4. Phase 2 remainder: Twitter inbound poller, IG/FB publishing fixes, Distribution UI, 3 missing social agents, crew template seeding
+3. ~~Phase 2 remainder (P2-1…P2-6) + BL-3 Scheduler~~ DONE (2026-04-19)
+4. P2.5-2 Knowledge Base (RAG) — reuse existing `embedding_service.py`
 5. Phase 3 Launch
 
 ---

@@ -36,6 +36,7 @@ class ChannelType(str, Enum):
     WHATSAPP = "whatsapp"
     TELEGRAM = "telegram"
     REDDIT = "reddit"
+    TWITTER = "twitter"
 
 
 class ChannelMessage:
