@@ -264,7 +264,7 @@ contextuai-solo/
 │   ├── routers/        # API route handlers
 │   ├── services/       # Business logic and AI orchestration
 │   └── requirements.txt
-├── agent-library/      # Built-in agent templates (105 agents across 13 categories; engineering excluded from desktop → 93 visible)
+├── agent-library/      # Built-in agent templates (108 agents across 13 categories; engineering excluded from desktop → 96 visible)
 ├── docs/user-guide/    # Per-module user guides
 ├── run.sh              # One-command backend launcher (Linux/macOS)
 ├── run-tests.ps1       # One-click test runner (backend + frontend)
@@ -286,7 +286,7 @@ contextuai-solo/
 | **Backend** | [FastAPI](https://fastapi.tiangolo.com/) (Python 3.11+) |
 | **Database** | [SQLite](https://sqlite.org/) via async adapter |
 | **AI Providers** | Anthropic Claude, OpenAI GPT, Google Gemini, AWS Bedrock |
-| **Local AI** | 37 GGUF models via llama-cpp-python (Qwen 3.5, Qwen 3, DeepSeek R1, Gemma 3, Llama 3, Mistral, Phi-4) — 0.5B to 70B |
+| **Local AI** | 41 GGUF models via llama-cpp-python (Gemma 4, Qwen 3.5, Qwen 3, DeepSeek R1, Llama 3, Mistral, Phi-4) — 0.5B to 70B |
 | **Agent Framework** | [Strands Agents SDK](https://github.com/strands-agents/sdk-python) |
 
 </details>

@@ -59,7 +59,7 @@ Choose how your agents collaborate:
 Build your agent team:
 
 - Click **Add Agent** to add a blank agent with name, role, and instructions.
-- Click **Browse Library** to pick from the 93 pre-built agents.
+- Click **Browse Library** to pick from the 96 pre-built agents.
 - Reorder agents to control the execution sequence (for Sequential mode).
 - Each agent needs a **name** and **instructions** at minimum.
 
