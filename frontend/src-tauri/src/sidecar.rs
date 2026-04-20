@@ -90,14 +90,17 @@ pub async fn start_sidecar(app_handle: &AppHandle) -> Result<(), String> {
         cmd.args(["--port", &port.to_string(), "--host", "127.0.0.1"])
             .current_dir(&sidecar_dir);
 
-        // Pass MODELS_DIR so the sidecar stores downloaded models persistently
-        let app_data_dir = app_handle
-            .path()
-            .app_data_dir()
-            .map_err(|e| format!("Failed to get app data dir: {}", e))?;
-        let models_dir = app_data_dir.join("models");
-        let _ = std::fs::create_dir_all(&models_dir);
-        cmd.env("MODELS_DIR", &models_dir);
+        // Models live at ~/.contextuai-solo/models/ — same path on every OS,
+        // matches the docs (README, CLAUDE.md, SETUP-GUIDE) and the dev-mode
+        // Python default. Pre-create the dir so first-run downloads succeed.
+        let _ = app_handle;
+        let home = std::env::var("USERPROFILE")
+            .or_else(|_| std::env::var("HOME"))
+            .map_err(|_| "Failed to resolve home directory (USERPROFILE/HOME unset)".to_string())?;
+        let solo_models_dir = std::path::PathBuf::from(home)
+            .join(".contextuai-solo")
+            .join("models");
+        let _ = std::fs::create_dir_all(&solo_models_dir);
 
         // Hide the console window on Windows
         #[cfg(target_os = "windows")]
