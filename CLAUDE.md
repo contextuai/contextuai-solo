@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-ContextuAI Solo is a single-user desktop AI assistant with 93 pre-built business agents (105 in repo, engineering category excluded from desktop). It's a Tauri v2 desktop app with a React 19 frontend and a FastAPI Python backend running as a sidecar process. Data is stored locally in SQLite. Supports both cloud AI providers (Anthropic, AWS Bedrock) and local GGUF models via llama-cpp-python.
+ContextuAI Solo is a single-user desktop AI assistant with 96 pre-built business agents (108 in repo, engineering category excluded from desktop). It's a Tauri v2 desktop app with a React 19 frontend and a FastAPI Python backend running as a sidecar process. Data is stored locally in SQLite. Supports both cloud AI providers (Anthropic, AWS Bedrock) and local GGUF models via llama-cpp-python.
 
 ## Commands
 
@@ -71,19 +71,19 @@ The backend was ported from MongoDB. A compatibility layer preserves the Motor A
 
 ### Local AI Models (`backend/routers/local_models.py`)
 GGUF models downloaded from HuggingFace, stored in `~/.contextuai-solo/models/`. Inference via llama-cpp-python on CPU.
-- Available models: Gemma 3 1B, Qwen 2.5 1.5B, Phi-3 Mini
+- 41 curated GGUF models (Gemma 4, Qwen 3/3.5, DeepSeek R1, Llama 3, Mistral, Phi-4, etc.) from 0.5B to 70B
 - Download: `POST /api/v1/local-models/{model_id}/download` (SSE progress)
 - Sync to DB: `POST /api/v1/local-models/sync` (registers downloaded models in the `models` collection)
 - Models appear in chat dropdown after sync
 
 ### Agent Library (`agent-library/`)
-105 business agents as markdown files across 13 categories (c-suite, marketing-sales, finance-operations, etc.). Engineering category (12 agents) is excluded from desktop mode, so users see 93 across 12 categories. Each markdown file contains a system prompt, recommended model, and tool configs. Auto-seeded into `workspace_agents` collection on first startup. Re-seed via `POST /api/v1/desktop/reseed`.
+108 business agents as markdown files across 13 categories (c-suite, marketing-sales, finance-operations, etc.). Engineering category (12 agents) is excluded from desktop mode, so users see 96 across 12 categories. Each markdown file contains a system prompt, recommended model, and tool configs. Auto-seeded into `workspace_agents` collection on first startup. Re-seed via `POST /api/v1/desktop/reseed`.
 
 ### Crew System
 Multi-agent teams with persistent memory. Crew builder (`components/crews/crew-builder.tsx`) is a 5-step wizard:
 1. **Details** — name, description, blueprint, AI model selection
 2. **Execution Mode** — sequential, parallel, pipeline, autonomous
-3. **Agent Team** — add agents from 81-agent library or manually (skipped for autonomous)
+3. **Agent Team** — add agents from the 96-agent library or manually (skipped for autonomous)
 4. **Connections** — bind crew to social channels (Telegram, Discord, LinkedIn, Twitter/X, Instagram, Facebook)
 5. **Review** — configuration summary before create
 

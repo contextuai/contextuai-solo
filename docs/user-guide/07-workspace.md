@@ -33,7 +33,7 @@ Click any project card to view its results.
 
 ### Step 2: Agent Selection
 
-- Browse the list of available agents from the 81-agent library
+- Browse the list of available agents from the 96-agent library
 - **Search** to filter agents by name
 - **Check** agents to add them to your project
 - A **count badge** shows how many agents you've selected
