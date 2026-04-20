@@ -3,9 +3,10 @@ import { type Page, type Locator, expect } from "@playwright/test";
 /**
  * Page object for the Desktop Connections route ("/connections").
  *
- * The page contains 6 connection cards:
+ * The page contains 7 connection cards:
  * - Telegram Bot (token-paste flow)
  * - Discord Bot (token-paste flow)
+ * - Reddit (token-paste flow — 6 fields)
  * - Twitter / X (token-paste flow — 4 fields)
  * - LinkedIn (OAuth flow)
  * - Instagram (OAuth flow)
