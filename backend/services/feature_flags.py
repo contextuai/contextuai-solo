@@ -22,5 +22,10 @@ def _env_truthy(name: str, default: bool = False) -> bool:
 
 
 def unified_crews_enabled() -> bool:
-    """Read at call time so tests can monkeypatch the env var per-case."""
-    return _env_truthy("UNIFIED_CREWS", default=False)
+    """Read at call time so tests can monkeypatch the env var per-case.
+
+    Phase 3 PR 4 flipped the default to True — the unified inbound_router +
+    scheduled_runner + direction-aware outbound publishing is now the primary
+    code path. Set UNIFIED_CREWS=0 to fall back to the legacy paths.
+    """
+    return _env_truthy("UNIFIED_CREWS", default=True)
