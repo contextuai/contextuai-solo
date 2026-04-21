@@ -1385,7 +1385,7 @@ export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderP
                 </p>
                 {reactiveTriggers.length === 0 && connectionBindings.filter((b) => b.direction === "inbound" || b.direction === "both").length === 0 && (
                   <p className="text-xs text-neutral-400 dark:text-neutral-500 italic">
-                    Bind at least one inbound connection on the previous step to enable reactive triggers.
+                    To add a reactive trigger, go back to <b>Step 4</b> and pick a connection with direction <b>Inbound</b> or <b>Both</b>. Triggers are configured per inbound-bound connection.
                   </p>
                 )}
                 <div className="space-y-3">

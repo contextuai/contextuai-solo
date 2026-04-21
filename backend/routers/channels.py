@@ -100,6 +100,19 @@ async def register_channel(
     return {"status": "success", "data": reg}
 
 
+@router.delete("/registrations/{registration_id}", dependencies=[Depends(require_admin)])
+async def delete_registration(
+    registration_id: str,
+    svc: ChannelService = Depends(get_channel_service),
+):
+    """Remove a channel registration by its native _id."""
+    coll = svc.db["channel_registrations"]
+    result = await coll.delete_one({"_id": registration_id})
+    if result.deleted_count == 0:
+        raise HTTPException(404, f"Registration {registration_id} not found")
+    return {"status": "success"}
+
+
 @router.get("/conversations", dependencies=[Depends(require_admin)])
 async def list_conversations(
     channel_type: Optional[str] = Query(None),

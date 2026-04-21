@@ -575,6 +575,27 @@ export default function ConnectionsPage() {
       } catch (e) {
         console.error("Reddit save/test failed", e);
       }
+    } else if (connId === "telegram" || connId === "discord") {
+      // Phase 3: persist Telegram/Discord to backend channel_registrations
+      // so the /api/v1/connections aggregator (crew-builder Step 4) surfaces them.
+      // Without this, Solo's Connections page was localStorage-only and Step 4
+      // saw an empty list.
+      try {
+        const { api } = await import("@/lib/transport");
+        const config: Record<string, string> = {};
+        for (const [k, v] of Object.entries(formData)) {
+          const trimmed = v.trim();
+          if (trimmed) config[k] = trimmed;
+        }
+        if (Object.keys(config).length > 0) {
+          await api.post("/channels/registrations", {
+            channel_type: connId,
+            config,
+          });
+        }
+      } catch (e) {
+        console.error(`${connId} backend save failed (localStorage still updated)`, e);
+      }
     } else {
       await new Promise((r) => setTimeout(r, 1500));
     }
@@ -668,6 +689,23 @@ export default function ConnectionsPage() {
         }));
       } catch {
         // proceed with local cleanup anyway
+      }
+    }
+
+    // Phase 3: Telegram/Discord — drop the backend registration so the
+    // aggregator stops surfacing it.
+    if (conn.id === "telegram" || conn.id === "discord") {
+      try {
+        const { api } = await import("@/lib/transport");
+        const { data } = await api.get<{ data?: { registrations?: Array<{ id?: string; channel_type?: string }> } }>("/channels/registrations");
+        const regs = data?.data?.registrations ?? [];
+        for (const reg of regs) {
+          if (reg.channel_type === conn.id && reg.id) {
+            await api.delete(`/channels/registrations/${reg.id}`).catch(() => {});
+          }
+        }
+      } catch (e) {
+        console.error(`Failed to drop ${conn.id} from backend`, e);
       }
     }
 
