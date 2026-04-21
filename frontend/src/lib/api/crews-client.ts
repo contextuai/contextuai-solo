@@ -71,6 +71,8 @@ export interface CrewRun {
   input_data?: Record<string, unknown>;
   output_data?: Record<string, unknown>;
   error?: string;
+  trigger_type?: "reactive" | "scheduled" | "manual";
+  trigger_source?: string;
 }
 
 export interface CrewRunStep {

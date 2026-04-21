@@ -189,13 +189,19 @@ class CrewService:
     # ------------------------------------------------------------------
 
     async def start_run(
-        self, crew_id: str, user_id: str, request: RunCrewRequest
+        self,
+        crew_id: str,
+        user_id: str,
+        request: RunCrewRequest,
+        trigger_type: str = "manual",
+        trigger_source: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Initiate a new crew execution run.
 
-        Creates the run record with agent states. Actual execution
-        will be handled by the CrewOrchestrator (Task #23) via Celery.
+        `trigger_type` records why this run fired: "manual" (Run button),
+        "reactive" (inbound message matched a trigger), or "scheduled" (cron/run_at).
+        `trigger_source` is the connection_id, cron expression, or "manual".
         """
         crew = await self.get_crew(crew_id, user_id)
         if not crew:
@@ -244,6 +250,8 @@ class CrewService:
             "input": request.input,
             "input_data": request.input_data if request.input_data else None,
             "agents": agent_states,
+            "trigger_type": trigger_type,
+            "trigger_source": trigger_source if trigger_source is not None else ("manual" if trigger_type == "manual" else None),
         }
 
         run = await self.run_repo.create_run(crew_id, user_id, run_data)
