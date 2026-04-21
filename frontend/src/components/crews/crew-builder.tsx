@@ -1,8 +1,18 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { cn } from "@/lib/utils";
-import { crewsApi, type CrewAgent, type LibraryAgent, type ChannelBinding } from "@/lib/api/crews-client";
+import {
+  crewsApi,
+  type CrewAgent,
+  type LibraryAgent,
+  type ChannelBinding,
+  type ConnectionBinding,
+  type CrewTrigger,
+} from "@/lib/api/crews-client";
+import {
+  connectionsApi,
+  type ConnectionSummary,
+} from "@/lib/api/connections-client";
 import { getModels, type ModelConfig } from "@/lib/api/models-client";
-import { getOAuthStatus } from "@/lib/api/oauth-client";
 import {
   BlueprintSelector,
   type BlueprintSelection,
@@ -31,24 +41,39 @@ import {
   Eye,
   Cable,
   MessageSquare,
-  Send,
   Cpu,
+  Bell,
+  Zap,
+  Calendar,
+  ArrowDownToLine,
+  ArrowUpFromLine,
 } from "lucide-react";
 
 type ExecutionMode = "sequential" | "parallel" | "pipeline" | "autonomous";
-type WizardStep = 1 | 2 | 3 | 4 | 5;
+type WizardStep = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 
-// ---------------------------------------------------------------------------
-// Available connection types with metadata
-// ---------------------------------------------------------------------------
-const CONNECTION_TYPES = [
-  { id: "telegram", name: "Telegram", icon: "paper-plane", description: "Chat bot for Telegram groups and DMs", color: "bg-sky-500" },
-  { id: "discord", name: "Discord", icon: "gamepad", description: "Bot for Discord servers and channels", color: "bg-indigo-500" },
-  { id: "linkedin", name: "LinkedIn", icon: "briefcase", description: "Post content and engage on LinkedIn", color: "bg-blue-600" },
-  { id: "twitter", name: "Twitter / X", icon: "bird", description: "Post and engage on Twitter/X", color: "bg-neutral-800 dark:bg-neutral-600" },
-  { id: "instagram", name: "Instagram", icon: "camera", description: "Share content on Instagram", color: "bg-pink-500" },
-  { id: "facebook", name: "Facebook", icon: "thumbs-up", description: "Manage Facebook page content", color: "bg-blue-500" },
-] as const;
+type Direction = "inbound" | "outbound" | "both";
+
+interface ReactiveTriggerDraft {
+  id: string; // local-only, for list keying
+  connection_id: string;
+  keywords: string[];
+  hashtags: string[];
+  mentions: string[];
+}
+
+interface ScheduledTriggerDraft {
+  id: string;
+  mode: "cron" | "run_at";
+  cron: string;
+  run_at: string;
+  connection_ids: string[];
+  content_brief: string;
+}
+
+function _newId() {
+  return Math.random().toString(36).slice(2, 10);
+}
 
 interface AgentForm {
   name: string;
@@ -375,8 +400,10 @@ const STEP_TITLES: Record<WizardStep, { title: string; subtitle: string }> = {
   1: { title: "Crew Details", subtitle: "Name your crew and describe its purpose" },
   2: { title: "Execution Mode", subtitle: "Choose how agents collaborate" },
   3: { title: "Agent Team", subtitle: "Build your agent pipeline" },
-  4: { title: "Connections", subtitle: "Choose which channels this crew handles" },
-  5: { title: "Review & Create", subtitle: "Review your crew configuration" },
+  4: { title: "Connections & Directions", subtitle: "Pick the tools this crew uses and what direction each goes" },
+  5: { title: "Trigger", subtitle: "How should this crew fire — reactive, scheduled, or manual only?" },
+  6: { title: "Approval", subtitle: "Review outbound before it's sent?" },
+  7: { title: "Review & Create", subtitle: "Review your crew configuration" },
 };
 
 // ---------------------------------------------------------------------------
@@ -394,6 +421,9 @@ interface CrewBuilderProps {
     execution_config?: { mode: ExecutionMode; max_agent_invocations?: number; budget_limit_usd?: number };
     agents?: CrewAgent[];
     channel_bindings?: ChannelBinding[];
+    connection_bindings?: ConnectionBinding[];
+    triggers?: CrewTrigger[];
+    approval_required?: boolean;
   };
 }
 
@@ -422,6 +452,43 @@ export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderP
   const [channelBindings, setChannelBindings] = useState<ChannelBinding[]>(
     editCrew?.channel_bindings ?? []
   );
+
+  // Phase 3: connection_bindings, triggers, approval_required
+  const [availableConnections, setAvailableConnections] = useState<ConnectionSummary[]>([]);
+  const [connectionBindings, setConnectionBindings] = useState<ConnectionBinding[]>(
+    editCrew?.connection_bindings ?? []
+  );
+  const [reactiveTriggers, setReactiveTriggers] = useState<ReactiveTriggerDraft[]>(
+    (editCrew?.triggers ?? [])
+      .filter((t): t is Extract<CrewTrigger, { type: "reactive" }> => t.type === "reactive")
+      .map((t) => ({
+        id: _newId(),
+        connection_id: t.connection_id,
+        keywords: t.keywords ?? [],
+        hashtags: t.hashtags ?? [],
+        mentions: t.mentions ?? [],
+      }))
+  );
+  const [scheduledTriggers, setScheduledTriggers] = useState<ScheduledTriggerDraft[]>(
+    (editCrew?.triggers ?? [])
+      .filter((t): t is Extract<CrewTrigger, { type: "scheduled" }> => t.type === "scheduled")
+      .map((t) => ({
+        id: _newId(),
+        mode: t.cron ? "cron" : "run_at",
+        cron: t.cron ?? "",
+        run_at: t.run_at ?? "",
+        connection_ids: t.connection_ids ?? [],
+        content_brief: t.content_brief ?? "",
+      }))
+  );
+  const [approvalRequired, setApprovalRequired] = useState<boolean>(
+    editCrew?.approval_required ?? false
+  );
+  const [capabilityModal, setCapabilityModal] = useState<{
+    connection: ConnectionSummary;
+    direction: Direction;
+  } | null>(null);
+
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [libraryOpen, setLibraryOpen] = useState(false);
@@ -431,18 +498,8 @@ export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderP
   const [selectedModelId, setSelectedModelId] = useState<string | null>(
     editCrew?.agents?.[0]?.model_id ?? null
   );
-  const [oauthConnected, setOauthConnected] = useState<Record<string, boolean>>({});
-
-  // Check OAuth connection status for OAuth-based channels
-  const OAUTH_CHANNELS = ["linkedin", "instagram", "facebook"] as const;
-  useEffect(() => {
-    if (!open) return;
-    for (const provider of OAUTH_CHANNELS) {
-      getOAuthStatus(provider)
-        .then((s) => setOauthConnected((prev) => ({ ...prev, [provider]: s.connected })))
-        .catch(() => setOauthConnected((prev) => ({ ...prev, [provider]: false })));
-    }
-  }, [open]);
+  // Legacy OAuth-status polling is no longer needed — the unified
+  // /api/v1/connections aggregator returns connection state directly.
 
   // Fetch available models when dialog opens
   useEffect(() => {
@@ -454,6 +511,18 @@ export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderP
         .catch(() => setModels([]));
     }
   }, [open]);
+
+  // Fetch unified connections on open (Phase 3)
+  const refreshConnections = useCallback(() => {
+    connectionsApi
+      .list()
+      .then(setAvailableConnections)
+      .catch(() => setAvailableConnections([]));
+  }, []);
+
+  useEffect(() => {
+    if (open) refreshConnections();
+  }, [open, refreshConnections]);
 
   // Reset on open
   useEffect(() => {
@@ -467,6 +536,10 @@ export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderP
         setMaxInvocations(10);
         setBudgetLimit(1.0);
         setChannelBindings([]);
+        setConnectionBindings([]);
+        setReactiveTriggers([]);
+        setScheduledTriggers([]);
+        setApprovalRequired(false);
         setSelectedBlueprint(null);
         setSelectedModelId(null);
         setError(null);
@@ -498,15 +571,30 @@ export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderP
       case 1: return !!name.trim();
       case 2: return true; // always valid, mode has a default
       case 3: return isAutonomous || agents.every((a) => a.name.trim() && a.instructions.trim());
-      case 4: return true; // connections are optional
-      case 5: return !!canSubmit;
+      case 4: return true; // connections are optional — manual-only is supported
+      case 5: {
+        // Reactive: each draft needs ≥1 keyword/hashtag/mention.
+        for (const t of reactiveTriggers) {
+          if (!t.connection_id) return false;
+          if (t.keywords.length + t.hashtags.length + t.mentions.length === 0) return false;
+        }
+        // Scheduled: exactly one of cron/run_at.
+        for (const t of scheduledTriggers) {
+          if (t.mode === "cron" && !t.cron.trim()) return false;
+          if (t.mode === "run_at" && !t.run_at.trim()) return false;
+        }
+        return true;
+      }
+      case 6: return true; // approval toggle always valid
+      case 7: return !!canSubmit;
       default: return false;
     }
   };
 
-  // Steps: 1-Details, 2-Mode, 3-Agents (skip if autonomous), 4-Connections, 5-Review
-  const totalSteps = isAutonomous ? 4 : 5;
-  const maxStep = (isAutonomous ? 4 : 5) as WizardStep;
+  // Steps: 1-Details, 2-Mode, 3-Agents (skip if autonomous), 4-Connections,
+  // 5-Trigger, 6-Approval, 7-Review. Autonomous collapses 7→6 visual steps.
+  const totalSteps = isAutonomous ? 6 : 7;
+  const maxStep = 7 as WizardStep;
 
   function nextStep() {
     if (step === 2 && isAutonomous) {
@@ -524,23 +612,122 @@ export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderP
     }
   }
 
-  // Toggle a channel binding
-  function toggleChannel(channelType: string) {
-    setChannelBindings((prev) => {
-      const existing = prev.find((b) => b.channel_type === channelType);
-      if (existing) {
-        return prev.filter((b) => b.channel_type !== channelType);
-      }
-      return [...prev, { channel_type: channelType, enabled: true, approval_required: false }];
+  // --- Phase 3 connection binding helpers ---
+
+  function hasBinding(connId: string) {
+    return connectionBindings.some((b) => b.connection_id === connId);
+  }
+
+  function getBindingDirection(connId: string): Direction | null {
+    return connectionBindings.find((b) => b.connection_id === connId)?.direction ?? null;
+  }
+
+  function addBinding(conn: ConnectionSummary, direction: Direction) {
+    setConnectionBindings((prev) => {
+      const filtered = prev.filter((b) => b.connection_id !== conn.id);
+      return [
+        ...filtered,
+        { connection_id: conn.id, platform: conn.platform, direction },
+      ];
     });
   }
 
-  function toggleChannelApproval(channelType: string) {
-    setChannelBindings((prev) =>
-      prev.map((b) =>
-        b.channel_type === channelType ? { ...b, approval_required: !b.approval_required } : b
-      )
+  function removeBinding(connId: string) {
+    setConnectionBindings((prev) => prev.filter((b) => b.connection_id !== connId));
+    // Also drop any reactive triggers tied to this connection.
+    setReactiveTriggers((prev) => prev.filter((t) => t.connection_id !== connId));
+  }
+
+  function handleDirectionPick(conn: ConnectionSummary, direction: Direction) {
+    // Block directions the platform doesn't physically support.
+    if (direction === "inbound" && !conn.inbound_supported) return;
+    if (direction === "outbound" && !conn.outbound_supported) return;
+
+    // If the user picked a direction that's disabled at the connection-level,
+    // open the inline modal to offer enabling it.
+    const capability = direction === "inbound"
+      ? conn.inbound_enabled
+      : direction === "outbound"
+        ? conn.outbound_enabled
+        : (conn.inbound_enabled && conn.outbound_enabled);
+    if (!capability) {
+      setCapabilityModal({ connection: conn, direction });
+      return;
+    }
+    addBinding(conn, direction);
+  }
+
+  async function enableCapabilityAndContinue() {
+    if (!capabilityModal) return;
+    const { connection, direction } = capabilityModal;
+    const update: { inbound_enabled?: boolean; outbound_enabled?: boolean } = {};
+    if (direction === "inbound") update.inbound_enabled = true;
+    else if (direction === "outbound") update.outbound_enabled = true;
+    else {
+      update.inbound_enabled = true;
+      update.outbound_enabled = true;
+    }
+    try {
+      await connectionsApi.updateCapabilities(connection.id, update);
+      refreshConnections();
+      addBinding(connection, direction);
+    } catch (e) {
+      console.error("Failed to enable capability", e);
+    } finally {
+      setCapabilityModal(null);
+    }
+  }
+
+  // --- Reactive trigger helpers ---
+
+  function addReactiveTrigger(connectionId: string) {
+    setReactiveTriggers((prev) => [
+      ...prev,
+      { id: _newId(), connection_id: connectionId, keywords: [], hashtags: [], mentions: [] },
+    ]);
+  }
+
+  function removeReactiveTrigger(id: string) {
+    setReactiveTriggers((prev) => prev.filter((t) => t.id !== id));
+  }
+
+  function addRuleToReactive(
+    id: string,
+    field: "keywords" | "hashtags" | "mentions",
+    value: string,
+  ) {
+    const v = value.trim();
+    if (!v) return;
+    setReactiveTriggers((prev) =>
+      prev.map((t) => (t.id === id ? { ...t, [field]: Array.from(new Set([...t[field], v])) } : t))
     );
+  }
+
+  function removeRuleFromReactive(
+    id: string,
+    field: "keywords" | "hashtags" | "mentions",
+    value: string,
+  ) {
+    setReactiveTriggers((prev) =>
+      prev.map((t) => (t.id === id ? { ...t, [field]: t[field].filter((x) => x !== value) } : t))
+    );
+  }
+
+  // --- Scheduled trigger helpers ---
+
+  function addScheduledTrigger() {
+    setScheduledTriggers((prev) => [
+      ...prev,
+      { id: _newId(), mode: "cron", cron: "0 9 * * *", run_at: "", connection_ids: [], content_brief: "" },
+    ]);
+  }
+
+  function updateScheduledTrigger(id: string, patch: Partial<ScheduledTriggerDraft>) {
+    setScheduledTriggers((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
+  }
+
+  function removeScheduledTrigger(id: string) {
+    setScheduledTriggers((prev) => prev.filter((t) => t.id !== id));
   }
 
   const updateAgent = (index: number, field: keyof AgentForm, value: string) => {
@@ -600,6 +787,42 @@ export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderP
         payload.channel_bindings = channelBindings;
       }
 
+      // Phase 3 additions
+      if (connectionBindings.length > 0) {
+        payload.connection_bindings = connectionBindings;
+      }
+      const triggers: CrewTrigger[] = [];
+      for (const t of reactiveTriggers) {
+        triggers.push({
+          type: "reactive",
+          connection_id: t.connection_id,
+          keywords: t.keywords,
+          hashtags: t.hashtags,
+          mentions: t.mentions,
+        });
+      }
+      for (const t of scheduledTriggers) {
+        triggers.push(
+          t.mode === "cron"
+            ? {
+                type: "scheduled",
+                connection_ids: t.connection_ids,
+                cron: t.cron,
+                content_brief: t.content_brief || undefined,
+              }
+            : {
+                type: "scheduled",
+                connection_ids: t.connection_ids,
+                run_at: t.run_at,
+                content_brief: t.content_brief || undefined,
+              }
+        );
+      }
+      if (triggers.length > 0) {
+        payload.triggers = triggers;
+      }
+      payload.approval_required = approvalRequired;
+
       if (isEdit && editCrew) {
         await crewsApi.update(editCrew.crew_id, payload);
       } else {
@@ -624,8 +847,8 @@ export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderP
 
   if (!open) return null;
 
-  // For step indicator display: map to visual step number
-  // Autonomous skips step 3 (agents), so steps 4,5 become visual 3,4
+  // For step indicator display: map to visual step number.
+  // Autonomous skips step 3 (agents), so steps 4..7 each shift down by 1 visually.
   const visualStep = isAutonomous && step >= 4 ? step - 1 : step;
 
   return (
@@ -1019,125 +1242,342 @@ export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderP
             </div>
           )}
 
-          {/* ─── Step 4: Connections ─── */}
+          {/* ─── Step 4: Connections & Directions ─── */}
           {step === 4 && (
             <div className="space-y-4">
-              <div className="bg-neutral-50 dark:bg-neutral-800/50 rounded-xl border border-neutral-200 dark:border-neutral-700 p-5 space-y-4">
+              <div className="bg-neutral-50 dark:bg-neutral-800/50 rounded-xl border border-neutral-200 dark:border-neutral-700 p-5 space-y-3">
                 <h3 className="text-sm font-medium text-neutral-900 dark:text-white flex items-center gap-2">
                   <Cable className="w-4 h-4 text-primary-500" />
-                  Channel Connections
+                  Pick connections & direction
                 </h3>
-                <p className="text-xs text-neutral-500 dark:text-neutral-400 -mt-2">
-                  Select which social channels this crew should handle. The crew will process
-                  inbound messages and can publish content to these platforms.
+                <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                  Choose which tools this crew uses. For each, pick a direction: <b>Inbound</b> (listen for messages), <b>Outbound</b> (publish), or <b>Both</b>. Outbound-only platforms (Blog / Email / Slack webhook) are publish-only.
                 </p>
 
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                  {CONNECTION_TYPES.map((conn) => {
-                    const isSelected = channelBindings.some((b) => b.channel_type === conn.id);
-                    const binding = channelBindings.find((b) => b.channel_type === conn.id);
-                    const isOAuth = OAUTH_CHANNELS.includes(conn.id as typeof OAUTH_CHANNELS[number]);
-                    const isConnected = isOAuth ? oauthConnected[conn.id] : true;
-                    return (
-                      <div
-                        key={conn.id}
-                        className={cn(
-                          "relative rounded-xl border-2 transition-all overflow-hidden",
-                          isSelected
-                            ? "border-primary-500 bg-primary-50/50 dark:bg-primary-500/5"
-                            : "border-neutral-200 dark:border-neutral-700 hover:border-neutral-300 dark:hover:border-neutral-600"
-                        )}
-                      >
-                        <button
-                          type="button"
-                          onClick={() => toggleChannel(conn.id)}
-                          className="w-full p-4 text-left"
-                        >
-                          <div className="flex items-center gap-3 mb-2">
-                            <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center text-white", conn.color)}>
-                              <MessageSquare className="w-4 h-4" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium text-neutral-900 dark:text-white">
-                                {conn.name}
-                              </p>
-                              {isOAuth && !isConnected && (
-                                <p className="text-[10px] text-amber-600 dark:text-amber-400 flex items-center gap-1">
-                                  <AlertCircle className="w-3 h-3" /> Not connected
-                                </p>
-                              )}
-                              {isOAuth && isConnected && (
-                                <p className="text-[10px] text-green-600 dark:text-green-400">Connected</p>
-                              )}
-                            </div>
-                            {isSelected && (
-                              <div className="w-5 h-5 rounded-full bg-primary-500 flex items-center justify-center flex-shrink-0">
-                                <Check className="w-3 h-3 text-white" />
-                              </div>
-                            )}
-                          </div>
-                          <p className="text-[11px] text-neutral-500 dark:text-neutral-400 line-clamp-2">
-                            {conn.description}
-                          </p>
-                        </button>
-
-                        {/* Approval toggle (shown when selected) */}
-                        {isSelected && (
-                          <div className="px-4 pb-3 pt-0">
-                            <label className="flex items-center gap-2 text-xs text-neutral-600 dark:text-neutral-400 cursor-pointer">
-                              <input
-                                type="checkbox"
-                                checked={binding?.approval_required ?? false}
-                                onChange={() => toggleChannelApproval(conn.id)}
-                                className="rounded border-neutral-300 dark:border-neutral-600 text-primary-500 focus:ring-primary-500/50 w-3.5 h-3.5"
-                              />
-                              Require approval before sending
-                            </label>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {channelBindings.length === 0 && (
+                {availableConnections.length === 0 ? (
                   <p className="text-xs text-neutral-400 dark:text-neutral-500 italic">
-                    No channels selected. You can add connections later from the crew settings.
+                    No connections set up yet. Add one from <a href="/connections" className="underline text-primary-500">Connections</a> and come back.
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {availableConnections.map((conn) => {
+                      const current = getBindingDirection(conn.id);
+                      const selected = hasBinding(conn.id);
+                      return (
+                        <div
+                          key={conn.id}
+                          className={cn(
+                            "rounded-xl border-2 p-3 transition-colors",
+                            selected
+                              ? "border-primary-500 bg-primary-50/50 dark:bg-primary-500/5"
+                              : "border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800/50"
+                          )}
+                        >
+                          <div className="flex items-center justify-between gap-3 flex-wrap">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-neutral-100 dark:bg-neutral-700">
+                                <MessageSquare className="w-4 h-4 text-neutral-600 dark:text-neutral-300" />
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-sm font-medium text-neutral-900 dark:text-white truncate">
+                                  {conn.display_name ?? conn.platform}
+                                </p>
+                                <p className="text-[10px] text-neutral-500 dark:text-neutral-400">
+                                  {conn.platform}
+                                  {!conn.connected && <span className="ml-1 text-amber-500">• disconnected</span>}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <DirectionChip
+                                label="Inbound"
+                                icon={ArrowDownToLine}
+                                active={current === "inbound"}
+                                disabled={!conn.inbound_supported}
+                                onClick={() => handleDirectionPick(conn, "inbound")}
+                              />
+                              <DirectionChip
+                                label="Outbound"
+                                icon={ArrowUpFromLine}
+                                active={current === "outbound"}
+                                disabled={!conn.outbound_supported}
+                                onClick={() => handleDirectionPick(conn, "outbound")}
+                              />
+                              <DirectionChip
+                                label="Both"
+                                icon={ArrowRightLeft}
+                                active={current === "both"}
+                                disabled={!conn.inbound_supported || !conn.outbound_supported}
+                                onClick={() => handleDirectionPick(conn, "both")}
+                              />
+                              {selected && (
+                                <button
+                                  type="button"
+                                  onClick={() => removeBinding(conn.id)}
+                                  className="ml-1 p-1 rounded text-neutral-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
+                                  title="Remove binding"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {connectionBindings.length === 0 && (
+                  <p className="text-xs text-neutral-400 dark:text-neutral-500 italic">
+                    No connections selected. This crew will run manually only (the Run button on the crew card).
                   </p>
                 )}
               </div>
 
-              {channelBindings.length > 0 && (
-                <div className="bg-neutral-50 dark:bg-neutral-800/50 rounded-xl border border-neutral-200 dark:border-neutral-700 p-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Send className="w-3.5 h-3.5 text-primary-500" />
-                    <span className="text-xs font-medium text-neutral-700 dark:text-neutral-300">
-                      {channelBindings.length} channel{channelBindings.length !== 1 ? "s" : ""} selected
-                    </span>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {channelBindings.map((b) => {
-                      const conn = CONNECTION_TYPES.find((c) => c.id === b.channel_type);
-                      return (
-                        <span
-                          key={b.channel_type}
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-primary-100 dark:bg-primary-500/20 text-primary-700 dark:text-primary-300 border border-primary-200 dark:border-primary-800"
-                        >
-                          {conn?.name ?? b.channel_type}
-                          {b.approval_required && (
-                            <Shield className="w-3 h-3 text-amber-500" />
-                          )}
-                        </span>
-                      );
-                    })}
+              {/* Enable-capability inline modal */}
+              {capabilityModal && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+                  <div className="bg-white dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-700 p-5 max-w-md mx-4 shadow-xl">
+                    <div className="flex items-center gap-2 mb-3">
+                      <AlertCircle className="w-5 h-5 text-amber-500" />
+                      <h4 className="text-sm font-semibold text-neutral-900 dark:text-white">
+                        Capability disabled
+                      </h4>
+                    </div>
+                    <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-4">
+                      <b className="capitalize">{capabilityModal.direction}</b> is currently disabled on{" "}
+                      <b>{capabilityModal.connection.display_name ?? capabilityModal.connection.platform}</b>.
+                      Enable it now so this crew can use it?
+                    </p>
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setCapabilityModal(null)}
+                        className="px-3 py-1.5 rounded-lg text-sm font-medium text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={enableCapabilityAndContinue}
+                        className="px-3 py-1.5 rounded-lg text-sm font-medium bg-primary-500 text-white hover:bg-primary-600"
+                      >
+                        Enable & continue
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}
             </div>
           )}
 
-          {/* ─── Step 5: Review ─── */}
+          {/* ─── Step 5: Trigger ─── */}
           {step === 5 && (
+            <div className="space-y-4">
+              <div className="bg-neutral-50 dark:bg-neutral-800/50 rounded-xl border border-neutral-200 dark:border-neutral-700 p-5 space-y-4">
+                <h3 className="text-sm font-medium text-neutral-900 dark:text-white flex items-center gap-2">
+                  <Zap className="w-4 h-4 text-primary-500" />
+                  Reactive triggers
+                </h3>
+                <p className="text-xs text-neutral-500 dark:text-neutral-400 -mt-2">
+                  Fire this crew when an inbound message matches any keyword, hashtag, or @mention.
+                </p>
+                {reactiveTriggers.length === 0 && connectionBindings.filter((b) => b.direction === "inbound" || b.direction === "both").length === 0 && (
+                  <p className="text-xs text-neutral-400 dark:text-neutral-500 italic">
+                    Bind at least one inbound connection on the previous step to enable reactive triggers.
+                  </p>
+                )}
+                <div className="space-y-3">
+                  {reactiveTriggers.map((trigger) => {
+                    const conn = availableConnections.find((c) => c.id === trigger.connection_id);
+                    return (
+                      <div key={trigger.id} className="rounded-lg border border-neutral-200 dark:border-neutral-700 p-3 bg-white dark:bg-neutral-800 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <ArrowDownToLine className="w-3.5 h-3.5 text-primary-500" />
+                            <span className="text-sm font-medium text-neutral-900 dark:text-white">
+                              {conn?.display_name ?? conn?.platform ?? trigger.connection_id}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removeReactiveTrigger(trigger.id)}
+                            className="text-neutral-400 hover:text-red-500"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                        <RuleChips
+                          label="Keywords"
+                          values={trigger.keywords}
+                          onAdd={(v) => addRuleToReactive(trigger.id, "keywords", v)}
+                          onRemove={(v) => removeRuleFromReactive(trigger.id, "keywords", v)}
+                        />
+                        <RuleChips
+                          label="Hashtags"
+                          values={trigger.hashtags}
+                          placeholderPrefix="#"
+                          onAdd={(v) => addRuleToReactive(trigger.id, "hashtags", v)}
+                          onRemove={(v) => removeRuleFromReactive(trigger.id, "hashtags", v)}
+                        />
+                        <RuleChips
+                          label="Mentions"
+                          values={trigger.mentions}
+                          placeholderPrefix="@"
+                          onAdd={(v) => addRuleToReactive(trigger.id, "mentions", v)}
+                          onRemove={(v) => removeRuleFromReactive(trigger.id, "mentions", v)}
+                        />
+                        {trigger.keywords.length + trigger.hashtags.length + trigger.mentions.length === 0 && (
+                          <p className="text-[11px] text-red-500">
+                            Add at least one keyword, hashtag, or mention.
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {connectionBindings
+                    .filter((b) => b.direction === "inbound" || b.direction === "both")
+                    .map((b) => {
+                      const conn = availableConnections.find((c) => c.id === b.connection_id);
+                      return (
+                        <button
+                          key={b.connection_id}
+                          type="button"
+                          onClick={() => addReactiveTrigger(b.connection_id)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-dashed border-neutral-300 dark:border-neutral-600 text-xs text-neutral-600 dark:text-neutral-300 hover:border-primary-500 hover:text-primary-500"
+                        >
+                          <Plus className="w-3 h-3" />
+                          {conn?.display_name ?? conn?.platform ?? b.connection_id}
+                        </button>
+                      );
+                    })}
+                </div>
+              </div>
+
+              <div className="bg-neutral-50 dark:bg-neutral-800/50 rounded-xl border border-neutral-200 dark:border-neutral-700 p-5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-medium text-neutral-900 dark:text-white flex items-center gap-2">
+                    <Calendar className="w-4 h-4 text-primary-500" />
+                    Scheduled triggers
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={addScheduledTrigger}
+                    className="inline-flex items-center gap-1 text-xs text-primary-500 hover:text-primary-600"
+                  >
+                    <Plus className="w-3 h-3" />
+                    Add schedule
+                  </button>
+                </div>
+                <p className="text-xs text-neutral-500 dark:text-neutral-400 -mt-1">
+                  Fire on a cron schedule (recurring) or a specific datetime (one-shot).
+                </p>
+                {scheduledTriggers.length === 0 && (
+                  <p className="text-xs text-neutral-400 dark:text-neutral-500 italic">
+                    No schedules set. Add one if you want this crew to fire automatically on a timer.
+                  </p>
+                )}
+                <div className="space-y-3">
+                  {scheduledTriggers.map((trigger) => (
+                    <div key={trigger.id} className="rounded-lg border border-neutral-200 dark:border-neutral-700 p-3 bg-white dark:bg-neutral-800 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 text-xs">
+                          <label className="inline-flex items-center gap-1 cursor-pointer">
+                            <input
+                              type="radio"
+                              name={`mode-${trigger.id}`}
+                              checked={trigger.mode === "cron"}
+                              onChange={() => updateScheduledTrigger(trigger.id, { mode: "cron" })}
+                            />
+                            Recurring (cron)
+                          </label>
+                          <label className="inline-flex items-center gap-1 cursor-pointer ml-2">
+                            <input
+                              type="radio"
+                              name={`mode-${trigger.id}`}
+                              checked={trigger.mode === "run_at"}
+                              onChange={() => updateScheduledTrigger(trigger.id, { mode: "run_at" })}
+                            />
+                            One-shot
+                          </label>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeScheduledTrigger(trigger.id)}
+                          className="text-neutral-400 hover:text-red-500"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                      {trigger.mode === "cron" ? (
+                        <input
+                          type="text"
+                          value={trigger.cron}
+                          onChange={(e) => updateScheduledTrigger(trigger.id, { cron: e.target.value })}
+                          placeholder="0 9 * * *"
+                          className="w-full px-2.5 py-1.5 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs font-mono"
+                        />
+                      ) : (
+                        <input
+                          type="datetime-local"
+                          value={trigger.run_at}
+                          onChange={(e) => updateScheduledTrigger(trigger.id, { run_at: e.target.value })}
+                          className="w-full px-2.5 py-1.5 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs"
+                        />
+                      )}
+                      <textarea
+                        value={trigger.content_brief}
+                        onChange={(e) => updateScheduledTrigger(trigger.id, { content_brief: e.target.value })}
+                        placeholder="What should this crew produce? (optional)"
+                        rows={2}
+                        className="w-full px-2.5 py-1.5 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs resize-none"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {reactiveTriggers.length === 0 && scheduledTriggers.length === 0 && (
+                <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-3 text-xs text-amber-800 dark:text-amber-300">
+                  No triggers configured — this crew will only fire when you click <b>Run</b> on its card.
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ─── Step 6: Approval ─── */}
+          {step === 6 && (
+            <div className="space-y-4">
+              <div className="bg-neutral-50 dark:bg-neutral-800/50 rounded-xl border border-neutral-200 dark:border-neutral-700 p-5 space-y-3">
+                <h3 className="text-sm font-medium text-neutral-900 dark:text-white flex items-center gap-2">
+                  <Bell className="w-4 h-4 text-primary-500" />
+                  Approval
+                </h3>
+                <label className="flex items-start gap-3 cursor-pointer p-3 rounded-lg bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700">
+                  <input
+                    type="checkbox"
+                    checked={approvalRequired}
+                    onChange={(e) => setApprovalRequired(e.target.checked)}
+                    className="mt-0.5 rounded border-neutral-300 dark:border-neutral-600 text-primary-500 focus:ring-primary-500/50 w-4 h-4"
+                  />
+                  <div>
+                    <p className="text-sm font-medium text-neutral-900 dark:text-white">
+                      Review outbound before sending
+                    </p>
+                    <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
+                      When on, this crew's output is queued in the <a href="/approvals" className="underline text-primary-500">Approvals</a> page instead of publishing immediately. You edit / approve / reject there before it goes out.
+                    </p>
+                  </div>
+                </label>
+              </div>
+            </div>
+          )}
+
+          {/* ─── Step 7: Review ─── */}
+          {step === 7 && (
             <div className="space-y-4">
               <div className="bg-neutral-50 dark:bg-neutral-800/50 rounded-xl border border-neutral-200 dark:border-neutral-700 p-5 space-y-3">
                 <h3 className="text-sm font-medium text-neutral-900 dark:text-white flex items-center gap-2">
@@ -1248,34 +1688,91 @@ export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderP
                 </div>
               )}
 
-              {/* Connections summary */}
-              {channelBindings.length > 0 && (
+              {/* Connections & Directions summary */}
+              {connectionBindings.length > 0 && (
                 <div className="bg-neutral-50 dark:bg-neutral-800/50 rounded-xl border border-neutral-200 dark:border-neutral-700 p-5 space-y-3">
                   <h3 className="text-sm font-medium text-neutral-900 dark:text-white flex items-center gap-2">
                     <Cable className="w-4 h-4 text-primary-500" />
-                    Connections ({channelBindings.length})
+                    Connections & Directions ({connectionBindings.length})
                   </h3>
                   <div className="flex flex-wrap gap-2">
-                    {channelBindings.map((b) => {
-                      const conn = CONNECTION_TYPES.find((c) => c.id === b.channel_type);
+                    {connectionBindings.map((b) => {
+                      const conn = availableConnections.find((c) => c.id === b.connection_id);
+                      const dirLabel = b.direction === "both" ? "Both" : b.direction === "inbound" ? "Inbound" : "Outbound";
+                      const DirIcon = b.direction === "both" ? ArrowRightLeft : b.direction === "inbound" ? ArrowDownToLine : ArrowUpFromLine;
                       return (
                         <span
-                          key={b.channel_type}
+                          key={b.connection_id}
                           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-700 dark:text-neutral-300"
                         >
-                          <div className={cn("w-4 h-4 rounded flex items-center justify-center text-white", conn?.color ?? "bg-neutral-500")}>
-                            <MessageSquare className="w-2.5 h-2.5" />
-                          </div>
-                          {conn?.name ?? b.channel_type}
-                          {b.approval_required && (
-                            <span className="text-[10px] text-amber-500 font-medium">(approval)</span>
-                          )}
+                          {conn?.display_name ?? conn?.platform ?? b.platform}
+                          <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-primary-100 dark:bg-primary-500/20 text-primary-700 dark:text-primary-300">
+                            <DirIcon className="w-2.5 h-2.5" />
+                            {dirLabel}
+                          </span>
                         </span>
                       );
                     })}
                   </div>
                 </div>
               )}
+
+              {/* Triggers summary */}
+              <div className="bg-neutral-50 dark:bg-neutral-800/50 rounded-xl border border-neutral-200 dark:border-neutral-700 p-5 space-y-3">
+                <h3 className="text-sm font-medium text-neutral-900 dark:text-white flex items-center gap-2">
+                  <Zap className="w-4 h-4 text-primary-500" />
+                  Triggers
+                </h3>
+                {reactiveTriggers.length === 0 && scheduledTriggers.length === 0 ? (
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400 italic">
+                    Manual only — fires when you click Run on the crew card.
+                  </p>
+                ) : (
+                  <div className="space-y-2 text-xs">
+                    {reactiveTriggers.map((t) => {
+                      const conn = availableConnections.find((c) => c.id === t.connection_id);
+                      const rules = [...t.keywords, ...t.hashtags, ...t.mentions];
+                      return (
+                        <div key={t.id} className="flex items-start gap-2 p-2 rounded-lg bg-white dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700">
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-orange-100 dark:bg-orange-500/20 text-orange-700 dark:text-orange-400 text-[10px] font-medium">
+                            <Zap className="w-2.5 h-2.5" /> Reactive
+                          </span>
+                          <span className="text-neutral-700 dark:text-neutral-300">
+                            on <b>{conn?.display_name ?? t.connection_id}</b> matching <span className="text-neutral-500 dark:text-neutral-400">{rules.join(", ") || "(none)"}</span>
+                          </span>
+                        </div>
+                      );
+                    })}
+                    {scheduledTriggers.map((t) => (
+                      <div key={t.id} className="flex items-start gap-2 p-2 rounded-lg bg-white dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700">
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400 text-[10px] font-medium">
+                          <Calendar className="w-2.5 h-2.5" /> Scheduled
+                        </span>
+                        <span className="text-neutral-700 dark:text-neutral-300 font-mono">
+                          {t.mode === "cron" ? t.cron : `at ${t.run_at}`}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Approval summary */}
+              <div className={cn(
+                "rounded-xl border p-4 text-xs",
+                approvalRequired
+                  ? "bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300"
+                  : "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-800 dark:text-green-300"
+              )}>
+                <div className="flex items-center gap-2">
+                  {approvalRequired ? <Shield className="w-4 h-4" /> : <Check className="w-4 h-4" />}
+                  <span className="font-medium">
+                    {approvalRequired
+                      ? "Review outbound before sending — output queued in Approvals."
+                      : "Auto-publish — crew output goes out immediately."}
+                  </span>
+                </div>
+              </div>
             </div>
           )}
         </div>
@@ -1328,6 +1825,99 @@ export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderP
             )}
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Small UI helpers used inside the wizard
+// ---------------------------------------------------------------------------
+
+function DirectionChip({
+  label,
+  icon: Icon,
+  active,
+  disabled,
+  onClick,
+}: {
+  label: string;
+  icon: React.ElementType;
+  active: boolean;
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={cn(
+        "inline-flex items-center gap-1 px-2 py-1 rounded-md border text-[11px] font-medium transition-colors",
+        active
+          ? "border-primary-500 bg-primary-500 text-white"
+          : "border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300 hover:border-primary-400",
+        disabled && "opacity-40 cursor-not-allowed hover:border-neutral-200 dark:hover:border-neutral-700"
+      )}
+      title={disabled ? `${label} not supported on this platform` : undefined}
+    >
+      <Icon className="w-3 h-3" />
+      {label}
+    </button>
+  );
+}
+
+function RuleChips({
+  label,
+  values,
+  placeholderPrefix,
+  onAdd,
+  onRemove,
+}: {
+  label: string;
+  values: string[];
+  placeholderPrefix?: string;
+  onAdd: (value: string) => void;
+  onRemove: (value: string) => void;
+}) {
+  const [draft, setDraft] = useState("");
+  const submit = () => {
+    const v = draft.trim();
+    if (!v) return;
+    onAdd(v);
+    setDraft("");
+  };
+  return (
+    <div className="space-y-1">
+      <label className="text-[11px] font-medium text-neutral-500 dark:text-neutral-400">
+        {label}
+      </label>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {values.map((v) => (
+          <span
+            key={v}
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary-50 dark:bg-primary-500/10 text-primary-700 dark:text-primary-300 text-[11px] border border-primary-200 dark:border-primary-800"
+          >
+            {v}
+            <button type="button" onClick={() => onRemove(v)} className="hover:text-red-500">
+              <X className="w-2.5 h-2.5" />
+            </button>
+          </span>
+        ))}
+        <input
+          type="text"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              submit();
+            }
+          }}
+          onBlur={submit}
+          placeholder={`+ ${placeholderPrefix ?? ""}${label.toLowerCase().slice(0, -1)}`}
+          className="flex-1 min-w-[120px] px-2 py-0.5 text-[11px] rounded border border-transparent hover:border-neutral-200 dark:hover:border-neutral-700 focus:border-primary-500 bg-transparent outline-none"
+        />
       </div>
     </div>
   );
