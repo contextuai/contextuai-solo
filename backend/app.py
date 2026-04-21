@@ -499,6 +499,18 @@ async def startup_event():
         await scheduler_service.load_all()
         app.state.scheduler_service = scheduler_service
 
+        # Phase 3 PR 3: scheduled_runner registers crew.triggers[type=scheduled]
+        # Only active when UNIFIED_CREWS=on so legacy flows keep running by default.
+        try:
+            from services.feature_flags import unified_crews_enabled
+            if unified_crews_enabled():
+                from services.scheduled_runner import ScheduledRunner
+                runner = ScheduledRunner(proxy, scheduler)
+                await runner.load_all()
+                app.state.scheduled_runner = runner
+        except Exception:
+            logger.exception("ScheduledRunner failed to load — continuing startup")
+
         logger.info("ContextuAI Solo backend ready")
 
     except Exception:

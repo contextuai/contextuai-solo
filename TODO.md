@@ -295,7 +295,7 @@
 ### Confirmed decisions (do not revisit)
 1. **Manual trigger** = the existing "Run" button on each crew card (`frontend/src/routes/crews.tsx:481`). Not a new trigger-type selection in the builder. Always available on every crew.
 2. **Runs view** = the existing `Runs` tab on the Crews page (`frontend/src/routes/crews.tsx:130` — tab state `activeTab: "crews" | "runs"`). Extend the existing `CrewRun` type with trigger metadata; do not build a new component.
-3. **Distribution & Schedule stay in the sidebar** but route to a shared **"Coming Soon"** page. Sidebar remains at 12 items; nav E2E test (`frontend/tests/e2e/navigation/navigation.spec.ts`) does not need changing. Future phase removes them entirely.
+3. **Distribution & Schedule are removed from the sidebar.** Their functionality lives entirely inside Crews now (outbound publishing via `connection_bindings`, scheduling via `triggers[type=scheduled]`); a Coming Soon stop would be redundant. Sidebar drops from 12 → 10 items; nav E2E test (`frontend/tests/e2e/navigation/navigation.spec.ts`) updated accordingly.
 4. **Blog / Email / Slack webhook** ship as new Connection types (outbound-only) inside the same Connections grid as the social platforms.
 5. **Inbound keyword-match ties** → LLM disambiguates. No per-crew priority UI.
 6. **Connection-level fallback crew** for unmatched inbound → **not in v1**. Drop messages silently; reconsider if users complain.
@@ -375,11 +375,11 @@
   - **New Step 6 "Approval"**: single toggle "Review outbound before sending."
   - Existing Review step becomes Step 7 — update summary to reflect new fields.
 
-**New**
-- [ ] `frontend/src/routes/coming-soon.tsx` — simple placeholder component:
-  - Takes a `feature: string` prop.
-  - Shows icon + "<Feature> is moving into Crews — coming soon" + link to Crews page + link to docs/TODO.md entry.
-- [ ] Update `App.tsx` to route `/distribution` and `/schedule` to `ComingSoon` with the appropriate prop.
+**Removed (PR 4)**
+- [ ] Drop `/distribution` and `/schedule` route registrations from `App.tsx`.
+- [ ] Drop the Distribution + Schedule sidebar entries from `frontend/src/components/navigation/desktop-sidebar.tsx` (sidebar 12 → 10 items).
+- [ ] Update nav E2E test in `frontend/tests/e2e/navigation/navigation.spec.ts` to expect 10 items.
+- [ ] Page files `frontend/src/routes/distribution.tsx` and `frontend/src/routes/schedule.tsx` can stay on disk for one release cycle as dead code — the FUTURE cleanup task deletes them.
 
 **Modified**
 - [ ] `frontend/src/routes/crews.tsx` — **Crews tab**: add new filter chips alongside existing `statusFilter` and `modeFilter`: `Inbound`, `Outbound`, `Scheduled`, `Reactive`, `Approval-required`. Filter logic hooks into `filteredCrews` (line 179). **Runs tab**: render `trigger_type` badge on each row of `RunsList` (line 498).
@@ -387,8 +387,7 @@
 - [ ] `frontend/src/lib/api/distribution-client.ts` — can stay but is no longer consumed by the active UI. Delete in the future-cleanup phase.
 
 **Not changed**
-- Sidebar (`frontend/src/components/navigation/desktop-sidebar.tsx`) — still 12 items.
-- Nav E2E tests — still expect 12.
+- Sidebar entries other than Distribution + Schedule — order, icons, labels untouched.
 
 ### Migration
 
@@ -420,12 +419,11 @@ Must be idempotent, dry-run capable (`MIGRATE_DRY_RUN=1` env var), and must writ
 | 1 | Data model additions (connection_bindings, triggers, approval_required, capability flags) + migration script (dry-run capable) + extended CrewRun schema. Backend only; no UI change; existing flows keep working. | — (additive) |
 | 2 | Unified `/api/v1/connections` aggregator + rewritten Connections page (capability toggles, Blog/Email/Slack new types). Old Distribution page still lives. | — |
 | 3 | Crew builder: Trigger step + Direction chips + Approval toggle + "enable capability at connection level" modal. Backend: `inbound_router.py` + `scheduled_runner.py`. Runs tab displays trigger_type badge. | `UNIFIED_CREWS` env flag |
-| 4 | Swap `/distribution` and `/schedule` routes to ComingSoon. Add TODO entries referencing this plan. Flip `UNIFIED_CREWS` on by default. | Flag default → true |
+| 4 | Remove `/distribution` + `/schedule` from sidebar and route registry; nav E2E test 12 → 10. Flip `UNIFIED_CREWS` on by default. | Flag default → true |
 
 ### Follow-up TODOs (track after Phase 3 ships)
 
-- [ ] FUTURE: Re-retire Distribution page (delete `frontend/src/routes/distribution.tsx`, `backend/routers/distribution.py`, `backend/services/distribution_service.py` entirely) once Coming Soon has been live one release cycle.
-- [ ] FUTURE: Re-retire Schedule page (delete `frontend/src/routes/schedule.tsx` + standalone scheduler backend).
+- [ ] FUTURE: Delete dead code one release cycle after PR 4 — `frontend/src/routes/distribution.tsx`, `frontend/src/routes/schedule.tsx`, `backend/routers/distribution.py`, the standalone scheduler backend. `backend/services/distribution_service.py` stays — its outbound adapters (LinkedIn/Twitter/IG/FB/Blog/Email/Slack publishers) are reused by `agent_runner.py`.
 - [ ] FUTURE: Connection-level fallback crew for unmatched inbound messages (skipped in v1 per user decision).
 - [ ] FUTURE: Global Activity/Runs view across all crews (skipped in v1 — per-crew Runs tab covers the need).
 - [ ] FUTURE: Per-crew priority ordering for keyword-match ties (skipped — LLM disambiguation handles v1).
