@@ -21,6 +21,9 @@ import {
   LogIn,
   User,
   Copy,
+  FileText,
+  Mail,
+  Hash,
 } from "lucide-react";
 import {
   configureOAuthClient,
@@ -38,10 +41,25 @@ import {
   deleteTrigger,
   type Trigger,
 } from "@/lib/api/triggers-client";
+import {
+  connectionsApi,
+  type ConnectionSummary,
+  type OutboundPlatform,
+} from "@/lib/api/connections-client";
 
 // ─── Types ──────────────────────────────────────────────────────
 
-type ConnectionId = "telegram" | "discord" | "linkedin" | "twitter" | "instagram" | "facebook" | "reddit";
+type ConnectionId =
+  | "telegram"
+  | "discord"
+  | "linkedin"
+  | "twitter"
+  | "instagram"
+  | "facebook"
+  | "reddit"
+  | "blog"
+  | "email"
+  | "slack_webhook";
 
 interface ConnectionConfig {
   id: ConnectionId;
@@ -63,6 +81,8 @@ interface ConnectionConfig {
   supportsOutbound: boolean;
   defaultInbound: boolean;
   defaultOutbound: boolean;
+  /** True for blog/email/slack_webhook — stored in backend via /connections/outbound. */
+  outboundOnly?: boolean;
 }
 
 interface SavedConnection {
@@ -273,6 +293,67 @@ const CONNECTIONS: ConnectionConfig[] = [
       { key: "keywords", label: "Keywords (comma-separated)", placeholder: "local LLM, ollama, gguf" },
     ],
   },
+  {
+    id: "blog",
+    name: "Blog",
+    description: "Publish to Ghost, WordPress, or any custom REST endpoint.",
+    icon: FileText,
+    iconBg: "bg-amber-100 dark:bg-amber-500/20",
+    iconColor: "text-amber-600 dark:text-amber-400",
+    docsUrl: "https://ghost.org/docs/content-api/",
+    oauthProvider: null,
+    supportsInbound: false,
+    supportsOutbound: true,
+    defaultInbound: false,
+    defaultOutbound: true,
+    outboundOnly: true,
+    fields: [
+      { key: "name", label: "Connection Name", placeholder: "My Blog" },
+      { key: "cms_type", label: "CMS Type (ghost | wordpress | custom)", placeholder: "ghost" },
+      { key: "api_url", label: "API URL", placeholder: "https://my-blog.com/ghost/api/v3/admin/posts" },
+      { key: "api_key", label: "API Key (optional)", placeholder: "Admin API key", secret: true },
+    ],
+  },
+  {
+    id: "email",
+    name: "Email",
+    description: "Send AI-generated content by email (SendGrid, SES, or SMTP).",
+    icon: Mail,
+    iconBg: "bg-rose-100 dark:bg-rose-500/20",
+    iconColor: "text-rose-600 dark:text-rose-400",
+    docsUrl: "https://docs.sendgrid.com/api-reference/mail-send/mail-send",
+    oauthProvider: null,
+    supportsInbound: false,
+    supportsOutbound: true,
+    defaultInbound: false,
+    defaultOutbound: true,
+    outboundOnly: true,
+    fields: [
+      { key: "name", label: "Connection Name", placeholder: "Newsletter sender" },
+      { key: "provider", label: "Provider (sendgrid | ses | smtp)", placeholder: "sendgrid" },
+      { key: "api_key", label: "API Key", placeholder: "SG.xxxx...", secret: true },
+      { key: "from_email", label: "From Address", placeholder: "hello@example.com" },
+    ],
+  },
+  {
+    id: "slack_webhook",
+    name: "Slack Webhook",
+    description: "Post to a Slack channel via an incoming webhook URL.",
+    icon: Hash,
+    iconBg: "bg-violet-100 dark:bg-violet-500/20",
+    iconColor: "text-violet-600 dark:text-violet-400",
+    docsUrl: "https://api.slack.com/messaging/webhooks",
+    oauthProvider: null,
+    supportsInbound: false,
+    supportsOutbound: true,
+    defaultInbound: false,
+    defaultOutbound: true,
+    outboundOnly: true,
+    fields: [
+      { key: "name", label: "Connection Name", placeholder: "Team ops" },
+      { key: "webhook_url", label: "Webhook URL", placeholder: "https://hooks.slack.com/services/T.../B.../xxx", secret: true },
+    ],
+  },
 ];
 
 // ─── Helpers ────────────────────────────────────────────────────
@@ -387,9 +468,87 @@ export default function ConnectionsPage() {
     setShowSecrets({});
   };
 
-  // Token-paste save (Telegram/Discord/Reddit)
+  // Load existing outbound-only connections from the aggregator on mount so
+  // blog/email/slack_webhook cards reflect real backend state (not localStorage).
+  useEffect(() => {
+    let cancelled = false;
+    connectionsApi
+      .list()
+      .then((rows: ConnectionSummary[]) => {
+        if (cancelled) return;
+        const outboundRows = rows.filter(
+          (r) => r.platform === "blog" || r.platform === "email" || r.platform === "slack_webhook",
+        );
+        if (outboundRows.length === 0) return;
+        setConnections((prev) => {
+          const filtered = prev.filter(
+            (c) => c.id !== "blog" && c.id !== "email" && c.id !== "slack_webhook",
+          );
+          for (const row of outboundRows) {
+            filtered.push({
+              id: row.platform as ConnectionId,
+              config: { _backend_id: row.id, name: row.display_name ?? "" },
+              inbound: row.inbound_enabled,
+              outbound: row.outbound_enabled,
+              status: row.connected ? "connected" : "disconnected",
+              connectedAt: row.created_at ?? undefined,
+              profileName: row.display_name ?? undefined,
+            });
+          }
+          saveConnections(filtered);
+          return filtered;
+        });
+      })
+      .catch(() => {
+        // Backend may not yet know about /connections — non-fatal for localStorage-based cards.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Token-paste save (Telegram/Discord/Reddit/Blog/Email/Slack webhook)
   const handleSave = async (connId: ConnectionId) => {
     setTesting(connId);
+
+    const conf = CONNECTIONS.find((c) => c.id === connId);
+
+    // Outbound-only connections (blog / email / slack_webhook) go to the unified backend.
+    if (conf?.outboundOnly) {
+      try {
+        const name = (formData.name || conf.name).trim();
+        const cfg: Record<string, unknown> = {};
+        for (const field of conf.fields) {
+          if (field.key === "name") continue;
+          const value = (formData[field.key] || "").trim();
+          if (value) cfg[field.key] = value;
+        }
+        const created = await connectionsApi.createOutbound({
+          platform: conf.id as OutboundPlatform,
+          name,
+          config: cfg,
+        });
+
+        const updated = connections.filter((c) => c.id !== connId);
+        updated.push({
+          id: connId,
+          config: { _backend_id: created.id, name },
+          inbound: false,
+          outbound: true,
+          status: "connected",
+          connectedAt: created.created_at ?? new Date().toISOString(),
+          profileName: name,
+        });
+        setConnections(updated);
+        saveConnections(updated);
+      } catch (e) {
+        console.error("Outbound connection save failed", e);
+      }
+      setTesting(null);
+      setEditing(null);
+      setFormData({});
+      return;
+    }
 
     // Reddit has a dedicated backend endpoint — save there too so the poller picks it up.
     if (connId === "reddit") {
@@ -486,6 +645,19 @@ export default function ConnectionsPage() {
   };
 
   const handleDisconnect = async (conn: ConnectionConfig) => {
+    // Outbound-only connections live in the backend — delete there.
+    if (conn.outboundOnly) {
+      const saved = getConnection(conn.id);
+      const backendId = saved?.config._backend_id;
+      if (backendId) {
+        try {
+          await connectionsApi.deleteOutbound(backendId);
+        } catch {
+          // proceed with local cleanup anyway
+        }
+      }
+    }
+
     // If OAuth provider, also disconnect on backend
     if (conn.oauthProvider) {
       try {

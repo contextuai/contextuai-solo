@@ -45,6 +45,7 @@ from routers.blueprints import router as blueprints_router
 from routers.reddit import router as reddit_router
 from routers.twitter import router as twitter_router
 from routers.scheduled_jobs import router as scheduled_jobs_router
+from routers.connections import router as connections_router
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -96,6 +97,7 @@ app.include_router(blueprints_router)
 app.include_router(reddit_router)
 app.include_router(twitter_router)
 app.include_router(scheduled_jobs_router)
+app.include_router(connections_router)
 
 
 # ---------------------------------------------------------------------------
