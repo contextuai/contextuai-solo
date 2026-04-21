@@ -23,8 +23,8 @@ test.beforeEach(async ({ page }) => {
 // ==========================================================================
 
 test.describe("CRUD via UI", () => {
-  // DC-CONN-01: View all 7 connection cards
-  test("DC-CONN-01: view all 7 connection cards", async ({ page }) => {
+  // DC-CONN-01: View all 10 connection cards (7 socials + Blog + Email + Slack webhook)
+  test("DC-CONN-01: view all 10 connection cards", async ({ page }) => {
     await expect(page.locator("h1", { hasText: "Connections" })).toBeVisible();
 
     await expect(page.locator("h3", { hasText: "Telegram Bot" })).toBeVisible();
@@ -34,9 +34,13 @@ test.describe("CRUD via UI", () => {
     await expect(page.locator("h3", { hasText: "Twitter / X" })).toBeVisible();
     await expect(page.locator("h3", { hasText: "Instagram" })).toBeVisible();
     await expect(page.locator("h3", { hasText: "Facebook" })).toBeVisible();
+    // Phase 3: outbound-only additions.
+    await expect(page.locator("h3", { hasText: "Blog" })).toBeVisible();
+    await expect(page.locator("h3", { hasText: "Email" })).toBeVisible();
+    await expect(page.locator("h3", { hasText: "Slack Webhook" })).toBeVisible();
 
     const count = await connections.connectionCards.count();
-    expect(count).toBe(7);
+    expect(count).toBe(10);
   });
 
   // DC-CONN-02: Expand Telegram connection form
@@ -48,9 +52,11 @@ test.describe("CRUD via UI", () => {
     // Bot Token field should be visible
     await expect(page.locator("input[placeholder*='123456']")).toBeVisible();
 
-    // Direction toggles should be visible
-    await expect(page.locator("text=Inbound")).toBeVisible();
-    await expect(page.locator("text=Outbound")).toBeVisible();
+    // Direction toggles should be visible inside the Telegram card.
+    // Scoped to the card to avoid strict-mode collisions with other cards'
+    // Inbound/Outbound labels (e.g. Blog / Email / Slack webhook).
+    await expect(telegramCard.locator("text=Inbound").first()).toBeVisible();
+    await expect(telegramCard.locator("text=Outbound").first()).toBeVisible();
   });
 
   // DC-CONN-03: Expand Discord connection form
@@ -96,8 +102,10 @@ test.describe("CRUD via UI", () => {
     await expect(page.locator("input[placeholder*='Access Token']").first()).toBeVisible();
     await expect(page.locator("input[placeholder*='Access Token Secret']")).toBeVisible();
 
-    // Twitter/X supports outbound only — no Inbound toggle
-    await expect(page.locator("text=Outbound")).toBeVisible();
+    // Twitter/X supports outbound only — no Inbound toggle.
+    // Scoped to the Twitter card so Blog / Email / Slack Outbound labels
+    // don't trigger strict-mode violations.
+    await expect(twitterCard.locator("text=Outbound").first()).toBeVisible();
   });
 
   // DC-CONN-13: Save Twitter/X credentials
@@ -165,11 +173,11 @@ test.describe("Positive Workflows", () => {
     await expect(page.locator("button", { hasText: "Sign in with LinkedIn" })).toBeVisible();
   });
 
-  // DC-CONN-09: External docs links are present
+  // DC-CONN-09: External docs links are present (10 total after Phase 3)
   test("DC-CONN-09: external docs links are present", async ({ page }) => {
     const docsLinks = page.locator("a[title='Setup guide']");
     const count = await docsLinks.count();
-    expect(count).toBe(7);
+    expect(count).toBe(10);
 
     const links = await docsLinks.all();
     for (const link of links) {

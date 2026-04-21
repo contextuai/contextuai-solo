@@ -100,10 +100,10 @@ test.describe("Wizard Flow", () => {
   test("DC-CREW-WIZ-01: wizard shows step indicator", async () => {
     await crews.openBuilder();
 
-    // Should have 4 step indicator circles
+    // Post-Phase-3 the wizard is 7 steps (6 for autonomous).
     const indicators = crews.stepIndicators;
     const count = await indicators.count();
-    expect(count).toBeGreaterThanOrEqual(3); // 3 for autonomous, 4 for others
+    expect(count).toBeGreaterThanOrEqual(6);
   });
 
   // DC-CREW-WIZ-02: Step 1 shows crew name and description
@@ -149,20 +149,30 @@ test.describe("Wizard Flow", () => {
     await crews.nextButton.click();
     await page.waitForTimeout(300);
 
-    // Step 4: Connections
-    await expect(page.locator("text=Channel Connections").first()).toBeVisible();
+    // Step 4: Connections & Directions (Phase 3)
+    await expect(page.locator("text=/Pick connections/i").first()).toBeVisible();
     await crews.nextButton.click();
     await page.waitForTimeout(300);
 
-    // Step 5: Review
-    await expect(page.locator("text=Review Configuration").first()).toBeVisible();
+    // Step 5: Trigger (Phase 3)
+    await expect(page.locator("text=/Reactive triggers/i").first()).toBeVisible();
+    await crews.nextButton.click();
+    await page.waitForTimeout(300);
+
+    // Step 6: Approval (Phase 3)
+    await expect(page.locator("text=/Review outbound before sending/i").first()).toBeVisible();
+    await crews.nextButton.click();
+    await page.waitForTimeout(300);
+
+    // Step 7: Review
+    await expect(page.locator("text=/Review Configuration/i").first()).toBeVisible();
   });
 
-  // DC-CREW-WIZ-05: Connections step shows channel cards
-  test("DC-CREW-WIZ-05: connections step shows channel cards", async ({ page }) => {
+  // DC-CREW-WIZ-05: Connections & Directions step shows connection rows
+  test("DC-CREW-WIZ-05: connections step shows connection rows", async ({ page }) => {
     await crews.openBuilder();
 
-    // Navigate to step 4 (Connections)
+    // Navigate to step 4 (Connections & Directions)
     await crews.crewNameInput.fill("Connections Test");
     await crews.nextButton.click(); // → Step 2
     await page.waitForTimeout(200);
@@ -174,25 +184,27 @@ test.describe("Wizard Flow", () => {
     const agentInstructions = crews.agentInstructionTextareas.first();
     await agentName.fill("Bot Agent");
     await agentInstructions.fill("Handle messages");
-    await crews.nextButton.click(); // → Step 4 (Connections)
+    await crews.nextButton.click(); // → Step 4 (Connections & Directions)
     await page.waitForTimeout(300);
 
-    // Should show Channel Connections heading
-    await expect(page.locator("text=Channel Connections").first()).toBeVisible();
+    // Phase 3: heading is now "Pick connections & direction".
+    await expect(page.locator("text=/Pick connections/i").first()).toBeVisible();
 
-    // Should have connection cards (Telegram, Discord, LinkedIn, Twitter, Instagram, Facebook)
-    const connectionCards = page.locator(".grid button").filter({
-      has: page.locator("p.text-sm.font-medium"),
-    });
-    const count = await connectionCards.count();
-    expect(count).toBeGreaterThanOrEqual(6);
+    // Connections now come from GET /api/v1/connections. On a clean test
+    // env the list may be empty — in that case the "no connections" hint
+    // shows. Either way, the step should render without error.
+    const emptyHint = page.locator("text=/No connections set up yet/i");
+    const directionChips = page.locator("button", { hasText: /^(Inbound|Outbound|Both)$/ });
+    const hasEmpty = await emptyHint.isVisible().catch(() => false);
+    const chipCount = await directionChips.count();
 
-    // Click Telegram to select it
-    await page.locator("text=Telegram").first().click();
-    await page.waitForTimeout(200);
+    if (!hasEmpty) {
+      // At least one connection row → at least 3 direction chips per row.
+      expect(chipCount).toBeGreaterThanOrEqual(3);
+    }
 
-    // Should show selected count
-    await expect(page.locator("text=1 channel selected")).toBeVisible();
+    // The legacy "1 channel selected" assertion no longer applies — that
+    // summary line came from the removed hardcoded channel grid.
   });
 
   // DC-CREW-WIZ-06: Back button navigates backwards
