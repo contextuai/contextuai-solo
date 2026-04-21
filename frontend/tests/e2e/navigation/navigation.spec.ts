@@ -19,13 +19,13 @@ test("DC-NAV-01: sidebar shows all navigation items", async () => {
   await expect(nav.sidebar).toBeVisible();
 
   const labels = await nav.getNavLabels();
-  const expectedItems = ["Chat", "Model Hub", "Personas", "Agents", "Crews", "Blueprints", "Workspace", "Connections", "Approvals", "Schedule", "Distribution", "Settings"];
+  const expectedItems = ["Chat", "Model Hub", "Personas", "Agents", "Crews", "Blueprints", "Workspace", "Connections", "Approvals", "Settings"];
 
   for (const item of expectedItems) {
     expect(labels).toContain(item);
   }
 
-  expect(labels.length).toBe(12);
+  expect(labels.length).toBe(10);
 });
 
 // DC-NAV-02: Navigate to each page and verify heading
@@ -40,8 +40,6 @@ test("DC-NAV-02: navigate to each page and verify heading", async ({ page }) => 
     { label: "Workspace", heading: "Workspace" },
     { label: "Connections", heading: "Connections" },
     { label: "Approvals", heading: "Approval Queue" },
-    { label: "Schedule", heading: "Scheduled Jobs" },
-    { label: "Distribution", heading: "Distribution" },
     { label: "Settings", heading: "Settings" },
   ];
 
@@ -103,12 +101,12 @@ test("DC-NAV-04: sidebar collapse/expand toggle works", async ({ page }) => {
   expect(expandedBox!.width).toBeGreaterThan(100);
 
   const expandedLabels = await nav.getNavLabels();
-  expect(expandedLabels.length).toBe(12);
+  expect(expandedLabels.length).toBe(10);
 });
 
 // DC-NAV-05: Page transitions are smooth (no flash)
 test("DC-NAV-05: page transitions are smooth", async ({ page }) => {
-  const routes = ["Personas", "Agents", "Crews", "Blueprints", "Workspace", "Connections", "Approvals", "Schedule", "Distribution", "Settings", "Chat"];
+  const routes = ["Personas", "Agents", "Crews", "Blueprints", "Workspace", "Connections", "Approvals", "Settings", "Chat"];
 
   for (const route of routes) {
     await nav.navigateTo(route);
