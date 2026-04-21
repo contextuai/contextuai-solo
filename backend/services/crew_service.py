@@ -24,6 +24,39 @@ logger = logging.getLogger(__name__)
 
 MAX_CREWS_PER_USER = 50
 
+
+async def _refresh_scheduled_runner(db, crew_id: str) -> None:
+    """Re-register a crew's scheduled triggers with the global runner.
+
+    No-op when UNIFIED_CREWS is off or the runner hasn't been started — keeps
+    crew create/update working in test contexts that don't boot the scheduler.
+    """
+    try:
+        from services.feature_flags import unified_crews_enabled
+        if not unified_crews_enabled():
+            return
+        from app import app as fastapi_app
+        runner = getattr(fastapi_app.state, "scheduled_runner", None)
+        if runner is None:
+            return
+        await runner.refresh_for_crew(crew_id)
+    except Exception:
+        logger.debug("scheduled_runner refresh skipped", exc_info=True)
+
+
+def _unregister_scheduled_runner(crew_id: str) -> None:
+    try:
+        from services.feature_flags import unified_crews_enabled
+        if not unified_crews_enabled():
+            return
+        from app import app as fastapi_app
+        runner = getattr(fastapi_app.state, "scheduled_runner", None)
+        if runner is None:
+            return
+        runner.unregister_for_crew(crew_id)
+    except Exception:
+        logger.debug("scheduled_runner unregister skipped", exc_info=True)
+
 # ----------------------------------------------------------------
 # Workspace agent category → crew agent role mapping
 # ----------------------------------------------------------------
@@ -115,6 +148,7 @@ class CrewService:
 
         crew = await self.crew_repo.create_crew(user_id, crew_data)
         logger.info(f"Created crew '{request.name}' (crew_id={crew['crew_id']}) for user {user_id}")
+        await _refresh_scheduled_runner(self.crew_repo.db, crew["crew_id"])
         return crew
 
     async def get_crew(self, crew_id: str, user_id: str) -> Optional[Dict[str, Any]]:
@@ -172,6 +206,7 @@ class CrewService:
         updated = await self.crew_repo.update_crew(crew_id, update_data)
         if updated:
             logger.info(f"Updated crew {crew_id}")
+            await _refresh_scheduled_runner(self.crew_repo.db, crew_id)
         return updated
 
     async def delete_crew(self, crew_id: str, user_id: str) -> bool:
@@ -182,6 +217,7 @@ class CrewService:
         deleted = await self.crew_repo.soft_delete_crew(crew_id)
         if deleted:
             logger.info(f"Soft-deleted crew {crew_id}")
+            _unregister_scheduled_runner(crew_id)
         return deleted
 
     # ------------------------------------------------------------------
@@ -189,13 +225,19 @@ class CrewService:
     # ------------------------------------------------------------------
 
     async def start_run(
-        self, crew_id: str, user_id: str, request: RunCrewRequest
+        self,
+        crew_id: str,
+        user_id: str,
+        request: RunCrewRequest,
+        trigger_type: str = "manual",
+        trigger_source: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Initiate a new crew execution run.
 
-        Creates the run record with agent states. Actual execution
-        will be handled by the CrewOrchestrator (Task #23) via Celery.
+        `trigger_type` records why this run fired: "manual" (Run button),
+        "reactive" (inbound message matched a trigger), or "scheduled" (cron/run_at).
+        `trigger_source` is the connection_id, cron expression, or "manual".
         """
         crew = await self.get_crew(crew_id, user_id)
         if not crew:
@@ -244,6 +286,8 @@ class CrewService:
             "input": request.input,
             "input_data": request.input_data if request.input_data else None,
             "agents": agent_states,
+            "trigger_type": trigger_type,
+            "trigger_source": trigger_source if trigger_source is not None else ("manual" if trigger_type == "manual" else None),
         }
 
         run = await self.run_repo.create_run(crew_id, user_id, run_data)

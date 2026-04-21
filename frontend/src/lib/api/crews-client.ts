@@ -36,6 +36,29 @@ export interface ChannelBinding {
   approval_required: boolean;
 }
 
+// Phase 3 additions — safe to read as optional since PR 1 may not be merged yet.
+export interface ConnectionBinding {
+  connection_id: string;
+  platform: string;
+  direction: "inbound" | "outbound" | "both";
+}
+
+export type CrewTrigger =
+  | {
+      type: "reactive";
+      connection_id: string;
+      keywords?: string[];
+      hashtags?: string[];
+      mentions?: string[];
+    }
+  | {
+      type: "scheduled";
+      connection_ids?: string[];
+      cron?: string;
+      run_at?: string;
+      content_brief?: string;
+    };
+
 export interface Crew {
   id?: string;
   crew_id: string;
@@ -44,6 +67,9 @@ export interface Crew {
   execution_config?: CrewExecutionConfig;
   agents?: CrewAgent[];
   channel_bindings?: ChannelBinding[];
+  connection_bindings?: ConnectionBinding[];
+  triggers?: CrewTrigger[];
+  approval_required?: boolean;
   phases?: unknown[];
   schedule?: CrewSchedule;
   status: "active" | "paused" | "archived" | "idle";
@@ -71,6 +97,8 @@ export interface CrewRun {
   input_data?: Record<string, unknown>;
   output_data?: Record<string, unknown>;
   error?: string;
+  trigger_type?: "reactive" | "scheduled" | "manual";
+  trigger_source?: string;
 }
 
 export interface CrewRunStep {
