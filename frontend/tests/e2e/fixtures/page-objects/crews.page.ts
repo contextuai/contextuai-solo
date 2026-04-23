@@ -10,11 +10,14 @@ import { type Page, type Locator, expect } from "@playwright/test";
  * - Tabs: Crews | Runs
  * - Status filter and mode filter selects (crews tab only)
  * - Crew cards with Run buttons
- * - CrewBuilder wizard (4-step):
+ * - CrewBuilder wizard (7-step after Phase 3 PR 3b):
  *   Step 1: Crew Details (name, description)
  *   Step 2: Execution Mode
- *   Step 3: Agent Team
- *   Step 4: Review & Create
+ *   Step 3: Agent Team (skipped for autonomous)
+ *   Step 4: Connections & Directions
+ *   Step 5: Trigger
+ *   Step 6: Approval
+ *   Step 7: Review & Create
  */
 export class CrewsPage {
   readonly page: Page;
@@ -116,7 +119,7 @@ export class CrewsPage {
     return this.builderDialog.getByRole("button", { name: /back/i });
   }
 
-  /** Create Crew submit button (step 4). */
+  /** Create Crew submit button (step 7). */
   get submitButton(): Locator {
     return this.builderDialog.getByRole("button", { name: /create crew|save changes/i });
   }
@@ -181,6 +184,10 @@ export class CrewsPage {
 
   /**
    * Open the wizard and create a crew through all steps.
+   *
+   * Post-Phase-3 wizard is 7 steps. Agent fields must be filled on step 3
+   * before Next is enabled (non-autonomous modes). All other steps have
+   * sensible defaults, so we can click through them quickly.
    */
   async createCrew(data: {
     name: string;
@@ -196,19 +203,32 @@ export class CrewsPage {
       await this.crewDescriptionInput.fill(data.description);
     }
 
-    // Next → Step 2 (Execution Mode)
+    // → Step 2 (Execution Mode)
     await this.nextButton.click();
     await this.page.waitForTimeout(300);
 
-    // Next → Step 3 (Agents)
+    // → Step 3 (Agents) — fill minimal agent so Next unlocks.
+    await this.nextButton.click();
+    await this.page.waitForTimeout(300);
+    const agentName = this.agentNameInputs.first();
+    if (await agentName.isVisible().catch(() => false)) {
+      await agentName.fill("Test Agent");
+      await this.agentInstructionTextareas.first().fill("Run the task.");
+    }
+
+    // → Step 4 (Connections & Directions)
     await this.nextButton.click();
     await this.page.waitForTimeout(300);
 
-    // Next → Step 4 (Connections)
+    // → Step 5 (Trigger)
     await this.nextButton.click();
     await this.page.waitForTimeout(300);
 
-    // Next → Step 5 (Review)
+    // → Step 6 (Approval)
+    await this.nextButton.click();
+    await this.page.waitForTimeout(300);
+
+    // → Step 7 (Review)
     await this.nextButton.click();
     await this.page.waitForTimeout(300);
 

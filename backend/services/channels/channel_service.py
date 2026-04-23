@@ -572,6 +572,27 @@ class ChannelService:
             },
         )
 
+        # --- Phase 3 PR 3: unified inbound router (gated on UNIFIED_CREWS) ---
+        try:
+            from services.feature_flags import unified_crews_enabled
+            if unified_crews_enabled():
+                from services.inbound_router import route_inbound
+                routed = await route_inbound(self.db, msg)
+                if routed is not None:
+                    return {
+                        "session_id": session["session_id"],
+                        "channel_type": msg.channel_type.value,
+                        "sender": msg.sender_name,
+                        "text": msg.text,
+                        "message_id": msg.message_id,
+                        "status": routed.get("status", "dispatched"),
+                        "response": routed.get("response", ""),
+                        "run_id": routed.get("run_id"),
+                        "crew_id": routed.get("crew_id"),
+                    }
+        except Exception as e:
+            logger.warning("Inbound router failed, falling through to legacy triggers: %s", e)
+
         # --- Check for a trigger (crew dispatch) ---
         try:
             from services.trigger_service import TriggerService

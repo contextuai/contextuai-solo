@@ -45,6 +45,7 @@ from routers.blueprints import router as blueprints_router
 from routers.reddit import router as reddit_router
 from routers.twitter import router as twitter_router
 from routers.scheduled_jobs import router as scheduled_jobs_router
+from routers.connections import router as connections_router
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -96,6 +97,7 @@ app.include_router(blueprints_router)
 app.include_router(reddit_router)
 app.include_router(twitter_router)
 app.include_router(scheduled_jobs_router)
+app.include_router(connections_router)
 
 
 # ---------------------------------------------------------------------------
@@ -470,6 +472,15 @@ async def startup_event():
         # Seed model configs for any already-downloaded local GGUF models
         await _seed_local_models(proxy)
 
+        # Phase 3 PR 1: backfill crew.connection_bindings / triggers / approval_required
+        try:
+            from services.migrations.unify_connections_migration import (
+                run_unify_connections_migration,
+            )
+            await run_unify_connections_migration(proxy)
+        except Exception:
+            logger.exception("unify_connections migration failed; continuing startup")
+
         # Start Reddit poller (runs only when a Reddit account is configured)
         from services.reddit_poller import get_poller
 
@@ -487,6 +498,18 @@ async def startup_event():
         scheduler_service = SchedulerService(proxy, scheduler)
         await scheduler_service.load_all()
         app.state.scheduler_service = scheduler_service
+
+        # Phase 3 PR 3: scheduled_runner registers crew.triggers[type=scheduled]
+        # Only active when UNIFIED_CREWS=on so legacy flows keep running by default.
+        try:
+            from services.feature_flags import unified_crews_enabled
+            if unified_crews_enabled():
+                from services.scheduled_runner import ScheduledRunner
+                runner = ScheduledRunner(proxy, scheduler)
+                await runner.load_all()
+                app.state.scheduled_runner = runner
+        except Exception:
+            logger.exception("ScheduledRunner failed to load — continuing startup")
 
         logger.info("ContextuAI Solo backend ready")
 

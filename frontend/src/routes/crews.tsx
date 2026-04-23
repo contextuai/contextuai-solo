@@ -93,6 +93,32 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+function TriggerTypeBadge({ triggerType }: { triggerType?: string }) {
+  // Phase 3: indicates why this run fired. Defaults to "manual" so runs from
+  // before the trigger metadata existed still render something sensible.
+  const t = triggerType ?? "manual";
+  const map: Record<string, { label: string; cls: string }> = {
+    manual: {
+      label: "Manual",
+      cls: "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400",
+    },
+    reactive: {
+      label: "Reactive",
+      cls: "bg-orange-50 dark:bg-orange-500/10 text-orange-600 dark:text-orange-400",
+    },
+    scheduled: {
+      label: "Scheduled",
+      cls: "bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400",
+    },
+  };
+  const info = map[t] ?? map.manual;
+  return (
+    <span className={cn("inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium", info.cls)}>
+      {info.label}
+    </span>
+  );
+}
+
 const MODE_BADGES: Record<string, { label: string; cls: string; icon: React.ElementType }> = {
   sequential: {
     label: "Sequential",
@@ -134,6 +160,7 @@ export default function CrewsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [modeFilter, setModeFilter] = useState<string>("all");
+  const [phase3Filter, setPhase3Filter] = useState<string>("all");
 
   const loadData = useCallback(async () => {
     try {
@@ -192,6 +219,27 @@ export default function CrewsPage() {
       (crew.execution_config?.mode || "sequential") !== modeFilter
     ) {
       return false;
+    }
+    if (phase3Filter !== "all") {
+      const bindings = crew.connection_bindings ?? [];
+      const triggers = crew.triggers ?? [];
+      switch (phase3Filter) {
+        case "inbound":
+          if (!bindings.some((b) => b.direction === "inbound" || b.direction === "both")) return false;
+          break;
+        case "outbound":
+          if (!bindings.some((b) => b.direction === "outbound" || b.direction === "both")) return false;
+          break;
+        case "reactive":
+          if (!triggers.some((t) => t.type === "reactive")) return false;
+          break;
+        case "scheduled":
+          if (!triggers.some((t) => t.type === "scheduled")) return false;
+          break;
+        case "approval":
+          if (!crew.approval_required) return false;
+          break;
+      }
     }
     return true;
   });
@@ -330,6 +378,18 @@ export default function CrewsPage() {
                 <option value="parallel">Parallel</option>
                 <option value="pipeline">Pipeline</option>
                 <option value="autonomous">Autonomous</option>
+              </select>
+              <select
+                value={phase3Filter}
+                onChange={(e) => setPhase3Filter(e.target.value)}
+                className="px-2 py-1.5 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs focus:ring-2 focus:ring-primary-500/30 outline-none"
+              >
+                <option value="all">All bindings</option>
+                <option value="inbound">Inbound</option>
+                <option value="outbound">Outbound</option>
+                <option value="reactive">Reactive trigger</option>
+                <option value="scheduled">Scheduled trigger</option>
+                <option value="approval">Approval required</option>
               </select>
             </div>
           )}
@@ -520,6 +580,7 @@ function RunsList({ runs }: { runs: CrewRun[] }) {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <StatusBadge status={run.status} />
+              <TriggerTypeBadge triggerType={run.trigger_type} />
               <div>
                 <span className="text-sm font-medium text-neutral-900 dark:text-white">
                   {run.crew_name || run.crew_id.slice(0, 8)}
