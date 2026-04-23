@@ -1,7 +1,7 @@
 # TODO — ContextuAI Solo Moonshot
 
 > Master task list. Prioritized by phases. Check off as completed.
-> **Created:** 2026-03-19 | **Last synced with code:** 2026-04-20
+> **Created:** 2026-03-19 | **Last synced with code:** 2026-04-22
 
 ---
 
@@ -254,7 +254,7 @@
 ## QUICK REFERENCE
 
 **Total models in catalog:** 41 (8 families: Qwen 2.5, Qwen 3, Qwen 3.5, Gemma 3, Gemma 4, Llama, Mistral, Phi, DeepSeek)
-**Total agents:** 105 markdown files across 13 categories (incl. 12/15 social in `social-engagement/`)
+**Total agents:** 108 markdown files across 13 categories (engineering 12 excluded from desktop → 96 visible)
 **Moonshot pick model:** Qwen 3.5 35B-A3B (MoE) — 35B brain, 3B speed, thinking + vision + 256K context
 **Backend port:** 18741
 **Key files for Phase 1:**
@@ -275,12 +275,12 @@
 2. ~~P2.5-1 Reddit Connection~~ DONE (2026-04-15)
 3. ~~Phase 2 remainder (P2-1…P2-6) + BL-3 Scheduler~~ DONE (2026-04-19)
 4. P2.5-2 Knowledge Base (RAG) — reuse existing `embedding_service.py`
-5. Phase 3 Launch
+5. ~~Phase 3 Launch~~ DONE (2026-04-22)
 
 ---
 
 ## PHASE 3: UNIFY CONNECTIONS + CREWS (IA Refactor) ⭐ HIGH PRIORITY
-**Status:** [ ] NOT STARTED
+**Status:** [x] COMPLETE (2026-04-22)
 **Added:** 2026-04-20
 **Effort estimate:** ~4 PRs, 3–5 dev sessions
 
@@ -334,26 +334,26 @@
 ### Backend work
 
 **New files**
-- [ ] `backend/services/connection_service.py` — unified aggregator over existing stores. Exposes:
+- [x] `backend/services/connection_service.py` — unified aggregator over existing stores. Exposes:
   - `list_connections() -> [ConnectionSummary]`
   - `get_capabilities(conn_id) -> {inbound, outbound}`
   - `set_capability(conn_id, direction, enabled)`
-- [ ] `backend/services/inbound_router.py` — on inbound message:
+- [x] `backend/services/inbound_router.py` — on inbound message:
   1. Find crews with reactive trigger on this connection.
   2. Keyword/hashtag/mention substring match.
   3. If >1 match, call an LLM (cheap model — Haiku or local Gemma) to pick best match.
   4. Dispatch the chosen crew via existing agent_runner.
   - Initially: thin wrapper over existing `channel_service.handle_message`; layer matching logic on top to avoid regression.
-- [ ] `backend/services/scheduled_runner.py` — polls crews for `triggers[type=scheduled]`, fires at cron/run_at boundaries. **Replaces** the internals of the standalone scheduler — but the standalone Schedule page still shows Coming Soon.
-- [ ] `backend/routers/connections.py` (new aggregator):
+- [x] `backend/services/scheduled_runner.py` — polls crews for `triggers[type=scheduled]`, fires at cron/run_at boundaries. **Replaces** the internals of the standalone scheduler — but the standalone Schedule page still shows Coming Soon.
+- [x] `backend/routers/connections.py` (new aggregator):
   - `GET /api/v1/connections` — unified list
   - `PATCH /api/v1/connections/{id}/capabilities` — toggle inbound/outbound
   - Existing per-platform credential endpoints (OAuth/token paste/Reddit) remain unchanged.
 
 **Modified files**
-- [ ] `backend/services/workspace/agent_runner.py` — after crew run completes, if any `connection_binding` has outbound enabled, publish the final agent output via the corresponding adapter. No more separate `distribution_service`. If `crew.approval_required`, create an approval record instead of sending directly.
-- [ ] `backend/services/crew_service.py` — add trigger + approval fields; validate trigger configs.
-- [ ] `backend/models/crew_models.py` — Pydantic additions for `connection_bindings`, `triggers`, `approval_required`.
+- [x] `backend/services/workspace/agent_runner.py` — after crew run completes, if any `connection_binding` has outbound enabled, publish the final agent output via the corresponding adapter. No more separate `distribution_service`. If `crew.approval_required`, create an approval record instead of sending directly.
+- [x] `backend/services/crew_service.py` — add trigger + approval fields; validate trigger configs.
+- [x] `backend/models/crew_models.py` — Pydantic additions for `connection_bindings`, `triggers`, `approval_required`.
 
 **Deprecated (do NOT delete yet — user asked to keep Coming Soon)**
 - `backend/routers/distribution.py` — leave wired but return `{status: "coming_soon"}` stub on routes called by the deprecated frontend page. Or mark the router unused once frontend stops calling it.
@@ -363,28 +363,26 @@
 ### Frontend work
 
 **Rewrite**
-- [ ] `frontend/src/routes/connections.tsx` — one grid with all 10 types:
+- [x] `frontend/src/routes/connections.tsx` — one grid with all 10 types:
   - 7 socials: Telegram, Discord, Reddit, LinkedIn, Twitter/X, Instagram, Facebook
   - 3 new outbound-only: Blog, Email, Slack webhook
   - Each card: auth status, **Inbound toggle** (hidden for outbound-only types), **Outbound toggle**, Manage/Disconnect.
-- [ ] `frontend/src/components/crews/crew-builder.tsx` — revise the 5-step wizard:
-  - **Step 4 "Connections"** → **Connections & Directions**: pick connections, per-connection direction chip selector (`Inbound` / `Outbound` / `Both`). If user picks a direction that's disabled at the connection level, show inline modal:
-    > "Outbound is disabled on Telegram. Enable it now so this crew can send?"
-    > [Enable & continue] [Cancel]
-  - **New Step 5 "Trigger"**: Reactive (+ `keywords`, `hashtags`, `mentions` multi-input) and/or Scheduled (cron field + one-shot date-picker). Both can be enabled; manual is implicit.
-  - **New Step 6 "Approval"**: single toggle "Review outbound before sending."
-  - Existing Review step becomes Step 7 — update summary to reflect new fields.
+- [x] `frontend/src/components/crews/crew-builder.tsx` — revise the 5-step wizard → 7-step wizard:
+  - **Step 4 "Connections & Directions"**: pick connections, per-connection direction chip selector (`Inbound` / `Outbound` / `Both`).
+  - **Step 5 "Trigger"**: Reactive (+ `keywords`, `hashtags`, `mentions` multi-input) and/or Scheduled (cron field + one-shot date-picker). Both can be enabled; manual is implicit.
+  - **Step 6 "Approval"**: single toggle "Review outbound before sending."
+  - Step 7 "Review & Create" — summary reflects all new fields.
 
 **Removed (PR 4)**
-- [ ] Drop `/distribution` and `/schedule` route registrations from `App.tsx`.
-- [ ] Drop the Distribution + Schedule sidebar entries from `frontend/src/components/navigation/desktop-sidebar.tsx` (sidebar 12 → 10 items).
-- [ ] Update nav E2E test in `frontend/tests/e2e/navigation/navigation.spec.ts` to expect 10 items.
-- [ ] Page files `frontend/src/routes/distribution.tsx` and `frontend/src/routes/schedule.tsx` can stay on disk for one release cycle as dead code — the FUTURE cleanup task deletes them.
+- [x] Drop `/distribution` and `/schedule` route registrations from `App.tsx`.
+- [x] Drop the Distribution + Schedule sidebar entries from `frontend/src/components/navigation/desktop-sidebar.tsx` (sidebar 12 → 10 items).
+- [x] Update nav E2E test in `frontend/tests/e2e/navigation/navigation.spec.ts` to expect 10 items.
+- [x] Page files `frontend/src/routes/distribution.tsx` and `frontend/src/routes/schedule.tsx` stay on disk for one release cycle as dead code — the FUTURE cleanup task deletes them.
 
 **Modified**
-- [ ] `frontend/src/routes/crews.tsx` — **Crews tab**: add new filter chips alongside existing `statusFilter` and `modeFilter`: `Inbound`, `Outbound`, `Scheduled`, `Reactive`, `Approval-required`. Filter logic hooks into `filteredCrews` (line 179). **Runs tab**: render `trigger_type` badge on each row of `RunsList` (line 498).
-- [ ] `frontend/src/lib/api/crews-client.ts` — extend `CrewRun` type with `trigger_type`, `trigger_source`.
-- [ ] `frontend/src/lib/api/distribution-client.ts` — can stay but is no longer consumed by the active UI. Delete in the future-cleanup phase.
+- [x] `frontend/src/routes/crews.tsx` — **Crews tab**: filter chips for Inbound, Outbound, Scheduled, Reactive, Approval-required. **Runs tab**: `trigger_type` badge on each run row.
+- [x] `frontend/src/lib/api/crews-client.ts` — `CrewRun` type extended with `trigger_type`, `trigger_source`.
+- [x] `frontend/src/lib/api/distribution-client.ts` — no longer consumed by active UI; stays for future-cleanup phase.
 
 **Not changed**
 - Sidebar entries other than Distribution + Schedule — order, icons, labels untouched.
