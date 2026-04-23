@@ -2,7 +2,7 @@
   "name": "contextuai-solo",
   "description": "ContextuAI Solo — Personal AI Desktop App",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.0.0-beta.7",
   "type": "module",
   "scripts": {
     "dev": "vite",
