@@ -25,7 +25,7 @@ test.beforeEach(async ({ page }) => {
 test.describe("CRUD via UI", () => {
   // DC-CONN-01: View all 10 connection cards (7 socials + Blog + Email + Slack webhook)
   test("DC-CONN-01: view all 10 connection cards", async ({ page }) => {
-    await expect(page.locator("h1", { hasText: "Connections" })).toBeVisible();
+    await expect(page.locator("h1", { hasText: "Distributions" })).toBeVisible();
 
     await expect(page.locator("h3", { hasText: "Telegram Bot" })).toBeVisible();
     await expect(page.locator("h3", { hasText: "Discord Bot" })).toBeVisible();
