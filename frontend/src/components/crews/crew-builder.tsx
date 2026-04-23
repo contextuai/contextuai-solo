@@ -62,13 +62,49 @@ interface ReactiveTriggerDraft {
   mentions: string[];
 }
 
+type RecurrenceFreq = "daily" | "weekly" | "monthly" | "custom";
+const DAYS_OF_WEEK = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
 interface ScheduledTriggerDraft {
   id: string;
-  mode: "cron" | "run_at";
-  cron: string;
+  mode: "recurring" | "run_at";
+  // recurring sub-fields
+  freq: RecurrenceFreq;
+  time: string;        // "HH:MM"
+  weekdays: number[];  // 0=Sun … 6=Sat
+  monthDay: number;    // 1–28
+  cron: string;        // raw cron (freq=custom only)
+  // one-shot
   run_at: string;
   connection_ids: string[];
   content_brief: string;
+}
+
+/** Build a cron expression from the friendly fields. */
+function buildCron(t: ScheduledTriggerDraft): string {
+  if (t.freq === "custom") return t.cron;
+  const [hh, mm] = t.time.split(":").map(Number);
+  const h = isNaN(hh) ? 9 : hh;
+  const m = isNaN(mm) ? 0 : mm;
+  if (t.freq === "daily")   return `${m} ${h} * * *`;
+  if (t.freq === "weekly")  return `${m} ${h} * * ${(t.weekdays.length ? t.weekdays : [1]).join(",")}`;
+  if (t.freq === "monthly") return `${m} ${h} ${t.monthDay} * *`;
+  return t.cron;
+}
+
+/** Parse an existing cron string back to friendly fields (best-effort). */
+function parseCron(cron: string): Pick<ScheduledTriggerDraft, "freq" | "time" | "weekdays" | "monthDay" | "cron"> {
+  const parts = cron.trim().split(/\s+/);
+  if (parts.length === 5) {
+    const [min, hr, dom, , dow] = parts;
+    const h = parseInt(hr, 10);
+    const m = parseInt(min, 10);
+    const time = `${String(isNaN(h) ? 9 : h).padStart(2, "0")}:${String(isNaN(m) ? 0 : m).padStart(2, "0")}`;
+    if (dom === "*" && dow === "*") return { freq: "daily", time, weekdays: [], monthDay: 1, cron };
+    if (dom === "*" && dow !== "*") return { freq: "weekly", time, weekdays: dow.split(",").map(Number).filter(n => !isNaN(n)), monthDay: 1, cron };
+    if (dom !== "*" && dow === "*") return { freq: "monthly", time, weekdays: [], monthDay: parseInt(dom, 10) || 1, cron };
+  }
+  return { freq: "custom", time: "09:00", weekdays: [], monthDay: 1, cron };
 }
 
 function _newId() {
@@ -472,14 +508,17 @@ export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderP
   const [scheduledTriggers, setScheduledTriggers] = useState<ScheduledTriggerDraft[]>(
     (editCrew?.triggers ?? [])
       .filter((t): t is Extract<CrewTrigger, { type: "scheduled" }> => t.type === "scheduled")
-      .map((t) => ({
-        id: _newId(),
-        mode: t.cron ? "cron" : "run_at",
-        cron: t.cron ?? "",
-        run_at: t.run_at ?? "",
-        connection_ids: t.connection_ids ?? [],
-        content_brief: t.content_brief ?? "",
-      }))
+      .map((t) => {
+        const parsed = parseCron(t.cron ?? "");
+        return {
+          id: _newId(),
+          mode: t.cron ? "recurring" : "run_at",
+          ...parsed,
+          run_at: t.run_at ?? "",
+          connection_ids: t.connection_ids ?? [],
+          content_brief: t.content_brief ?? "",
+        };
+      })
   );
   const [approvalRequired, setApprovalRequired] = useState<boolean>(
     editCrew?.approval_required ?? false
@@ -578,9 +617,8 @@ export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderP
           if (!t.connection_id) return false;
           if (t.keywords.length + t.hashtags.length + t.mentions.length === 0) return false;
         }
-        // Scheduled: exactly one of cron/run_at.
         for (const t of scheduledTriggers) {
-          if (t.mode === "cron" && !t.cron.trim()) return false;
+          if (t.mode === "recurring" && t.freq === "custom" && !t.cron.trim()) return false;
           if (t.mode === "run_at" && !t.run_at.trim()) return false;
         }
         return true;
@@ -718,7 +756,7 @@ export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderP
   function addScheduledTrigger() {
     setScheduledTriggers((prev) => [
       ...prev,
-      { id: _newId(), mode: "cron", cron: "0 9 * * *", run_at: "", connection_ids: [], content_brief: "" },
+      { id: _newId(), mode: "recurring", freq: "daily", time: "09:00", weekdays: [1], monthDay: 1, cron: "", run_at: "", connection_ids: [], content_brief: "" },
     ]);
   }
 
@@ -803,11 +841,11 @@ export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderP
       }
       for (const t of scheduledTriggers) {
         triggers.push(
-          t.mode === "cron"
+          t.mode === "recurring"
             ? {
                 type: "scheduled",
                 connection_ids: t.connection_ids,
-                cron: t.cron,
+                cron: buildCron(t),
                 content_brief: t.content_brief || undefined,
               }
             : {
@@ -1482,27 +1520,25 @@ export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderP
                 )}
                 <div className="space-y-3">
                   {scheduledTriggers.map((trigger) => (
-                    <div key={trigger.id} className="rounded-lg border border-neutral-200 dark:border-neutral-700 p-3 bg-white dark:bg-neutral-800 space-y-2">
+                    <div key={trigger.id} className="rounded-lg border border-neutral-200 dark:border-neutral-700 p-3 bg-white dark:bg-neutral-800 space-y-3">
+                      {/* Mode toggle */}
                       <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2 text-xs">
-                          <label className="inline-flex items-center gap-1 cursor-pointer">
-                            <input
-                              type="radio"
-                              name={`mode-${trigger.id}`}
-                              checked={trigger.mode === "cron"}
-                              onChange={() => updateScheduledTrigger(trigger.id, { mode: "cron" })}
-                            />
-                            Recurring (cron)
-                          </label>
-                          <label className="inline-flex items-center gap-1 cursor-pointer ml-2">
-                            <input
-                              type="radio"
-                              name={`mode-${trigger.id}`}
-                              checked={trigger.mode === "run_at"}
-                              onChange={() => updateScheduledTrigger(trigger.id, { mode: "run_at" })}
-                            />
-                            One-shot
-                          </label>
+                        <div className="flex rounded-lg overflow-hidden border border-neutral-200 dark:border-neutral-700 text-xs">
+                          {(["recurring", "run_at"] as const).map((m) => (
+                            <button
+                              key={m}
+                              type="button"
+                              onClick={() => updateScheduledTrigger(trigger.id, { mode: m })}
+                              className={cn(
+                                "px-3 py-1.5 font-medium transition-colors",
+                                trigger.mode === m
+                                  ? "bg-primary-500 text-white"
+                                  : "bg-white dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-700"
+                              )}
+                            >
+                              {m === "recurring" ? "Recurring" : "One-time"}
+                            </button>
+                          ))}
                         </div>
                         <button
                           type="button"
@@ -1512,22 +1548,123 @@ export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderP
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </div>
-                      {trigger.mode === "cron" ? (
-                        <input
-                          type="text"
-                          value={trigger.cron}
-                          onChange={(e) => updateScheduledTrigger(trigger.id, { cron: e.target.value })}
-                          placeholder="0 9 * * *"
-                          className="w-full px-2.5 py-1.5 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs font-mono"
-                        />
+
+                      {trigger.mode === "recurring" ? (
+                        <div className="space-y-2">
+                          {/* Frequency selector */}
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-neutral-500 w-12 shrink-0">Repeat</span>
+                            <div className="flex rounded-lg overflow-hidden border border-neutral-200 dark:border-neutral-700 text-xs">
+                              {(["daily", "weekly", "monthly", "custom"] as RecurrenceFreq[]).map((f) => (
+                                <button
+                                  key={f}
+                                  type="button"
+                                  onClick={() => updateScheduledTrigger(trigger.id, { freq: f })}
+                                  className={cn(
+                                    "px-2.5 py-1 capitalize transition-colors",
+                                    trigger.freq === f
+                                      ? "bg-primary-500 text-white"
+                                      : "bg-white dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-700"
+                                  )}
+                                >
+                                  {f}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Weekly: day-of-week chips */}
+                          {trigger.freq === "weekly" && (
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-xs text-neutral-500 w-12 shrink-0">On</span>
+                              <div className="flex gap-1 flex-wrap">
+                                {DAYS_OF_WEEK.map((d, i) => (
+                                  <button
+                                    key={d}
+                                    type="button"
+                                    onClick={() => {
+                                      const days = trigger.weekdays.includes(i)
+                                        ? trigger.weekdays.filter((x) => x !== i)
+                                        : [...trigger.weekdays, i].sort();
+                                      updateScheduledTrigger(trigger.id, { weekdays: days });
+                                    }}
+                                    className={cn(
+                                      "w-9 py-1 text-xs rounded-lg border font-medium transition-colors",
+                                      trigger.weekdays.includes(i)
+                                        ? "bg-primary-500 border-primary-500 text-white"
+                                        : "border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-400 hover:border-primary-400"
+                                    )}
+                                  >
+                                    {d}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Monthly: day-of-month */}
+                          {trigger.freq === "monthly" && (
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-neutral-500 w-12 shrink-0">On day</span>
+                              <select
+                                value={trigger.monthDay}
+                                onChange={(e) => updateScheduledTrigger(trigger.id, { monthDay: Number(e.target.value) })}
+                                className="px-2 py-1 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs"
+                              >
+                                {Array.from({ length: 28 }, (_, i) => i + 1).map((d) => (
+                                  <option key={d} value={d}>{d}{d === 1 ? "st" : d === 2 ? "nd" : d === 3 ? "rd" : "th"}</option>
+                                ))}
+                              </select>
+                              <span className="text-xs text-neutral-400">of every month</span>
+                            </div>
+                          )}
+
+                          {/* Custom: raw cron */}
+                          {trigger.freq === "custom" ? (
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-neutral-500 w-12 shrink-0">Cron</span>
+                              <input
+                                type="text"
+                                value={trigger.cron}
+                                onChange={(e) => updateScheduledTrigger(trigger.id, { cron: e.target.value })}
+                                placeholder="0 9 * * 1"
+                                className="flex-1 px-2.5 py-1 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs font-mono"
+                              />
+                            </div>
+                          ) : (
+                            /* Time picker for daily/weekly/monthly */
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-neutral-500 w-12 shrink-0">At</span>
+                              <input
+                                type="time"
+                                value={trigger.time}
+                                onChange={(e) => updateScheduledTrigger(trigger.id, { time: e.target.value })}
+                                className="px-2.5 py-1 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs"
+                              />
+                              <span className="text-xs text-neutral-400">local time</span>
+                            </div>
+                          )}
+
+                          {/* Human-readable summary */}
+                          {trigger.freq !== "custom" && (
+                            <p className="text-[10px] text-neutral-400 font-mono">
+                              cron: <span className="text-primary-500">{buildCron(trigger)}</span>
+                            </p>
+                          )}
+                        </div>
                       ) : (
-                        <input
-                          type="datetime-local"
-                          value={trigger.run_at}
-                          onChange={(e) => updateScheduledTrigger(trigger.id, { run_at: e.target.value })}
-                          className="w-full px-2.5 py-1.5 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs"
-                        />
+                        /* One-time: datetime picker */
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-neutral-500 shrink-0">Run at</span>
+                          <input
+                            type="datetime-local"
+                            value={trigger.run_at}
+                            onChange={(e) => updateScheduledTrigger(trigger.id, { run_at: e.target.value })}
+                            className="flex-1 px-2.5 py-1.5 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs"
+                          />
+                        </div>
                       )}
+
                       <textarea
                         value={trigger.content_brief}
                         onChange={(e) => updateScheduledTrigger(trigger.id, { content_brief: e.target.value })}
@@ -1749,7 +1886,7 @@ export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderP
                           <Calendar className="w-2.5 h-2.5" /> Scheduled
                         </span>
                         <span className="text-neutral-700 dark:text-neutral-300 font-mono">
-                          {t.mode === "cron" ? t.cron : `at ${t.run_at}`}
+                          {t.mode === "recurring" ? buildCron(t) : `at ${t.run_at}`}
                         </span>
                       </div>
                     ))}

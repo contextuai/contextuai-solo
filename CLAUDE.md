@@ -80,14 +80,16 @@ GGUF models downloaded from HuggingFace, stored in `~/.contextuai-solo/models/`.
 108 business agents as markdown files across 13 categories (c-suite, marketing-sales, finance-operations, etc.). Engineering category (12 agents) is excluded from desktop mode, so users see 96 across 12 categories. Each markdown file contains a system prompt, recommended model, and tool configs. Auto-seeded into `workspace_agents` collection on first startup. Re-seed via `POST /api/v1/desktop/reseed`.
 
 ### Crew System
-Multi-agent teams with persistent memory. Crew builder (`components/crews/crew-builder.tsx`) is a 5-step wizard:
+Multi-agent teams with persistent memory. Crew builder (`components/crews/crew-builder.tsx`) is a 7-step wizard:
 1. **Details** — name, description, blueprint, AI model selection
 2. **Execution Mode** — sequential, parallel, pipeline, autonomous
 3. **Agent Team** — add agents from the 96-agent library or manually (skipped for autonomous)
-4. **Connections** — bind crew to social channels (Telegram, Discord, LinkedIn, Twitter/X, Instagram, Facebook)
-5. **Review** — configuration summary before create
+4. **Connections & Directions** — bind crew to channels with per-connection direction chip (`Inbound` / `Outbound` / `Both`)
+5. **Trigger** — reactive (keywords/hashtags/mentions) and/or scheduled (cron or one-shot date); manual is always implicit
+6. **Approval** — toggle `approval_required` to hold outbound in the Approvals queue before sending
+7. **Review & Create** — configuration summary before create
 
-Channel bindings stored as `channel_bindings[]` on the crew document (`ChannelBinding` model: `channel_type`, `enabled`, `approval_required`). Crew-level model selection applies to all agents in the crew.
+Connection bindings stored as `connection_bindings[]` on the crew document (`ConnectionBinding` model: `connection_id`, `platform`, `direction`). `triggers[]` holds reactive and scheduled trigger configs. Crew-level model selection applies to all agents in the crew.
 
 ### Blueprint Library (`blueprints/`)
 10 pre-built workflow templates across 5 categories (strategy, content, marketing, product, research). Markdown files auto-seeded into `blueprints` collection on startup. Integrated into crew builder and workspace project dialog via `BlueprintSelector` component. API: `GET /api/v1/blueprints/`, `GET /api/v1/blueprints/{id}`.
@@ -95,8 +97,8 @@ Channel bindings stored as `channel_bindings[]` on the crew document (`ChannelBi
 ### Reddit Connection (`routers/reddit.py`, `services/reddit_poller.py`)
 Inbound polling via praw (Reddit API wrapper). `RedditPoller` runs a 60s background loop, fetching new comments from configured subreddits (filtered by keywords) and inbox DMs. Dispatches through `channel_service.handle_message()` so triggers + approval pipeline apply. Account config stored in `reddit_accounts` collection. REST API: `GET/POST/PUT/DELETE /api/v1/reddit/account`, `POST /api/v1/reddit/test`, `POST /api/v1/reddit/reply`.
 
-### Connections (`routes/connections.tsx`)
-External platform integrations: Telegram, Discord, Reddit, LinkedIn (OAuth), Twitter/X, Instagram (OAuth), Facebook (OAuth). Token-paste flow for Telegram/Discord/Twitter/Reddit; OAuth2 flow for LinkedIn/Instagram/Facebook with provider-specific setup instructions.
+### Connections / Distributions (`routes/connections.tsx`)
+10 platform integrations displayed under the sidebar label **Distributions** (URL remains `/connections`). Seven social platforms: Telegram, Discord, Reddit (inbound + outbound), LinkedIn, Twitter/X, Instagram, Facebook (outbound-only). Three outbound-only channels: Blog (Ghost/WordPress/custom), Email (SendGrid/SES/SMTP), Slack Webhook. Token-paste flow for Telegram/Discord/Twitter/Reddit; OAuth2 flow for LinkedIn/Instagram/Facebook; API-key/webhook-URL for Blog/Email/Slack.
 
 ### Authentication
 Desktop mode uses a static admin user — no login required. Auth is bypassed via dependency overrides in `app.py`. The `auth_service.py` has Cognito JWT support for the enterprise edition.

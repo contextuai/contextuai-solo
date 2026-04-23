@@ -761,7 +761,7 @@ export default function ConnectionsPage() {
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-neutral-900 dark:text-white mb-1">
-            Connections
+            Distributions
           </h1>
           <p className="text-sm text-neutral-500 dark:text-neutral-400">
             Connect your favorite platforms to send and receive messages through AI.

@@ -12,7 +12,7 @@
 
 You're one person running a business. You need a marketing strategist, a financial analyst, a legal reviewer, a content writer, and a dozen other specialists — but you can't afford to hire them.
 
-**Now you don't have to.** ContextuAI Solo puts an entire team of 81 AI business experts on your desktop. They research, write, analyze, review, and publish — individually or as coordinated crews. And everything stays private on your machine.
+**Now you don't have to.** ContextuAI Solo puts an entire team of 96 AI business experts on your desktop. They research, write, analyze, review, and publish — individually or as coordinated crews. And everything stays private on your machine.
 
 <p align="center">
   <a href="https://github.com/contextuai/contextuai-solo/releases/latest"><img src="https://img.shields.io/badge/Download-Latest%20Release-FF6B35?style=for-the-badge&logo=github" alt="Download Latest Release"></a>
@@ -36,7 +36,7 @@ You're one person running a business. You need a marketing strategist, a financi
 | ![Create Persona](docs/screenshots/005-CreatePersona.png) **Create Persona** | ![Agent Library](docs/screenshots/006-AgentLibrary.png) **Agent Library** |
 | ![Create Agent](docs/screenshots/007-CreateAgent.png) **Create Agent** | ![Crews](docs/screenshots/008-CrewHome.png) **Crews** |
 | ![Blueprints](docs/screenshots/009-Blueprints.png) **Blueprints** | ![Create Blueprint](docs/screenshots/010-CreateBlueprint.png) **Create Blueprint** |
-| ![Workspace](docs/screenshots/011-Workspace.png) **Workspace** | ![Connections](docs/screenshots/012-Connections.png) **Connections** |
+| ![Workspace](docs/screenshots/011-Workspace.png) **Workspace** | ![Distributions](docs/screenshots/012-Connections.png) **Distributions** |
 | ![Approvals](docs/screenshots/013-CrewApprovals.png) **Approvals** | ![Settings](docs/screenshots/014-Settings.png) **Settings** |
 
 </details>
@@ -70,9 +70,24 @@ Don't just ask one agent — assemble a team. A crew of 3–5 agents can researc
 
 You define the crew once. Run it whenever you need it.
 
-### Publish to your channels
+### Distribute to your channels — and listen for replies
 
-Connect Solo to **Telegram, Discord, Reddit, LinkedIn, Twitter/X, Instagram, and Facebook**. Your crews can draft and post content — with optional approval gates so nothing goes live without your sign-off.
+Solo's **Distributions** hub connects to 10 platforms. Crews can publish outbound content on a schedule, or sit in reactive mode and auto-reply to inbound messages — all with optional approval gates so nothing goes live without your sign-off.
+
+| Platform | Receive (Inbound) | Send (Outbound) | Auth |
+|----------|:-----------------:|:---------------:|------|
+| **Telegram Bot** | ✓ | ✓ | Bot token |
+| **Discord Bot** | ✓ | ✓ | Bot token |
+| **Reddit** | ✓ | ✓ | Script app credentials |
+| **LinkedIn** | — | ✓ | OAuth 2.0 |
+| **Twitter / X** | — | ✓ | API key + access tokens |
+| **Instagram** | — | ✓ | OAuth 2.0 (Meta) |
+| **Facebook** | — | ✓ | OAuth 2.0 (Meta) |
+| **Blog** (Ghost / WordPress / custom) | — | ✓ | API key |
+| **Email** (SendGrid / SES / SMTP) | — | ✓ | API key |
+| **Slack Webhook** | — | ✓ | Webhook URL |
+
+**Inbound platforms** (Telegram, Discord, Reddit) poll for new messages and route them to the right crew based on keywords, hashtags, or mentions. The crew generates a reply and either sends it instantly or holds it in the **Approvals** queue for your review before posting.
 
 ---
 
@@ -100,7 +115,7 @@ Your client proposals, financial models, legal reviews, and business strategies 
 
 ---
 
-## 93 Business Agents, Ready to Work
+## 96 Business Agents, Ready to Work
 
 Solo ships with specialized agents across every business function:
 
@@ -123,7 +138,7 @@ Every agent comes with a detailed system prompt, recommended tools, and domain e
 
 ---
 
-## 37 Local AI Models — One Click, No Subscriptions
+## 41 Local AI Models — One Click, No Subscriptions
 
 Download a model. Click run. That's it. No API keys. No internet. No monthly bills.
 
@@ -147,11 +162,11 @@ Solo exposes an **OpenAI-compatible API endpoint** (`/v1/chat/completions`) on y
 
 ## Everything else you get
 
-- **Multi-Agent Crews** — Assemble teams via a 5-step wizard with 4 execution modes: sequential, parallel, pipeline, or fully autonomous
+- **Multi-Agent Crews** — Assemble teams via a 7-step wizard with 4 execution modes: sequential, parallel, pipeline, or fully autonomous
 - **10 Blueprint Templates** — Pre-built workflow templates across strategy, content, marketing, product, and research
 - **Workshop Mode** — Run multi-agent brainstorming sessions with structured outputs
 - **10 Persona Types** — Nexus Agent, Web Researcher, database connectors (PostgreSQL, MySQL, MSSQL, Snowflake, MongoDB), MCP Server, API Connector, File Operations
-- **7 Platform Connections** — Telegram, Discord, Reddit, LinkedIn, Twitter/X, Instagram, Facebook with approval gates. See the [Connections Guide](CONNECTIONS-GUIDE.md) for setup
+- **10 Distribution Channels** — Telegram, Discord, Reddit, LinkedIn, Twitter/X, Instagram, Facebook, Blog, Email, and Slack — with inbound auto-reply and approval gates. See the [Connections Guide](CONNECTIONS-GUIDE.md) for setup
 - **Brand Voice** — Define your business identity so every response sounds like you
 - **Dark/Light Theme** — Easy on the eyes, day or night
 
@@ -198,14 +213,14 @@ This is an active beta — we'd love your feedback! If you run into any issues:
 | Feature | Solo (Free) | Enterprise |
 |---------|:-----------:|:----------:|
 | AI Chat with Streaming | Yes | Yes |
-| 93 Business Agents | Yes | Yes |
+| 96 Business Agents | Yes | Yes |
 | 10 Persona Types | Yes | Yes |
 | Multi-Agent Crews | Yes | Yes |
 | Workshop (Brainstorming) | Yes | Yes |
 | BYOK (Bring Your Own Key) | Yes | Yes |
 | Local AI Models (GGUF) | Yes | Yes |
 | Dark/Light Theme | Yes | Yes |
-| 7 Platform Connections | Yes | Yes |
+| 10 Distribution Channels | Yes | Yes |
 | SQLite (Local Storage) | Yes | -- |
 | MongoDB + Cloud Infra | -- | Yes |
 | Multi-User / Teams | -- | Yes |
