@@ -1,5 +1,12 @@
-# Internal planning docs
+# Internal planning docs — never commit
 MOONSHOT.md
+docs/launch-posts/
+docs/video-guides/
+docs/dailydose-screenshots/
+docs/features/gstack-inspired-*.md
+docs/features/gbrain-inspired-*.md
+ContextuAI_Solo_Deep_Strategy_Playbook.docx
+ContextuAI_Solo_Deep_Strategy_Playbook.pdf
 
 # Python
 __pycache__/
