@@ -28,7 +28,10 @@ jobs:
     runs-on: ubuntu-latest
     # Fast path: only proceed if the commit looks like a release commit.
     # Strict regex validation happens inside the parse step.
-    if: startsWith(github.event.head_commit.message, 'chore: release v')
+    # NOTE: the expression contains a colon inside the literal string, so the
+    # whole value must be wrapped in double quotes — otherwise YAML sees the
+    # inner `:` as a mapping indicator and rejects the file.
+    if: "startsWith(github.event.head_commit.message, 'chore: release v')"
     steps:
       - uses: actions/checkout@v4
 
