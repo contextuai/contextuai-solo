@@ -1,0 +1,114 @@
+name: Auto Release
+
+# When a `chore: release vX.Y.Z(-N)` commit lands on `main`, dispatch the
+# Release workflow automatically. This replaces the manual
+# `gh workflow run release.yml -f version=vX.Y.Z` step in /prod-release.
+#
+# Version is taken from the commit subject — the bumping + PR flow still
+# happens manually (or via the /prod-release skill). The workflow verifies
+# that the three version files (package.json, tauri.conf.json, Cargo.toml)
+# all agree with the subject before dispatching, so a typo in the commit
+# message or a forgotten file bump fails loud instead of shipping a
+# broken release.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: auto-release
+  cancel-in-progress: false
+
+jobs:
+  trigger:
+    name: Trigger release workflow
+    runs-on: ubuntu-latest
+    # Fast path: only proceed if the commit looks like a release commit.
+    # Strict regex validation happens inside the parse step.
+    if: startsWith(github.event.head_commit.message, 'chore: release v')
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Parse version from commit subject
+        id: parse
+        env:
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          SUBJECT=$(printf '%s' "$COMMIT_MSG" | head -n1)
+          echo "Subject: $SUBJECT"
+
+          # Accept "chore: release vX.Y.Z" or "chore: release vX.Y.Z-N",
+          # with an optional trailing " (#NNN)" that GitHub appends on
+          # squash merges. Reject anything else (e.g. non-numeric prereleases
+          # like `-beta.3` — these break Windows MSI bundling).
+          pattern='^chore: release (v[0-9]+\.[0-9]+\.[0-9]+(-[0-9]+)?)( \(#[0-9]+\))?$'
+          if [[ ! "$SUBJECT" =~ $pattern ]]; then
+            echo "::notice::Subject does not match strict release pattern. Skipping."
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          TAG="${BASH_REMATCH[1]}"
+          VERSION="${TAG#v}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "should_release=true" >> "$GITHUB_OUTPUT"
+          echo "Parsed tag: $TAG (version: $VERSION)"
+
+      - name: Verify version files match commit subject
+        if: steps.parse.outputs.should_release == 'true'
+        env:
+          VERSION: ${{ steps.parse.outputs.version }}
+        run: |
+          PKG=$(jq -r .version frontend/package.json)
+          TAURI=$(jq -r .version frontend/src-tauri/tauri.conf.json)
+          CARGO=$(grep -E '^version\s*=' frontend/src-tauri/Cargo.toml | head -n1 | sed -E 's/version[[:space:]]*=[[:space:]]*"([^"]+)"/\1/')
+
+          echo "Expected: $VERSION"
+          echo "  frontend/package.json:              $PKG"
+          echo "  frontend/src-tauri/tauri.conf.json: $TAURI"
+          echo "  frontend/src-tauri/Cargo.toml:      $CARGO"
+
+          fail=0
+          [[ "$PKG"   != "$VERSION" ]] && { echo "::error::package.json version ($PKG) != $VERSION"; fail=1; }
+          [[ "$TAURI" != "$VERSION" ]] && { echo "::error::tauri.conf.json version ($TAURI) != $VERSION"; fail=1; }
+          [[ "$CARGO" != "$VERSION" ]] && { echo "::error::Cargo.toml version ($CARGO) != $VERSION"; fail=1; }
+          exit $fail
+
+      - name: Check tag does not already exist
+        id: tag_check
+        if: steps.parse.outputs.should_release == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.parse.outputs.tag }}
+        run: |
+          if gh api "repos/${{ github.repository }}/git/ref/tags/$TAG" >/dev/null 2>&1; then
+            echo "::warning::Tag $TAG already exists — skipping dispatch (idempotent)."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Dispatch release workflow
+        if: steps.parse.outputs.should_release == 'true' && steps.tag_check.outputs.skip != 'true'
+        env:
+          # GITHUB_TOKEN cannot trigger other workflows (GitHub anti-recursion
+          # rule). Use a PAT stored as RELEASE_DISPATCH_TOKEN with scopes:
+          # fine-grained → Actions: read+write, Contents: read.
+          GH_TOKEN: ${{ secrets.RELEASE_DISPATCH_TOKEN }}
+          TAG: ${{ steps.parse.outputs.tag }}
+        run: |
+          if [[ -z "$GH_TOKEN" ]]; then
+            echo "::error::RELEASE_DISPATCH_TOKEN secret is not set."
+            echo "Create a fine-grained PAT on this repo with 'Actions: read+write'"
+            echo "and 'Contents: read', then add it as a repo secret named"
+            echo "RELEASE_DISPATCH_TOKEN. Without it, GitHub's anti-recursion"
+            echo "rule prevents GITHUB_TOKEN from dispatching release.yml."
+            exit 1
+          fi
+          gh workflow run release.yml -f version="$TAG" --ref main
+          echo "Dispatched release.yml for $TAG"
+          echo "Watch: https://github.com/${{ github.repository }}/actions/workflows/release.yml"
