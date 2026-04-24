@@ -125,6 +125,14 @@ jobs:
         working-directory: frontend
         run: npm ci
 
+      # Remove any stale bundler outputs restored from the Rust cache.
+      # Without this, beta-era artifacts (e.g. `*_1.0.0_*` from when the MSI
+      # bundler stripped non-numeric prereleases) ride along in target/ and
+      # get picked up by the collect steps below.
+      - name: Clean stale bundle outputs from Rust cache
+        shell: bash
+        run: rm -rf frontend/src-tauri/target/*/release/bundle/
+
       - name: Build Tauri app
         working-directory: frontend
         env:
@@ -137,19 +145,21 @@ jobs:
         shell: bash
         run: |
           mkdir -p release-assets
+          VERSION="${RELEASE_TAG#v}"
           BUNDLE_DIR="frontend/src-tauri/target/${{ matrix.platform.rust-target }}/release/bundle"
-          cp "$BUNDLE_DIR"/msi/*.msi release-assets/ 2>/dev/null || true
-          cp "$BUNDLE_DIR"/msi/*.msi.sig release-assets/ 2>/dev/null || true
-          cp "$BUNDLE_DIR"/nsis/*setup.exe release-assets/ 2>/dev/null || true
-          cp "$BUNDLE_DIR"/nsis/*setup.exe.sig release-assets/ 2>/dev/null || true
+          cp "$BUNDLE_DIR"/msi/*_${VERSION}_*.msi release-assets/ 2>/dev/null || true
+          cp "$BUNDLE_DIR"/msi/*_${VERSION}_*.msi.sig release-assets/ 2>/dev/null || true
+          cp "$BUNDLE_DIR"/nsis/*_${VERSION}_*setup.exe release-assets/ 2>/dev/null || true
+          cp "$BUNDLE_DIR"/nsis/*_${VERSION}_*setup.exe.sig release-assets/ 2>/dev/null || true
           ls -la release-assets/
 
       - name: Collect macOS installer
         if: matrix.platform.os == 'macos-latest'
         run: |
           mkdir -p release-assets
+          VERSION="${RELEASE_TAG#v}"
           BUNDLE_DIR="frontend/src-tauri/target/${{ matrix.platform.rust-target }}/release/bundle"
-          cp "$BUNDLE_DIR"/dmg/*.dmg release-assets/ 2>/dev/null || true
+          cp "$BUNDLE_DIR"/dmg/*_${VERSION}_*.dmg release-assets/ 2>/dev/null || true
           cp "$BUNDLE_DIR"/macos/*.app.tar.gz release-assets/ 2>/dev/null || true
           cp "$BUNDLE_DIR"/macos/*.app.tar.gz.sig release-assets/ 2>/dev/null || true
           ls -la release-assets/
@@ -158,11 +168,12 @@ jobs:
         if: matrix.platform.os == 'ubuntu-22.04'
         run: |
           mkdir -p release-assets
+          VERSION="${RELEASE_TAG#v}"
           BUNDLE_DIR="frontend/src-tauri/target/${{ matrix.platform.rust-target }}/release/bundle"
-          cp "$BUNDLE_DIR"/deb/*.deb release-assets/ 2>/dev/null || true
-          cp "$BUNDLE_DIR"/rpm/*.rpm release-assets/ 2>/dev/null || true
-          cp "$BUNDLE_DIR"/appimage/*.AppImage release-assets/ 2>/dev/null || true
-          cp "$BUNDLE_DIR"/appimage/*.AppImage.sig release-assets/ 2>/dev/null || true
+          cp "$BUNDLE_DIR"/deb/*_${VERSION}_*.deb release-assets/ 2>/dev/null || true
+          cp "$BUNDLE_DIR"/rpm/*-${VERSION}-*.rpm release-assets/ 2>/dev/null || true
+          cp "$BUNDLE_DIR"/appimage/*_${VERSION}_*.AppImage release-assets/ 2>/dev/null || true
+          cp "$BUNDLE_DIR"/appimage/*_${VERSION}_*.AppImage.sig release-assets/ 2>/dev/null || true
           ls -la release-assets/
 
       - name: Upload build artifacts
