@@ -172,6 +172,34 @@ Solo exposes an **OpenAI-compatible API endpoint** (`/v1/chat/completions`) on y
 
 ---
 
+## System Requirements
+
+Solo is a native desktop app that runs ~500 MB installed. If you bring your own API key for a cloud provider, that's all you need. If you want to run local GGUF models, the model itself drives most of the hardware requirements.
+
+### Supported Platforms
+
+| OS | Versions | Installer |
+|----|----------|-----------|
+| **Windows** | Windows 10 (1809+) or Windows 11, 64-bit | `.exe` or `.msi` (x64) |
+| **macOS** | macOS 12 Monterey or later | `.dmg` — **Apple Silicon only** (M1/M2/M3/M4) |
+| **Linux** | Ubuntu 22.04+, Fedora 38+, or equivalent glibc distro | `.deb` or `.rpm` (x86_64) |
+
+> Intel Macs aren't supported in the current build. AppImage for Linux is coming in a future release.
+
+### Hardware
+
+| | Minimum (cloud providers only, BYOK) | Recommended (running local models) |
+|-|--------------------------------------|-----------------------------------|
+| **CPU** | Any 64-bit CPU, dual-core, 2 GHz+ | 4+ cores with AVX2 (standard on any CPU from 2013+) |
+| **RAM** | 4 GB | 8–32 GB depending on model — see the table in the Local Models section below |
+| **Disk** | ~500 MB for the app | +1–40 GB per downloaded model (keep several; swap between them) |
+| **Network** | Required for cloud provider calls | One-time model download from HuggingFace; fully offline after |
+| **GPU** | Not used | Not used (CPU-only inference in the current build) |
+
+**On local inference speed:** llama-cpp-python runs entirely on CPU. On a modern laptop, expect roughly 5–20 tokens/sec on 7–14B models, 1–3 tokens/sec on 70B models. If you need faster 70B output, route to a cloud provider via BYOK instead.
+
+---
+
 ## Download & Install
 
 **[Download the latest release](https://github.com/contextuai/contextuai-solo/releases/latest)** — pre-built installers for all platforms, no build steps needed.
