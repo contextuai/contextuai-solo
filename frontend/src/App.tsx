@@ -37,7 +37,7 @@ function RequireWizard({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-const isTauri = typeof window !== "undefined" && "__TAURI__" in window;
+const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
 /** Updates the HTML splash screen status text. */
 function updateSplash(text: string) {
