@@ -37,7 +37,7 @@ OAUTH_PROVIDERS = {
         "authorize_url": "https://www.linkedin.com/oauth/v2/authorization",
         "token_url": "https://www.linkedin.com/oauth/v2/accessToken",
         "userinfo_url": "https://api.linkedin.com/v2/userinfo",
-        "scopes": ["openid", "profile", "w_member_social", "w_organization_social"],
+        "scopes": ["openid", "profile", "w_member_social"],
         "docs_url": "https://learn.microsoft.com/en-us/linkedin/marketing/getting-started",
     },
     "instagram": {
