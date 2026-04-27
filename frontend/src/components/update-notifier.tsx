@@ -17,7 +17,7 @@ export function UpdateNotifier() {
 
   // Check for updates once on mount
   useEffect(() => {
-    if (!("__TAURI__" in window)) return;
+    if (!("__TAURI_INTERNALS__" in window)) return;
 
     let cancelled = false;
     (async () => {

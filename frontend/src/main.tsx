@@ -4,7 +4,7 @@ import App from "./App";
 import "./styles/globals.css";
 
 // In Tauri, intercept external link clicks and open them in the system browser
-if ("__TAURI__" in window) {
+if ("__TAURI_INTERNALS__" in window) {
   document.addEventListener(
     "click",
     (e) => {
