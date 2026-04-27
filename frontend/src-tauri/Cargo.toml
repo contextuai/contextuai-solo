@@ -1,6 +1,6 @@
 [package]
 name = "contextuai-solo"
-version = "1.0.0-8"
+version = "1.0.0-9"
 description = "ContextuAI Solo - Your AI Business Assistant"
 authors = ["ContextuAI"]
 edition = "2021"
