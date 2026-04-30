@@ -140,7 +140,7 @@ export default function KnowledgePage() {
   return (
     <div className="flex h-full overflow-hidden bg-neutral-50 dark:bg-neutral-950">
       {/* Left rail — KB list */}
-      <aside className="flex flex-col w-72 border-r border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900">
+      <div className="flex flex-col w-72 border-r border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900">
         <div className="flex items-center justify-between px-4 h-16 border-b border-neutral-200 dark:border-neutral-800">
           <div className="flex items-center gap-2">
             <BookOpen className="w-5 h-5 text-primary-500" />
@@ -200,7 +200,7 @@ export default function KnowledgePage() {
             </button>
           ))}
         </div>
-      </aside>
+      </div>
 
       {/* Right pane — selected KB */}
       <div className="flex-1 overflow-y-auto">
