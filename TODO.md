@@ -1,7 +1,18 @@
 # TODO — ContextuAI Solo Moonshot
 
 > Master task list. Prioritized by phases. Check off as completed.
-> **Created:** 2026-03-19 | **Last synced with code:** 2026-04-22
+> **Created:** 2026-03-19 | **Last synced with code:** 2026-04-27
+
+---
+
+## CURRENTLY PENDING (audit 2026-04-29)
+
+Everything in Phase 0, 1, 2, 2.5, and 3 is shipped and verified against the codebase. The only meaningful work left:
+
+- **P0-1 verification** — test the OpenAI-compat endpoint with Aider + Continue.dev (router is shipped, just unverified externally).
+- **3 starter RAG packs** — engine is shipped (P2.5-2). Need curated content packs (IRS tax, personal finance, cybersecurity-101) under `knowledge-base-packs/` for users to download.
+- **Phase 3 dead-code cleanup** — `frontend/src/routes/distribution.tsx`, `frontend/src/routes/schedule.tsx` are still on disk but no longer routed or sidebared. Delete after one more release cycle.
+- **Backlog (BL-2 / BL-4 / BL-5 / BL-6 / BL-7)** — nice-to-haves, none committed.
 
 ---
 
@@ -131,35 +142,30 @@
 - [x] Respects Reddit rate limits (praw handles 60 req/min internally)
 
 ### P2.5-2: Knowledge Base (Local RAG) ⭐⭐ MAJOR DIFFERENTIATOR
-**Status:** [ ] Not Started
-**Effort:** 3-4 days
+**Status:** [x] COMPLETE (2026-04-29)
+**Effort:** 3-4 days → done in 1 session
 **Why:** Every prospect asks "can I use it with my PDFs/docs?" Fine-tuning is wrong answer (needs GPU, loses facts, can't update). RAG is right: CPU-friendly, citeable, incremental. Directly sells the "local + private" story.
 
-**Backend:**
-- [x] Embedding infra already exists: `backend/services/embedding_service.py` (ONNX MiniLM-L6-v2, 384-dim, bundled with installer) — **reuse this, don't rebuild**
-- [ ] `backend/services/rag_service.py` — ingest, chunk, retrieve (uses existing embedding_service)
-- [ ] PDF parsing via `pypdf`; docx via `python-docx`; txt/md direct
-- [ ] Chunking: 500 tokens, 50 overlap, preserve page numbers
-- [ ] Vector store: **sqlite-vec** extension (keeps single-file DB story) — fallback `chromadb` if sqlite-vec too fragile on Windows
-- [ ] `backend/repositories/knowledge_base_repository.py` + `document_repository.py`
-- [ ] `backend/routers/knowledge_base.py` — CRUD KBs, upload docs (multipart), delete, reindex, query
-- [ ] Retrieval: top-k (default 5) with MMR dedupe; return chunks + `{filename, page, score}` citations
+**What was built:**
+- [x] Reuses bundled `backend/services/embedding_service.py` (ONNX MiniLM-L6-v2, 384-dim) — no new model needed
+- [x] `backend/services/rag_service.py` — ingest, chunk (~500 tokens, 50 overlap, page-tracked for PDFs), embed (batched), numpy cosine retrieval
+- [x] PDF via PyMuPDF (already in requirements), DOCX via python-docx, TXT/MD direct
+- [x] **Vector store decision:** JSON arrays in SQLite via existing motor_compat layer (no sqlite-vec / chromadb dependency). Cosine = dot product on unit-normalised vectors. Adequate for desktop scale.
+- [x] `backend/repositories/knowledge_base_repository.py`, `document_repository.py`, `chunk_repository.py`
+- [x] `backend/routers/knowledge_base.py` — KB CRUD, multipart upload, doc list/delete, top-k query
+- [x] `backend/models/knowledge_base_models.py` — Pydantic v2 (KnowledgeBaseCreate/Update, KbDocument, Citation, QueryRequest)
+- [x] `backend/tests/test_knowledge_base.py` — 12 tests, all passing (10 CRUD/validation + 2 ingest-skipped-without-onnx)
+- [x] Frontend `/knowledge` route — two-pane layout: KB list + per-KB tabs (Documents / Test Query). Drag-drop upload, status pills, query test with score-ranked citations
+- [x] `frontend/src/lib/api/knowledge-base-client.ts` — full CRUD + multipart upload helper (bypasses JSON-only `apiRequest`)
+- [x] Sidebar "Knowledge" entry (Library icon) at `/knowledge`
+- [x] Chat input gains a third MiniDropdown: **Knowledge** — pick a KB per chat session
+- [x] `routers/ai_chat.py` — `ChatRequest.knowledge_base_id` field; injects formatted citations + `[1] [2] ...` cite-instruction into the prompt for **both** local and Bedrock paths. Original prompt preserved for storage / title generation
+- [x] Works with all model providers (local GGUF, Ollama, Bedrock cloud)
 
-**Frontend:**
-- [ ] New route `/knowledge` — list KBs, create/delete
-- [ ] Drag-drop PDF upload with progress bar
-- [ ] Doc list per KB with size, page count, indexed status
-- [ ] Attach KB to chat session (dropdown in chat header)
-- [ ] Attach KB to crew/agent config
-- [ ] Citation rendering in message bubbles: `[1]` chip → hover shows filename p.N excerpt
-
-**Integration:**
-- [ ] New persona type: "Knowledge Base" — persona = KB + system prompt
-- [ ] Chat: when KB attached, prepend retrieved chunks to system prompt with `[source: filename p.N]`
-- [ ] Works with both local (Gemma/Qwen) and cloud models
-- [ ] Crew agents can reference a shared KB
-
-**Stretch:**
+**Deferred / next steps:**
+- [ ] 3 starter RAG packs in `knowledge-base-packs/` (IRS tax, personal finance, cybersecurity-101) — content task, see `knowledge-base-packs/README.md` for the format
+- [ ] Citation chip UI in message bubbles (currently the model just inserts `[1]`/`[2]` text; no hover/click)
+- [ ] "Knowledge Base" persona type (persona = KB + system prompt) — convenience wrapper
 - [ ] URL ingestion (scrape + chunk web pages)
 - [ ] Obsidian vault import
 - [ ] Incremental re-index on file change
@@ -236,12 +242,22 @@
 - [ ] Whisper.cpp for local speech-to-text
 - [ ] "Hey Solo, run the auto-reply crew"
 
-### BL-6: Mobile Companion App
+### BL-6: Mobile Approvals via Telegram Bot
 **Status:** [ ] Not Started
-**Effort:** 2-4 weeks
-- [ ] Approval queue on phone
-- [ ] Push notifications for pending approvals
-- [ ] React Native or Flutter
+**Effort:** 1-2 days
+
+**What it is:** Reuse the existing Telegram connection as the mobile UX. When an approval lands, Solo DMs the user via their personal Telegram bot with the draft + inline buttons (Approve / Edit / Reject). Tap a button → callback hits the backend → reply gets sent through whatever channel originally triggered the approval.
+
+**Why this beats a real app:** zero install, no pairing flow, no push-notification infra, no second codebase. Telegram already handles auth, push, and cross-platform delivery on every phone the user owns.
+
+**Scope:**
+- [ ] Reserve one Telegram chat as the "approvals inbox" (user-configurable in settings)
+- [ ] On new approval: bot sends message with draft text + 3 inline keyboard buttons (Approve / Edit / Reject)
+- [ ] Telegram callback handler in `backend/routers/telegram.py` routes Approve/Reject through existing `approval_service.py`
+- [ ] Edit flow: bot prompts for replacement text in a reply thread, then sends
+- [ ] Optional: same flow over Discord DM for users who prefer it
+
+**Skipped:** native app, QR pairing, push infra, on-device anything.
 
 ### BL-7: LinkedIn Inbound Polling
 **Status:** [ ] Not Started

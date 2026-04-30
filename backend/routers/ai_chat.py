@@ -88,6 +88,12 @@ class ChatRequest(BaseModel):
         description="List of uploaded file IDs to include in the conversation context"
     )
 
+    # Knowledge Base (RAG) — when set, retrieved chunks are prepended to the prompt
+    knowledge_base_id: Optional[str] = Field(
+        default=None,
+        description="Attached KB id; top-k retrieved chunks are injected into the prompt"
+    )
+
 # Helper function to load file contents for context
 async def load_file_contents(file_ids: List[str]) -> tuple[str, List[str]]:
     """
@@ -269,6 +275,36 @@ async def ai_chat(request: ChatRequest, http_request: Request = None):
 
         logger.info(f"✅ Session ready: {session_id} (first_message: {is_first_message})")
 
+        # ── Knowledge Base (RAG) retrieval ─────────────────────────────
+        # If a KB is attached, retrieve top-k chunks and prepend to the prompt
+        # so both local and Bedrock paths see the same grounded prompt.
+        # Original request.prompt is preserved for storage/title generation.
+        effective_prompt = request.prompt
+        if request.knowledge_base_id:
+            try:
+                from services.rag_service import RAGService
+                from repositories.knowledge_base_repository import KnowledgeBaseRepository
+                from repositories.document_repository import DocumentRepository
+                from repositories.chunk_repository import ChunkRepository
+
+                _kb_db = await get_database()
+                _rag = RAGService(
+                    KnowledgeBaseRepository(_kb_db),
+                    DocumentRepository(_kb_db),
+                    ChunkRepository(_kb_db),
+                )
+                _citations = await _rag.query(request.knowledge_base_id, request.prompt, top_k=5)
+                _kb_context = RAGService.format_context(_citations)
+                if _kb_context:
+                    effective_prompt = f"{_kb_context}\n\nUser question: {request.prompt}"
+                    logger.info(
+                        f"📚 KB retrieval: {len(_citations)} chunks injected (kb={request.knowledge_base_id})"
+                    )
+                else:
+                    logger.info(f"📚 KB {request.knowledge_base_id} returned no matches")
+            except Exception as e:
+                logger.warning(f"⚠️ KB retrieval failed (continuing without): {e}")
+
         # Load conversation history for context
         history_messages = []
         if not is_first_message:
@@ -438,7 +474,7 @@ async def ai_chat(request: ChatRequest, http_request: Request = None):
                     disconnected = False
                     try:
                         gen = await local_model_service.call_model(
-                            prompt=request.prompt,
+                            prompt=effective_prompt,
                             model_id=model_id,
                             persona_context=persona_context,
                             conversation_history=simple_history,
@@ -496,7 +532,7 @@ async def ai_chat(request: ChatRequest, http_request: Request = None):
                 return StreamingResponse(local_event_generator(), media_type="text/plain")
             else:
                 result = await local_model_service.call_model(
-                    prompt=request.prompt,
+                    prompt=effective_prompt,
                     model_id=model_id,
                     persona_context=persona_context,
                     conversation_history=simple_history,
@@ -572,7 +608,7 @@ async def ai_chat(request: ChatRequest, http_request: Request = None):
                     collected_response = []
                     try:
                         gen = await ollama_service.call_model(
-                            prompt=request.prompt,
+                            prompt=effective_prompt,
                             model_id=model_id,
                             persona_context=persona_context,
                             conversation_history=simple_history,
@@ -614,7 +650,7 @@ async def ai_chat(request: ChatRequest, http_request: Request = None):
                 return StreamingResponse(ollama_event_generator(), media_type="text/plain")
             else:
                 result = await ollama_service.call_model(
-                    prompt=request.prompt,
+                    prompt=effective_prompt,
                     model_id=model_id,
                     persona_context=persona_context,
                     conversation_history=simple_history,
@@ -793,13 +829,13 @@ async def ai_chat(request: ChatRequest, http_request: Request = None):
 
         # Build the full prompt with file context if available
         if file_context:
-            full_prompt = f"{request.prompt}\n\n[Attached Files]\n{file_context}"
+            full_prompt = f"{effective_prompt}\n\n[Attached Files]\n{file_context}"
             # If images are present, add hint about image paths for the agent
             if image_file_paths:
                 image_paths_str = ", ".join(image_file_paths)
                 full_prompt += f"\n\n[Image file paths for analysis: {image_paths_str}]"
         else:
-            full_prompt = request.prompt
+            full_prompt = effective_prompt
 
         # Handle streaming response
         if request.stream:

@@ -18,6 +18,7 @@ import {
   Cloud,
   Cpu,
   BookOpen,
+  Library,
 } from "lucide-react";
 import { useAiMode } from "@/contexts/ai-mode-context";
 import logoImg from "@/assets/logo.png";
@@ -37,6 +38,7 @@ const navItems: NavItem[] = [
   { label: "Blueprints", path: "/blueprints", icon: BookOpen },
   { label: "Workspace", path: "/workspace", icon: FlaskConical },
   { label: "Distributions", path: "/connections", icon: Cable },
+  { label: "Knowledge", path: "/knowledge", icon: Library },
   { label: "Approvals", path: "/approvals", icon: ClipboardCheck },
   { label: "Settings", path: "/settings", icon: Settings },
 ];
