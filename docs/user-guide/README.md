@@ -14,7 +14,8 @@ Welcome to ContextuAI Solo, your private desktop AI assistant with 96 pre-built 
 | 6 | [Blueprints](06-blueprints.md) | Use workflow templates to jumpstart projects |
 | 7 | [Workspace](07-workspace.md) | Run multi-agent projects and review results |
 | 8 | [Connections](08-connections.md) | Connect to Telegram, Discord, Reddit, LinkedIn, Twitter/X, Instagram, Facebook |
-| 9 | [Settings](09-settings.md) | API keys, brand voice, appearance, data export |
+| 9 | Knowledge | Upload PDFs / DOCX / TXT / MD and chat with citations (local RAG) |
+| 10 | [Settings](09-settings.md) | API keys, brand voice, appearance, data export |
 
 ## Quick Start
 
