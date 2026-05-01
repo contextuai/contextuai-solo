@@ -497,6 +497,19 @@ async def startup_event():
         app.state.twitter_poller = get_twitter_poller(proxy)
         await app.state.twitter_poller.start()
 
+        # Personal Docs scheduler — sweeps folder mappings on a fixed tick
+        try:
+            from repositories.index_job_repository import IndexJobRepository
+            from services.personal_docs_scheduler import PersonalDocsScheduler
+
+            await IndexJobRepository(proxy).reset_orphans()
+            app.state.personal_docs_scheduler = PersonalDocsScheduler(proxy)
+            await app.state.personal_docs_scheduler.start()
+        except Exception:
+            logger.exception(
+                "PersonalDocsScheduler failed to start — continuing startup"
+            )
+
         # Scheduled jobs (cron-based posts + crew runs)
         from services.scheduler_service import SchedulerService
         scheduler_service = SchedulerService(proxy, scheduler)
@@ -550,6 +563,13 @@ async def shutdown_event():
             await poller.stop()
     except Exception:
         logger.exception("Error stopping Twitter poller")
+
+    try:
+        sched = getattr(app.state, "personal_docs_scheduler", None)
+        if sched:
+            await sched.stop()
+    except Exception:
+        logger.exception("Error stopping PersonalDocsScheduler")
 
 
 # ---------------------------------------------------------------------------
