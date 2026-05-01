@@ -119,6 +119,11 @@ async def delete_kb(
 ) -> Dict[str, Any]:
     if not await kb_repo.exists_by_id(kb_id):
         raise HTTPException(404, "Knowledge base not found")
+    # Cascade: drop folder-source rows so they don't reference a missing KB
+    from repositories.folder_source_repository import FolderSourceRepository
+    src_repo = FolderSourceRepository(kb_repo.db)
+    await src_repo.delete_for_kb(kb_id)
+
     chunks_deleted = await chunk_repo.delete_for_kb(kb_id)
     docs_deleted = await doc_repo.delete_for_kb(kb_id)
     await kb_repo.delete(kb_id)
@@ -138,6 +143,12 @@ async def list_documents(
     if not await kb_repo.exists_by_id(kb_id):
         raise HTTPException(404, "Knowledge base not found")
     docs = await doc_repo.list_for_kb(kb_id)
+    # Forward-compat: legacy rows have no source_type — default to "upload"
+    for d in docs:
+        d.setdefault("source_type", "upload")
+        d.setdefault("source_id", None)
+        d.setdefault("source_label", None)
+        d.setdefault("abs_path", None)
     return {"items": docs}
 
 
