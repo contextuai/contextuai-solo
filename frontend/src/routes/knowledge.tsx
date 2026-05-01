@@ -14,6 +14,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { FoldersTab } from "@/components/knowledge/folders-tab";
 import { cn } from "@/lib/utils";
 import {
   createKnowledgeBase,
@@ -279,7 +280,7 @@ function KbDetail({
   onChange: () => void | Promise<void>;
   onDelete: () => void;
 }) {
-  const [tab, setTab] = useState<"docs" | "query">("docs");
+  const [tab, setTab] = useState<"docs" | "folders" | "query">("docs");
 
   return (
     <div className="flex flex-col h-full">
@@ -311,6 +312,7 @@ function KbDetail({
         {(
           [
             { id: "docs", label: "Documents" },
+            { id: "folders", label: "Folders" },
             { id: "query", label: "Test Query" },
           ] as const
         ).map((t) => (
@@ -330,11 +332,9 @@ function KbDetail({
       </div>
 
       <div className="flex-1 overflow-y-auto px-8 py-6">
-        {tab === "docs" ? (
-          <DocumentsTab kb={kb} onChange={onChange} />
-        ) : (
-          <QueryTab kb={kb} />
-        )}
+        {tab === "docs" && <DocumentsTab kb={kb} onChange={onChange} />}
+        {tab === "folders" && <FoldersTab kbId={kb.id} />}
+        {tab === "query" && <QueryTab kb={kb} />}
       </div>
     </div>
   );
