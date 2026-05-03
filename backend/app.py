@@ -46,6 +46,8 @@ from routers.reddit import router as reddit_router
 from routers.twitter import router as twitter_router
 from routers.scheduled_jobs import router as scheduled_jobs_router
 from routers.connections import router as connections_router
+from routers.knowledge_base import router as knowledge_base_router
+from routers.personal_docs import router as personal_docs_router
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -98,6 +100,8 @@ app.include_router(reddit_router)
 app.include_router(twitter_router)
 app.include_router(scheduled_jobs_router)
 app.include_router(connections_router)
+app.include_router(knowledge_base_router)
+app.include_router(personal_docs_router)
 
 
 # ---------------------------------------------------------------------------
@@ -493,6 +497,19 @@ async def startup_event():
         app.state.twitter_poller = get_twitter_poller(proxy)
         await app.state.twitter_poller.start()
 
+        # Personal Docs scheduler — sweeps folder mappings on a fixed tick
+        try:
+            from repositories.index_job_repository import IndexJobRepository
+            from services.personal_docs_scheduler import PersonalDocsScheduler
+
+            await IndexJobRepository(proxy).reset_orphans()
+            app.state.personal_docs_scheduler = PersonalDocsScheduler(proxy)
+            await app.state.personal_docs_scheduler.start()
+        except Exception:
+            logger.exception(
+                "PersonalDocsScheduler failed to start — continuing startup"
+            )
+
         # Scheduled jobs (cron-based posts + crew runs)
         from services.scheduler_service import SchedulerService
         scheduler_service = SchedulerService(proxy, scheduler)
@@ -546,6 +563,13 @@ async def shutdown_event():
             await poller.stop()
     except Exception:
         logger.exception("Error stopping Twitter poller")
+
+    try:
+        sched = getattr(app.state, "personal_docs_scheduler", None)
+        if sched:
+            await sched.stop()
+    except Exception:
+        logger.exception("Error stopping PersonalDocsScheduler")
 
 
 # ---------------------------------------------------------------------------

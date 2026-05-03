@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect, KeyboardEvent, ChangeEvent } from "react";
 import { cn } from "@/lib/utils";
-import { ArrowUp, Square, ChevronDown, Cpu, Sparkles, Check, Monitor, Cloud } from "lucide-react";
+import { ArrowUp, Square, ChevronDown, Cpu, Sparkles, Check, Monitor, Cloud, Library } from "lucide-react";
 import type { ModelConfig } from "@/lib/api/models-client";
 import { getModels } from "@/lib/api/models-client";
 import type { Persona } from "@/lib/api/personas-client";
+import type { KnowledgeBase } from "@/lib/api/knowledge-base-client";
 import { useAiMode } from "@/contexts/ai-mode-context";
 
 interface ChatInputProps {
@@ -15,10 +16,13 @@ interface ChatInputProps {
   disabled?: boolean;
   models: ModelConfig[];
   personas: Persona[];
+  knowledgeBases: KnowledgeBase[];
   selectedModelId: string | null;
   selectedPersonaId: string | null;
+  selectedKnowledgeBaseId: string | null;
   onSelectModel: (modelId: string) => void;
   onSelectPersona: (personaId: string | null) => void;
+  onSelectKnowledgeBase: (kbId: string | null) => void;
 }
 
 function MiniDropdown<T extends { id: string; name: string }>({
@@ -149,10 +153,13 @@ export default function ChatInput({
   disabled,
   models,
   personas,
+  knowledgeBases,
   selectedModelId,
   selectedPersonaId,
+  selectedKnowledgeBaseId,
   onSelectModel,
   onSelectPersona,
+  onSelectKnowledgeBase,
 }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { aiMode } = useAiMode();
@@ -224,6 +231,14 @@ export default function ChatInput({
             onSelect={onSelectPersona}
             label="Persona"
             icon={Sparkles}
+            allowClear
+          />
+          <MiniDropdown
+            items={knowledgeBases}
+            selectedId={selectedKnowledgeBaseId}
+            onSelect={onSelectKnowledgeBase}
+            label="Knowledge"
+            icon={Library}
             allowClear
           />
           <button

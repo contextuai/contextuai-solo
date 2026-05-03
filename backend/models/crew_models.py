@@ -73,6 +73,10 @@ class CrewAgentConfig(BaseModel):
     library_agent_id: Optional[str] = Field(
         None, description="Workspace agent library ID this agent was sourced from"
     )
+    knowledge_base_ids: List[str] = Field(
+        default_factory=list,
+        description="Per-agent KB binding. When non-empty overrides crew-level binding.",
+    )
 
 
 class CrewExecutionConfig(BaseModel):
@@ -178,6 +182,11 @@ class CreateCrewRequest(BaseModel):
     approval_required: bool = False
     memory_enabled: bool = True
     tags: List[str] = Field(default_factory=list)
+    knowledge_base_ids: List[str] = Field(
+        default_factory=list,
+        description="Crew-level KB binding. Each agent in the crew uses these "
+                    "unless it overrides via its own knowledge_base_ids.",
+    )
 
     @model_validator(mode="after")
     def validate_agents_for_mode(self):
@@ -230,6 +239,7 @@ class UpdateCrewRequest(BaseModel):
     memory_enabled: Optional[bool] = None
     tags: Optional[List[str]] = None
     status: Optional[CrewStatus] = None
+    knowledge_base_ids: Optional[List[str]] = None
 
 
 class RunCrewRequest(BaseModel):
@@ -261,6 +271,7 @@ class CrewResponse(BaseModel):
     approval_required: bool = False
     memory_enabled: bool = True
     tags: List[str] = Field(default_factory=list)
+    knowledge_base_ids: List[str] = Field(default_factory=list)
     total_runs: int = 0
     total_cost_usd: float = 0.0
     last_run_at: Optional[str] = None

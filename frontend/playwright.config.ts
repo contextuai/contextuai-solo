@@ -37,6 +37,12 @@ export default defineConfig({
               name: "contextuai-solo-wizard",
               value: JSON.stringify({ completed: true, name: "Test User" }),
             },
+            // Pin AI mode to local so chat tests don't race against the
+            // first-load cloud->local auto-detect (otherwise the first
+            // loadModels() runs in cloud mode, the user types and sends
+            // before the second loadModels() finishes, and the request
+            // hits Bedrock with a stale/default model id -> ValidationException).
+            { name: "contextuai-solo-ai-mode", value: "local" },
           ],
         },
       ],

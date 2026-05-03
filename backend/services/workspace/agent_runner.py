@@ -15,6 +15,62 @@ from datetime import datetime
 
 from services.workspace.artifact_service import ArtifactService
 
+
+def resolve_kb_ids(*, agent: Dict[str, Any], crew: Dict[str, Any]) -> List[str]:
+    """Per-agent KB binding overrides crew default. Empty == no injection.
+
+    Returns the list of knowledge_base_ids to query before this agent's turn.
+    """
+    a = list(agent.get("knowledge_base_ids") or [])
+    if a:
+        return a
+    return list(crew.get("knowledge_base_ids") or [])
+
+
+async def _retrieve_kb_context(
+    kb_ids: List[str], query: str, top_k_per_kb: int = 3, total_top_k: int = 8,
+) -> str:
+    """Query each KB and return a formatted context block (or "" if no hits)."""
+    if not kb_ids or not query.strip():
+        return ""
+    try:
+        from database import get_database
+        from repositories.chunk_repository import ChunkRepository
+        from repositories.document_repository import DocumentRepository
+        from repositories.knowledge_base_repository import KnowledgeBaseRepository
+        from services.rag_service import RAGService
+
+        db = await get_database()
+        rag = RAGService(
+            KnowledgeBaseRepository(db),
+            DocumentRepository(db),
+            ChunkRepository(db),
+        )
+        citations: List[Dict[str, Any]] = []
+        for kb_id in kb_ids:
+            try:
+                citations.extend(await rag.query(kb_id, query, top_k=top_k_per_kb))
+            except Exception:
+                # Skip a KB that errors but keep going on the rest
+                logging.getLogger(__name__).exception(
+                    "KB retrieval failed for kb_id=%s", kb_id
+                )
+        # De-dupe by (doc_id, chunk_index), keep highest scores
+        seen: set = set()
+        deduped: List[Dict[str, Any]] = []
+        for c in sorted(citations, key=lambda x: -float(x.get("score", 0))):
+            key = (c.get("doc_id"), c.get("chunk_index"))
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(c)
+            if len(deduped) >= total_top_k:
+                break
+        return RAGService.format_context(deduped) if deduped else ""
+    except Exception:
+        logging.getLogger(__name__).exception("KB context retrieval failed")
+        return ""
+
 # Claude Agent SDK imports
 try:
     from claude_agent_sdk import (
@@ -184,6 +240,18 @@ class AgentRunner:
 
             prompt = self.build_prompt(agent_blueprint, context)
             system_prompt = agent_blueprint.get("system_prompt", "")
+
+            # Personal Docs / KB binding: per-agent overrides crew default
+            crew_doc = context.get("crew") or {}
+            kb_ids = resolve_kb_ids(agent=agent_blueprint, crew=crew_doc)
+            if kb_ids:
+                kb_context = await _retrieve_kb_context(kb_ids, prompt)
+                if kb_context:
+                    system_prompt = (
+                        kb_context + "\n\n" + system_prompt
+                        if system_prompt
+                        else kb_context
+                    )
 
             project_dir = os.path.join(self.work_dir, project_id)
             os.makedirs(project_dir, exist_ok=True)

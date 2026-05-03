@@ -2,9 +2,11 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import type { ChatSession, ChatMessage } from "@/types/chat";
 import type { ModelConfig } from "@/lib/api/models-client";
 import type { Persona } from "@/lib/api/personas-client";
+import type { KnowledgeBase } from "@/lib/api/knowledge-base-client";
 import { getModels } from "@/lib/api/models-client";
 import { useAiMode } from "@/contexts/ai-mode-context";
 import { getPersonas } from "@/lib/api/personas-client";
+import { listKnowledgeBases } from "@/lib/api/knowledge-base-client";
 import {
   generateSessionId,
   createSession,
@@ -28,6 +30,7 @@ export default function ChatPage() {
   // ── Data state ─────────────────────────────────────────────────
   const [models, setModels] = useState<ModelConfig[]>([]);
   const [personas, setPersonas] = useState<Persona[]>([]);
+  const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
 
   // ── Active session state ───────────────────────────────────────
@@ -35,6 +38,7 @@ export default function ChatPage() {
   const [sessionTitle, setSessionTitle] = useState("New Chat");
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
   const [selectedPersonaId, setSelectedPersonaId] = useState<string | null>(null);
+  const [selectedKnowledgeBaseId, setSelectedKnowledgeBaseId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
 
   // ── UI state ───────────────────────────────────────────────────
@@ -73,6 +77,7 @@ export default function ChatPage() {
         .catch(() => {})
         .finally(() => loadModels());
       loadPersonas();
+      loadKnowledgeBases();
       loadSessions();
     }
 
@@ -123,6 +128,14 @@ export default function ChatPage() {
       setPersonas(data);
     } catch (err) {
       console.warn("Failed to load personas:", err);
+    }
+  }
+
+  async function loadKnowledgeBases() {
+    try {
+      setKnowledgeBases(await listKnowledgeBases());
+    } catch (err) {
+      console.warn("Failed to load knowledge bases:", err);
     }
   }
 
@@ -244,7 +257,8 @@ export default function ChatPage() {
         sessionId,
         selectedModelId || undefined,
         selectedPersonaId || undefined,
-        controller.signal
+        controller.signal,
+        selectedKnowledgeBaseId || undefined
       )) {
         if (abortRef.current) break;
 
@@ -287,7 +301,7 @@ export default function ChatPage() {
 
     // Refresh session list to update message counts
     loadSessions();
-  }, [input, isStreaming, activeSessionId, selectedModelId, selectedPersonaId]);
+  }, [input, isStreaming, activeSessionId, selectedModelId, selectedPersonaId, selectedKnowledgeBaseId]);
 
   const handleStop = useCallback(() => {
     abortRef.current = true;
@@ -391,10 +405,13 @@ export default function ChatPage() {
           isStreaming={isStreaming}
           models={models}
           personas={personas}
+          knowledgeBases={knowledgeBases}
           selectedModelId={selectedModelId}
           selectedPersonaId={selectedPersonaId}
+          selectedKnowledgeBaseId={selectedKnowledgeBaseId}
           onSelectModel={setSelectedModelId}
           onSelectPersona={setSelectedPersonaId}
+          onSelectKnowledgeBase={setSelectedKnowledgeBaseId}
         />
       </div>
 

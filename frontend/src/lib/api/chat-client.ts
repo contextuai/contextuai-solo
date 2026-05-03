@@ -132,9 +132,10 @@ export async function* sendMessageStream(
   sessionId: string,
   modelId?: string,
   personaId?: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  knowledgeBaseId?: string
 ): AsyncGenerator<StreamChunk, void, unknown> {
-  const body = {
+  const body: Record<string, unknown> = {
     model_name: modelId || "default",
     prompt,
     session: sessionId,
@@ -143,6 +144,7 @@ export async function* sendMessageStream(
     persona_id: personaId,
     userId: USER_ID,
   };
+  if (knowledgeBaseId) body.knowledge_base_id = knowledgeBaseId;
 
   for await (const raw of streamRequest("/ai-chat/", body, signal)) {
     // streamRequest already parses SSE into { type, data }

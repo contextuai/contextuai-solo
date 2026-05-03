@@ -7,6 +7,7 @@ import {
   workspaceApi,
 } from "@/lib/api/workspace-client";
 import { getModels, type ModelConfig } from "@/lib/api/models-client";
+import { KbMultiSelect } from "@/components/shared/kb-multi-select";
 import {
   X,
   Save,
@@ -59,6 +60,7 @@ export function AgentDetail({ agent, isOpen, onClose, onSaved, onDeleted }: Agen
     model_id: "",
     category: "",
     is_public: false,
+    knowledge_base_ids: [] as string[],
   });
   const [models, setModels] = useState<ModelConfig[]>([]);
   const [saving, setSaving] = useState(false);
@@ -77,6 +79,9 @@ export function AgentDetail({ agent, isOpen, onClose, onSaved, onDeleted }: Agen
         model_id: agent.model_id || "",
         category: agent.category || "",
         is_public: agent.is_public,
+        knowledge_base_ids:
+          ((agent as unknown as { knowledge_base_ids?: string[] })
+            .knowledge_base_ids) ?? [],
       });
       setError(null);
       setConfirmDelete(false);
@@ -109,6 +114,12 @@ export function AgentDetail({ agent, isOpen, onClose, onSaved, onDeleted }: Agen
         model_id: form.model_id || undefined,
         category: form.category.trim() || undefined,
         is_public: form.is_public,
+        // Cast: workspace agent shape stores knowledge_base_ids on the
+        // raw doc; the typed payload doesn't yet declare it.
+        ...({ knowledge_base_ids: form.knowledge_base_ids } as Record<
+          string,
+          unknown
+        >),
       };
       await workspaceApi.updateAgent(agent.id, payload);
       onSaved();
@@ -358,6 +369,22 @@ export function AgentDetail({ agent, isOpen, onClose, onSaved, onDeleted }: Agen
                   </select>
                   <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400 pointer-events-none" />
                 </div>
+              </div>
+
+              {/* Knowledge bases */}
+              <div>
+                <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1.5">
+                  Knowledge bases
+                </label>
+                <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-2">
+                  Optional. Overrides crew-level knowledge bindings when set.
+                </p>
+                <KbMultiSelect
+                  value={form.knowledge_base_ids}
+                  onChange={(ids) =>
+                    setForm((p) => ({ ...p, knowledge_base_ids: ids }))
+                  }
+                />
               </div>
 
               {/* Category */}

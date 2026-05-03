@@ -13,6 +13,7 @@ import {
   type ConnectionSummary,
 } from "@/lib/api/connections-client";
 import { getModels, type ModelConfig } from "@/lib/api/models-client";
+import { KbMultiSelect } from "@/components/shared/kb-multi-select";
 import {
   BlueprintSelector,
   type BlueprintSelection,
@@ -460,6 +461,7 @@ interface CrewBuilderProps {
     connection_bindings?: ConnectionBinding[];
     triggers?: CrewTrigger[];
     approval_required?: boolean;
+    knowledge_base_ids?: string[];
   };
 }
 
@@ -536,6 +538,9 @@ export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderP
   const [models, setModels] = useState<ModelConfig[]>([]);
   const [selectedModelId, setSelectedModelId] = useState<string | null>(
     editCrew?.agents?.[0]?.model_id ?? null
+  );
+  const [knowledgeBaseIds, setKnowledgeBaseIds] = useState<string[]>(
+    editCrew?.knowledge_base_ids ?? []
   );
   // Legacy OAuth-status polling is no longer needed — the unified
   // /api/v1/connections aggregator returns connection state directly.
@@ -825,6 +830,10 @@ export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderP
         payload.channel_bindings = channelBindings;
       }
 
+      if (knowledgeBaseIds.length > 0) {
+        payload.knowledge_base_ids = knowledgeBaseIds;
+      }
+
       // Phase 3 additions
       if (connectionBindings.length > 0) {
         payload.connection_bindings = connectionBindings;
@@ -1029,6 +1038,19 @@ export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderP
                 <p className="mt-1 text-xs text-neutral-400">
                   All agents in this crew will use the selected model.
                 </p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
+                  Knowledge bases
+                </label>
+                <p className="mb-2 text-xs text-neutral-500 dark:text-neutral-400">
+                  Optional. Selected KBs are queried before each agent turn
+                  and citations are injected into the system prompt.
+                </p>
+                <KbMultiSelect
+                  value={knowledgeBaseIds}
+                  onChange={setKnowledgeBaseIds}
+                />
               </div>
             </div>
           )}

@@ -124,3 +124,18 @@ AWS_ACCESS_KEY_ID = settings.aws_access_key_id
 AWS_SECRET_ACCESS_KEY = settings.aws_secret_access_key
 ENVIRONMENT = settings.environment
 DEBUG = settings.debug
+
+# ---------------------------------------------------------------------------
+# Personal Docs (folder-mapped RAG) — caps + scheduler tick
+# ---------------------------------------------------------------------------
+PERSONAL_DOCS_MAX_FILE_BYTES = int(
+    os.getenv("PERSONAL_DOCS_MAX_FILE_BYTES", str(10 * 1024 * 1024))
+)
+PERSONAL_DOCS_MAX_FILES = int(os.getenv("PERSONAL_DOCS_MAX_FILES", "5000"))
+PERSONAL_DOCS_MAX_DEPTH = int(os.getenv("PERSONAL_DOCS_MAX_DEPTH", "10"))
+PERSONAL_DOCS_FRICTION_THRESHOLD = int(
+    os.getenv("PERSONAL_DOCS_FRICTION_THRESHOLD", "1000")
+)
+PERSONAL_DOCS_SCHEDULER_TICK_SECONDS = int(
+    os.getenv("PERSONAL_DOCS_SCHEDULER_TICK_SECONDS", "60")
+)
