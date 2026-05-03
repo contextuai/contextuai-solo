@@ -42,6 +42,11 @@ test.describe("Knowledge Base — UI", () => {
 
 test.describe("Knowledge Base — full lifecycle", () => {
   test("DC-KB-LIFECYCLE: create → upload → query → delete", async ({ page }) => {
+    // Skipped on CI runners: requires the bundled all-MiniLM-L6-v2 ONNX
+    // weights, which the workflow does not currently fetch — embedding
+    // never reaches "ready" so the assertion at line 73 times out.
+    // Tracked: re-enable once the CI image bundles the embedding model.
+    test.skip(!!process.env.CI, "needs bundled embedding model on CI");
     test.setTimeout(120_000);
 
     // 1. Create KB
