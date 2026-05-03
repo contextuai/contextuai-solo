@@ -19,7 +19,7 @@ test("DC-NAV-01: sidebar shows all navigation items", async () => {
   await expect(nav.sidebar).toBeVisible();
 
   const labels = await nav.getNavLabels();
-  const expectedItems = ["Chat", "Model Hub", "Personas", "Agents", "Crews", "Blueprints", "Workspace", "Distributions", "Knowledge", "Approvals", "Settings"];
+  const expectedItems = ["Chat", "Knowledge", "Model Hub", "Personas", "Agents", "Crews", "Blueprints", "Workspace", "Distributions", "Approvals", "Settings"];
 
   for (const item of expectedItems) {
     expect(labels).toContain(item);
@@ -32,6 +32,7 @@ test("DC-NAV-01: sidebar shows all navigation items", async () => {
 test("DC-NAV-02: navigate to each page and verify heading", async ({ page }) => {
   const routes: { label: string; heading: string }[] = [
     { label: "Chat", heading: "Start a conversation" },
+    { label: "Knowledge", heading: "Knowledge Bases" },
     { label: "Model Hub", heading: "Model Hub" },
     { label: "Personas", heading: "Personas" },
     { label: "Agents", heading: "Agent Library" },
@@ -39,7 +40,6 @@ test("DC-NAV-02: navigate to each page and verify heading", async ({ page }) => 
     { label: "Blueprints", heading: "Blueprints" },
     { label: "Workspace", heading: "Workspace" },
     { label: "Distributions", heading: "Distributions" },
-    { label: "Knowledge", heading: "Knowledge Bases" },
     { label: "Approvals", heading: "Approval Queue" },
     { label: "Settings", heading: "Settings" },
   ];

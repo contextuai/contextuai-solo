@@ -31,6 +31,7 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { label: "Chat", path: "/", icon: MessageSquare },
+  { label: "Knowledge", path: "/knowledge", icon: Library },
   { label: "Model Hub", path: "/models", icon: Cpu },
   { label: "Personas", path: "/personas", icon: Sparkles },
   { label: "Agents", path: "/agents", icon: Bot },
@@ -38,7 +39,6 @@ const navItems: NavItem[] = [
   { label: "Blueprints", path: "/blueprints", icon: BookOpen },
   { label: "Workspace", path: "/workspace", icon: FlaskConical },
   { label: "Distributions", path: "/connections", icon: Cable },
-  { label: "Knowledge", path: "/knowledge", icon: Library },
   { label: "Approvals", path: "/approvals", icon: ClipboardCheck },
   { label: "Settings", path: "/settings", icon: Settings },
 ];
