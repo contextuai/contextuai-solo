@@ -3,10 +3,7 @@ import { useLocation, Link } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import {
   MessageSquare,
-  Sparkles,
-  Bot,
   Users,
-  FlaskConical,
   Cable,
   ClipboardCheck,
   Settings,
@@ -17,7 +14,6 @@ import {
   Monitor,
   Cloud,
   Cpu,
-  BookOpen,
   Library,
   Zap,
 } from "lucide-react";
@@ -30,18 +26,18 @@ interface NavItem {
   icon: React.ElementType;
 }
 
+// Phase 4 PR 4: sidebar trimmed from 12 → 8.
+// Personas folded into Agents (PR 2); Workspace folded into Crews (PR 3).
+// Agents and Blueprints remain routable but moved out of the daily-nav sidebar
+// — they're surfaced inside the Crews builder and via direct URL.
 const navItems: NavItem[] = [
   { label: "Chat", path: "/", icon: MessageSquare },
   { label: "Knowledge", path: "/knowledge", icon: Library },
   { label: "Automations", path: "/automations", icon: Zap },
-  { label: "Model Hub", path: "/models", icon: Cpu },
-  { label: "Personas (Legacy)", path: "/personas", icon: Sparkles },
-  { label: "Agents", path: "/agents", icon: Bot },
   { label: "Crews", path: "/crews", icon: Users },
-  { label: "Blueprints", path: "/blueprints", icon: BookOpen },
-  { label: "Workspace (Legacy)", path: "/workspace", icon: FlaskConical },
-  { label: "Distributions", path: "/connections", icon: Cable },
   { label: "Approvals", path: "/approvals", icon: ClipboardCheck },
+  { label: "Distributions", path: "/connections", icon: Cable },
+  { label: "Models", path: "/models", icon: Cpu },
   { label: "Settings", path: "/settings", icon: Settings },
 ];
 
