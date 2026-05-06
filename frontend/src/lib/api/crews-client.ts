@@ -77,6 +77,10 @@ export interface Crew {
   user_id?: string;
   created_at?: string;
   updated_at?: string;
+  // Phase 4 PR 3: distinguishes recurring crews ("crew") from one-shot
+  // promoted workspace projects ("project"). Optional because legacy rows
+  // pre-migration may omit it.
+  kind?: "crew" | "project";
 }
 
 export interface CrewRun {
@@ -127,11 +131,35 @@ export interface LibraryAgent {
 // ---------------------------------------------------------------------------
 
 export const crewsApi = {
-  list: async (): Promise<Crew[]> => {
-    const { data } = await api.get<{ crews?: Crew[]; data?: { crews?: Crew[] } }>("/crews/");
+  list: async (
+    options: {
+      kind?: "crew" | "project" | "all";
+      status?: string;
+      page?: number;
+      page_size?: number;
+    } = {}
+  ): Promise<Crew[]> => {
+    const query = new URLSearchParams();
+    if (options.kind) query.set("kind", options.kind);
+    if (options.status) query.set("status", options.status);
+    if (options.page) query.set("page", String(options.page));
+    if (options.page_size) query.set("page_size", String(options.page_size));
+    const qs = query.toString();
+    const path = `/crews/${qs ? `?${qs}` : ""}`;
+    const { data } = await api.get<{ crews?: Crew[]; data?: { crews?: Crew[] } }>(path);
     const raw = data as Record<string, unknown>;
     const crews = (raw.crews ?? (raw.data as Record<string, unknown>)?.crews ?? []) as Crew[];
     return crews;
+  },
+
+  // Phase 4 PR 3: per-kind counts for tab badges on the unified Crews page.
+  getCrewsKindCounts: async (): Promise<{ crew: number; project: number }> => {
+    const { data } = await api.get<{ counts?: { crew?: number; project?: number } }>(
+      "/crews/kinds/counts"
+    );
+    const raw = data as Record<string, unknown>;
+    const counts = (raw.counts ?? {}) as { crew?: number; project?: number };
+    return { crew: counts.crew ?? 0, project: counts.project ?? 0 };
   },
 
   get: async (id: string): Promise<Crew> => {

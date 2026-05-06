@@ -106,20 +106,44 @@ async def create_crew(
 @router.get("/")
 async def list_crews(
     crew_status: Optional[str] = Query(None, alias="status"),
+    kind: Optional[str] = Query(None, description="Filter by kind: crew | project | all (Phase 4 PR 3)"),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     user: dict = Depends(get_current_user),
     svc: CrewService = Depends(get_crew_service),
 ):
-    """List crews belonging to the current user."""
+    """List crews belonging to the current user.
+
+    Phase 4 PR 3: ``kind=crew`` returns recurring crews, ``kind=project``
+    returns one-shot promoted projects, ``kind=all`` (or omitted) returns
+    everything. Defaults to ``crew`` so existing UI keeps working.
+    """
     user_id = _get_user_id(user)
-    crews, total = await svc.list_crews(user_id, status=crew_status, page=page, page_size=page_size)
+    effective_kind = kind if kind in ("crew", "project", "all") else "crew"
+    crews, total = await svc.list_crews(
+        user_id,
+        status=crew_status,
+        page=page,
+        page_size=page_size,
+        kind=effective_kind,
+    )
     items = []
     for c in crews:
         item_data = {k: v for k, v in c.items() if k in CrewListItem.model_fields}
         item_data["agent_count"] = c.get("agent_count", len(c.get("agents", [])))
         items.append(CrewListItem(**item_data))
     return CrewListResponse(crews=items, total_count=total, page=page, page_size=page_size).model_dump()
+
+
+@router.get("/kinds/counts")
+async def crews_kind_counts(
+    user: dict = Depends(get_current_user),
+    svc: CrewService = Depends(get_crew_service),
+):
+    """Phase 4 PR 3: per-kind counts for the unified Crews-page tab badges."""
+    user_id = _get_user_id(user)
+    counts = await svc.count_by_kind(user_id)
+    return {"counts": counts}
 
 
 # ------------------------------------------------------------------

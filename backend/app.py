@@ -501,6 +501,16 @@ async def startup_event():
         except Exception:
             logger.exception("personas_to_agent_types migration failed; continuing startup")
 
+        # Phase 4 PR 3: collapse workspace_projects → crews(kind=project)
+        # and workspace_executions → crew_runs.
+        try:
+            from services.migrations.workspace_to_crew_runs_migration import (
+                run_workspace_to_crew_runs_migration,
+            )
+            await run_workspace_to_crew_runs_migration(proxy)
+        except Exception:
+            logger.exception("workspace_to_crew_runs migration failed; continuing startup")
+
         # Start Reddit poller (runs only when a Reddit account is configured)
         from services.reddit_poller import get_poller
 

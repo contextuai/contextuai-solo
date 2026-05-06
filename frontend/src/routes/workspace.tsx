@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import {
@@ -16,6 +16,8 @@ import {
   AlertCircle,
   RefreshCw,
   Filter,
+  ArrowRight,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -44,6 +46,17 @@ export default function WorkspacePage() {
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [showNewDialog, setShowNewDialog] = useState(false);
+
+  // Phase 4 PR 3: Workspace has been folded into Crews → Projects.
+  // The legacy page stays for one release while users migrate.
+  const [movedBannerDismissed, setMovedBannerDismissed] = useState(
+    () => localStorage.getItem("solo.workspace.movedBannerDismissed") === "true"
+  );
+
+  function dismissMovedBanner() {
+    localStorage.setItem("solo.workspace.movedBannerDismissed", "true");
+    setMovedBannerDismissed(true);
+  }
 
   const loadProjects = useCallback(async () => {
     try {
@@ -89,6 +102,38 @@ export default function WorkspacePage() {
   // Project list view
   return (
     <div className="h-full flex flex-col">
+      {/* Phase 4 PR 3 — "Workspace has moved" banner. Same idiom as the
+          Personas → Agents banner shipped in PR 2. */}
+      {!movedBannerDismissed && (
+        <div className="flex-shrink-0 mx-6 mt-4 flex items-start gap-4 rounded-xl border border-amber-200 dark:border-amber-700/40 bg-amber-50 dark:bg-amber-500/10 px-4 py-3">
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+              Workspace has moved.
+            </p>
+            <p className="text-xs text-amber-800/90 dark:text-amber-200/80 mt-0.5">
+              Projects live alongside Crews now — open Crews → Projects tab. This page stays available for one release while you migrate.
+            </p>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <Link
+              to="/crews?tab=projects"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary-500 hover:bg-primary-600 text-white text-xs font-medium transition-colors"
+            >
+              Open Crews
+              <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
+            <button
+              type="button"
+              onClick={dismissMovedBanner}
+              className="p-1.5 rounded-md text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-500/20 transition-colors"
+              aria-label="Dismiss"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex-shrink-0 px-6 py-5 border-b border-neutral-200 dark:border-neutral-800">
         <div className="flex items-center justify-between mb-1">
