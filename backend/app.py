@@ -353,6 +353,11 @@ async def _seed_agent_library(db):
                         "source": "library",
                         "created_by": "system",
                         "created_at": datetime.utcnow().isoformat() + "Z",
+                        # PR 2 (phase 4): library agents are all prompt-only.
+                        # Database / web / mcp / api / file kinds come from
+                        # promoted personas (see personas_to_agent_types
+                        # migration).
+                        "kind": "prompt",
                     }
 
                     await collection.insert_one(doc)
@@ -486,6 +491,15 @@ async def startup_event():
             await run_unify_connections_migration(proxy)
         except Exception:
             logger.exception("unify_connections migration failed; continuing startup")
+
+        # Phase 4 PR 2: fold personas into workspace_agents with `kind`
+        try:
+            from services.migrations.personas_to_agent_types_migration import (
+                run_personas_to_agent_types_migration,
+            )
+            await run_personas_to_agent_types_migration(proxy)
+        except Exception:
+            logger.exception("personas_to_agent_types migration failed; continuing startup")
 
         # Start Reddit poller (runs only when a Reddit account is configured)
         from services.reddit_poller import get_poller

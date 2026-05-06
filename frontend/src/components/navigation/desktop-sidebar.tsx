@@ -35,7 +35,7 @@ const navItems: NavItem[] = [
   { label: "Knowledge", path: "/knowledge", icon: Library },
   { label: "Automations", path: "/automations", icon: Zap },
   { label: "Model Hub", path: "/models", icon: Cpu },
-  { label: "Personas", path: "/personas", icon: Sparkles },
+  { label: "Personas (Legacy)", path: "/personas", icon: Sparkles },
   { label: "Agents", path: "/agents", icon: Bot },
   { label: "Crews", path: "/crews", icon: Users },
   { label: "Blueprints", path: "/blueprints", icon: BookOpen },

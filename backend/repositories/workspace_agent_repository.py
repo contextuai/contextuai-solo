@@ -67,6 +67,42 @@ class WorkspaceAgentRepository(BaseRepository):
         except ValueError:
             return None
 
+    async def get_by_kind(
+        self,
+        kind: str,
+        skip: int = 0,
+        limit: int = 100,
+    ) -> List[Dict[str, Any]]:
+        """Phase 4 PR 2: list active agents filtered by their `kind` tag.
+
+        Kind values: ``prompt | database | web | mcp | api | file``. Library
+        agents seeded from agent-library/*.md default to ``prompt``; agents
+        promoted from legacy personas carry the kind that matches their
+        original persona_type_id.
+        """
+        return await self.get_all(
+            filter={"kind": kind, "is_active": True},
+            skip=skip,
+            limit=limit,
+            sort=[("created_at", -1)],
+        )
+
+    async def count_by_kind(self) -> Dict[str, int]:
+        """Aggregate active-agent counts grouped by kind. Useful for the
+        tabbed picker so the UI can show "Prompt (96)", "Database (3)",
+        etc. without paginating each tab.
+        """
+        kinds = ("prompt", "database", "web", "mcp", "api", "file")
+        out: Dict[str, int] = {}
+        for kind in kinds:
+            out[kind] = await self.count({"kind": kind, "is_active": True})
+        # Backfill bucket — agents missing a kind (pre-migration) get
+        # surfaced under "prompt" by the picker so nothing goes invisible.
+        out["unknown"] = await self.count(
+            {"kind": {"$exists": False}, "is_active": True}
+        )
+        return out
+
     async def get_by_category(
         self,
         category: str,
