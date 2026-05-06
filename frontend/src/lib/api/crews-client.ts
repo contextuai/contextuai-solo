@@ -14,6 +14,12 @@ export interface CrewAgent {
   order: number;
   tools?: string[];
   library_agent_id?: string;
+  // Phase 4 PR 9: Coder project step.
+  // When `coder_project_id` is set, the orchestrator runs the named Coder
+  // project headlessly instead of invoking an LLM agent. A step is valid
+  // if it has `instructions` OR `coder_project_id`.
+  coder_project_id?: string | null;
+  coder_run_timeout_seconds?: number;
 }
 
 export interface CrewExecutionConfig {

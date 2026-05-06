@@ -57,14 +57,22 @@ class ExecutionMode(str, Enum):
 # =============================================================================
 
 class CrewAgentConfig(BaseModel):
-    """Configuration for a single agent within a crew."""
+    """Configuration for a single step within a crew.
+
+    A step is either:
+      * an LLM agent invocation (``instructions`` set), or
+      * a Coder project run (``coder_project_id`` set), which spawns the
+        project's run command headlessly via ``coder_run_service``.
+
+    Exactly one of the two must be set.
+    """
     model_config = {"protected_namespaces": ()}
 
     agent_id: Optional[str] = None
     role: CrewAgentRole = CrewAgentRole.CUSTOM
     custom_role: Optional[str] = None
     name: str = Field(..., min_length=1, max_length=100)
-    instructions: str = Field(..., min_length=1)
+    instructions: str = Field(default="")
     persona_id: Optional[str] = None
     model_id: Optional[str] = None
     tools: List[str] = Field(default_factory=list)
@@ -77,6 +85,31 @@ class CrewAgentConfig(BaseModel):
         default_factory=list,
         description="Per-agent KB binding. When non-empty overrides crew-level binding.",
     )
+    coder_project_id: Optional[str] = Field(
+        None,
+        description="If set, this step runs the named Coder project headlessly "
+                    "instead of invoking an LLM agent.",
+    )
+    coder_run_timeout_seconds: int = Field(
+        default=60,
+        ge=1,
+        le=3600,
+        description="Timeout for the headless Coder run (only used when "
+                    "``coder_project_id`` is set).",
+    )
+
+    @model_validator(mode="after")
+    def require_instructions_or_coder_project(self):
+        """A step must have either ``instructions`` (agent step) or
+        ``coder_project_id`` (Coder step)."""
+        has_instructions = bool((self.instructions or "").strip())
+        has_coder = bool((self.coder_project_id or "").strip())
+        if not has_instructions and not has_coder:
+            raise ValueError(
+                "Crew step requires either `instructions` (agent step) or "
+                "`coder_project_id` (Coder step)."
+            )
+        return self
 
 
 class CrewExecutionConfig(BaseModel):
@@ -190,10 +223,28 @@ class CreateCrewRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_agents_for_mode(self):
-        """Non-autonomous modes require at least 1 agent; autonomous allows empty."""
+        """Non-autonomous modes require at least 1 step; autonomous allows empty.
+
+        Both LLM agent steps (``instructions`` set) and Coder project steps
+        (``coder_project_id`` set) count toward the required minimum, so a
+        crew composed entirely of Coder steps is valid.
+        """
         mode = self.execution_config.mode if self.execution_config else ExecutionMode.SEQUENTIAL
-        if mode != ExecutionMode.AUTONOMOUS and len(self.agents) < 1:
-            raise ValueError("At least 1 agent is required for non-autonomous execution modes")
+        if mode == ExecutionMode.AUTONOMOUS:
+            return self
+        # Count both step types — a Coder step is just as much a "step" as
+        # an agent step.
+        step_count = sum(
+            1
+            for a in (self.agents or [])
+            if (a.instructions and a.instructions.strip())
+            or (a.coder_project_id and a.coder_project_id.strip())
+        )
+        if step_count < 1:
+            raise ValueError(
+                "At least 1 step (agent or Coder project) is required for "
+                "non-autonomous execution modes"
+            )
         return self
 
     class Config:
