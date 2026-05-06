@@ -38,6 +38,11 @@ logger = logging.getLogger(__name__)
 
 PROBE_TIMEOUT_SECONDS = 10.0
 
+# Module-level credentials cache: provider_type -> (expires_at_monotonic, config_dict).
+# Keeps chatty inference paths from hammering SQLite on every call. TTL 60s.
+_CREDS_CACHE_TTL = 60.0
+_creds_cache: Dict[str, tuple] = {}
+
 
 class CloudProviderService:
     """Business logic for cloud provider onboarding."""
@@ -92,6 +97,8 @@ class CloudProviderService:
                     "config": merged,
                 },
             )
+            self.invalidate_cache(ptype)
+            await self._sync_cloud_models_safe()
             return CloudProviderResponse.from_row(updated or existing)
 
         row = await self.repo.create(
@@ -99,6 +106,8 @@ class CloudProviderService:
             display_name=display_name,
             config=merged_config,
         )
+        self.invalidate_cache(ptype)
+        await self._sync_cloud_models_safe()
         return CloudProviderResponse.from_row(row)
 
     async def update(
@@ -124,12 +133,61 @@ class CloudProviderService:
         updated = await self.repo.update(provider_id, update)
         if not updated:
             raise HTTPException(404, f"Cloud provider '{provider_id}' not found")
+        self.invalidate_cache(updated.get("provider_type"))
         return CloudProviderResponse.from_row(updated)
 
     async def delete(self, provider_id: str) -> None:
+        existing = await self.repo.get_by_id(provider_id)
         deleted = await self.repo.delete(provider_id)
         if not deleted:
             raise HTTPException(404, f"Cloud provider '{provider_id}' not found")
+        if existing:
+            self.invalidate_cache(existing.get("provider_type"))
+        else:
+            self.invalidate_cache()
+
+    # ------------------------------------------------------------------
+    # Credentials lookup (used by inference paths)
+    # ------------------------------------------------------------------
+
+    async def get_credentials(
+        self, provider_type: str
+    ) -> Optional[Dict[str, Any]]:
+        """Return the unmasked config dict for a provider type, or None.
+
+        Cached for ``_CREDS_CACHE_TTL`` seconds so chat / automation paths
+        don't hit SQLite on every call. Cache invalidated on save / delete.
+        """
+        now = time.monotonic()
+        cached = _creds_cache.get(provider_type)
+        if cached and cached[0] > now:
+            return cached[1]
+
+        row = await self.repo.get_by_type(provider_type)
+        if not row:
+            # Cache the negative result briefly to dampen probe storms.
+            _creds_cache[provider_type] = (now + _CREDS_CACHE_TTL, None)  # type: ignore[assignment]
+            return None
+        cfg = dict(row.get("config") or {})
+        _creds_cache[provider_type] = (now + _CREDS_CACHE_TTL, cfg)
+        return cfg
+
+    def invalidate_cache(self, provider_type: Optional[str] = None) -> None:
+        """Wipe the credentials cache for one provider type or all of them."""
+        if provider_type is None:
+            _creds_cache.clear()
+        else:
+            _creds_cache.pop(provider_type, None)
+
+    async def _sync_cloud_models_safe(self) -> None:
+        """Re-seed cloud-model rows after a provider save. Never raises."""
+        try:
+            from services.cloud_model_seeder import sync_cloud_models_to_db
+            await sync_cloud_models_to_db(self.db)
+        except Exception:
+            logger.exception(
+                "Failed to re-sync cloud models after provider save (non-fatal)"
+            )
 
     # ------------------------------------------------------------------
     # Test connection

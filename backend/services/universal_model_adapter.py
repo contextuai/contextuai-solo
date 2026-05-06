@@ -20,20 +20,62 @@ class UniversalModelAdapter:
     No code changes needed for new models - just update the configuration.
     """
     
-    def __init__(self):
-        self.region = os.getenv("AWS_BEDROCK_REGION", os.getenv("AWS_REGION", "us-east-1"))
-        self.model_config_service = model_config_service
-        
-        # Initialize AWS clients
-        self.bedrock_runtime_client = boto3.client(
-            service_name='bedrock-runtime',
-            region_name=self.region
+    def __init__(self, bedrock_credentials: Optional[Dict[str, Any]] = None):
+        """Initialise the adapter.
+
+        Args:
+            bedrock_credentials: Optional dict with explicit AWS creds —
+                ``aws_access_key_id``, ``aws_secret_access_key``,
+                ``aws_session_token`` (optional), ``aws_region`` (optional).
+                When supplied, the bedrock-runtime client uses these creds
+                directly; otherwise the boto3 default chain (env vars, shared
+                credentials file, IAM role) is used.
+        """
+        creds = bedrock_credentials or {}
+        self.region = (
+            creds.get("aws_region")
+            or os.getenv("AWS_BEDROCK_REGION")
+            or os.getenv("AWS_REGION")
+            or "us-east-1"
         )
-        
+        self.model_config_service = model_config_service
+
+        # Initialize AWS clients — explicit creds when provided, else env-based.
+        client_kwargs: Dict[str, Any] = {
+            "service_name": "bedrock-runtime",
+            "region_name": self.region,
+        }
+        if creds.get("aws_access_key_id") and creds.get("aws_secret_access_key"):
+            client_kwargs["aws_access_key_id"] = creds["aws_access_key_id"]
+            client_kwargs["aws_secret_access_key"] = creds["aws_secret_access_key"]
+            if creds.get("aws_session_token"):
+                client_kwargs["aws_session_token"] = creds["aws_session_token"]
+
+        self.bedrock_runtime_client = boto3.client(**client_kwargs)
+
         # Cache for pipeline executors
         self._pipeline_cache = {}
-        
+
         print(f"🌐 UNIVERSAL ADAPTER: Initialized for region {self.region}")
+
+    @classmethod
+    async def from_saved_credentials(cls, db) -> "UniversalModelAdapter":
+        """Build an adapter using AWS creds saved in the cloud_providers table.
+
+        Falls back to the env-based default if no bedrock row is present.
+        """
+        try:
+            from repositories.cloud_provider_repository import CloudProviderRepository
+
+            row = await CloudProviderRepository(db).get_by_type("bedrock")
+            if row:
+                cfg = row.get("config") or {}
+                if cfg.get("aws_access_key_id") and cfg.get("aws_secret_access_key"):
+                    return cls(bedrock_credentials=cfg)
+        except Exception:
+            # Best-effort — fall back to env-based auth on any error.
+            pass
+        return cls()
     
     async def invoke_model(
         self,

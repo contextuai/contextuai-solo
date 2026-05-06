@@ -412,6 +412,17 @@ async def _seed_local_models(db):
         logger.exception("Failed to seed local model configs")
 
 
+async def _seed_cloud_models(db):
+    """Register cloud-provider model entries for any connected providers."""
+    try:
+        from services.cloud_model_seeder import sync_cloud_models_to_db
+        synced = await sync_cloud_models_to_db(db)
+        if synced:
+            logger.info("Seeded %d cloud model entry/entries", synced)
+    except Exception:
+        logger.exception("Failed to seed cloud model entries")
+
+
 async def _seed_crew_templates(db):
     """
     Seed crew templates from the on-disk JSON library into the
@@ -486,6 +497,9 @@ async def startup_event():
 
         # Seed model configs for any already-downloaded local GGUF models
         await _seed_local_models(proxy)
+
+        # Seed cloud model entries for any connected cloud providers
+        await _seed_cloud_models(proxy)
 
         # Phase 3 PR 1: backfill crew.connection_bindings / triggers / approval_required
         try:
