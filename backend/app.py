@@ -48,6 +48,7 @@ from routers.scheduled_jobs import router as scheduled_jobs_router
 from routers.connections import router as connections_router
 from routers.knowledge_base import router as knowledge_base_router
 from routers.personal_docs import router as personal_docs_router
+from routers.automations import router as automations_router
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -102,6 +103,7 @@ app.include_router(scheduled_jobs_router)
 app.include_router(connections_router)
 app.include_router(knowledge_base_router)
 app.include_router(personal_docs_router)
+app.include_router(automations_router)
 
 
 # ---------------------------------------------------------------------------
