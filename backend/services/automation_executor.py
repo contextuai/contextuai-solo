@@ -14,9 +14,19 @@ import logging
 import time
 from typing import Any, Dict, List, Optional
 
-from database import get_database
+import database as _db_module
 
 logger = logging.getLogger(__name__)
+
+
+async def get_database():
+    """Resolve the active database via the live ``database`` module.
+
+    Looking it up by attribute (rather than ``from database import
+    get_database``) means runtime monkey-patches in ``app.py`` startup —
+    and in tests — are honoured.
+    """
+    return await _db_module.get_database()
 
 
 class AutomationExecutor:
@@ -45,12 +55,15 @@ class AutomationExecutor:
                     "No AI model is configured. Download a local model from the Model Hub or pick one in Settings."
                 )
 
+            agent_system = (agent or {}).get("system_prompt") or ""
             full_prompt = self._build_prompt(
                 instruction=instruction,
                 context=context,
-                system_prompt=(agent or {}).get("system_prompt") or "",
+                system_prompt=agent_system,
             )
-            content = await self._call_model(resolved_model, full_prompt)
+            content = await self._call_model(
+                resolved_model, full_prompt, system_prompt=agent_system
+            )
 
             duration_ms = int((time.time() - start) * 1000)
             return {
@@ -119,8 +132,24 @@ class AutomationExecutor:
             return any_model.get("id") or str(any_model.get("_id"))
         return None
 
-    async def _call_model(self, model_id: str, prompt: str) -> str:
-        """Route the prompt through Solo's model layer."""
+    async def _call_model(
+        self,
+        model_id: str,
+        prompt: str,
+        system_prompt: str = "",
+    ) -> str:
+        """Route the prompt through Solo's model layer.
+
+        Dispatches by model_id prefix:
+
+        - ``local-`` / ``local:`` → LocalModelService (llama-cpp).
+        - ``anthropic:``          → AnthropicDirectService (api.anthropic.com).
+        - ``openai:``              → OpenAIDirectService (api.openai.com).
+        - ``google:``              → GoogleDirectService (generativelanguage.googleapis.com).
+        - anything else            → UniversalModelAdapter (Bedrock) with
+                                     saved AWS creds when present.
+        """
+        # ----- Local GGUF -----
         if model_id.startswith("local-") or model_id.startswith("local:"):
             from services.local_model_service import LocalModelService
             catalog_id = model_id.replace("local-", "").replace("local:", "")
@@ -128,10 +157,69 @@ class AutomationExecutor:
                 model_id=catalog_id, prompt=prompt, max_tokens=2048
             )
 
-        # Cloud / Bedrock path — defer to the universal adapter.
+        db = await get_database()
+
+        # ----- Anthropic direct -----
+        if model_id.startswith("anthropic:"):
+            from services.anthropic_direct_service import AnthropicDirectService
+            api_key = await self._get_api_key(db, "anthropic")
+            if not api_key:
+                raise RuntimeError(
+                    "Anthropic API key not configured. "
+                    "Save one in Settings → Models → Cloud."
+                )
+            result = await AnthropicDirectService().call_model(
+                prompt=prompt,
+                system_prompt=system_prompt or None,
+                model_id=model_id,
+                max_tokens=2048,
+                temperature=0.7,
+                api_key=api_key,
+            )
+            return result.get("content", "") if isinstance(result, dict) else str(result or "")
+
+        # ----- OpenAI direct -----
+        if model_id.startswith("openai:"):
+            from services.openai_direct_service import OpenAIDirectService
+            api_key = await self._get_api_key(db, "openai")
+            if not api_key:
+                raise RuntimeError(
+                    "OpenAI API key not configured. "
+                    "Save one in Settings → Models → Cloud."
+                )
+            result = await OpenAIDirectService().call_model(
+                prompt=prompt,
+                system_prompt=system_prompt or None,
+                model_id=model_id,
+                max_tokens=2048,
+                temperature=0.7,
+                api_key=api_key,
+            )
+            return result.get("content", "") if isinstance(result, dict) else str(result or "")
+
+        # ----- Google direct -----
+        if model_id.startswith("google:"):
+            from services.google_direct_service import GoogleDirectService
+            api_key = await self._get_api_key(db, "google")
+            if not api_key:
+                raise RuntimeError(
+                    "Google AI API key not configured. "
+                    "Save one in Settings → Models → Cloud."
+                )
+            result = await GoogleDirectService().call_model(
+                prompt=prompt,
+                system_prompt=system_prompt or None,
+                model_id=model_id,
+                max_tokens=2048,
+                temperature=0.7,
+                api_key=api_key,
+            )
+            return result.get("content", "") if isinstance(result, dict) else str(result or "")
+
+        # ----- Bedrock / unrecognised — defer to the universal adapter -----
         try:
             from services.universal_model_adapter import UniversalModelAdapter
-            adapter = UniversalModelAdapter()
+            adapter = await UniversalModelAdapter.from_saved_credentials(db)
             result = await adapter.invoke_model(
                 model_id=model_id,
                 prompt=prompt,
@@ -143,16 +231,25 @@ class AutomationExecutor:
                 return result.get("content") or result.get("response") or ""
             return str(result or "")
         except Exception as cloud_err:
-            logger.warning(
-                "Cloud model adapter failed for %s (%s) — falling back to local",
-                model_id,
-                cloud_err,
-            )
-            from services.local_model_service import LocalModelService
-            catalog_id = model_id.replace("local-", "").replace("local:", "")
-            return await LocalModelService().generate(
-                model_id=catalog_id, prompt=prompt, max_tokens=2048
-            )
+            raise RuntimeError(
+                f"Cloud model invocation failed for {model_id}: {cloud_err}"
+            ) from cloud_err
+
+    @staticmethod
+    async def _get_api_key(db, provider_type: str) -> Optional[str]:
+        """Look up the saved API key for a cloud provider, or None."""
+        from repositories.cloud_provider_repository import CloudProviderRepository
+
+        try:
+            row = await CloudProviderRepository(db).get_by_type(provider_type)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("cloud_providers lookup failed for %s: %s", provider_type, exc)
+            return None
+        if not row:
+            return None
+        cfg = row.get("config") or {}
+        key = cfg.get("api_key")
+        return key or None
 
     @staticmethod
     def aggregate_results(steps: List[Dict[str, Any]]) -> str:
