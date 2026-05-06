@@ -1,0 +1,10 @@
+{
+  "id": "web-app",
+  "name": "Web App",
+  "description": "Vite + React + TypeScript starter — hot reload at localhost:5173.",
+  "runtime": "node",
+  "init_commands": ["npm install"],
+  "run_command": "npm run dev",
+  "preview_port": 5173,
+  "starter_prompt": "Build me a simple counter component."
+}

@@ -1,0 +1,10 @@
+{
+  "id": "cli-tool",
+  "name": "CLI Tool",
+  "description": "Python click-based CLI starter — one hello subcommand to extend.",
+  "runtime": "python",
+  "init_commands": ["pip install -r requirements.txt"],
+  "run_command": "python main.py --help",
+  "preview_port": null,
+  "starter_prompt": "Add a `convert` subcommand that converts CSV to JSON."
+}

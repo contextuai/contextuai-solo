@@ -1,0 +1,12 @@
+{
+  "name": "coder-telegram-bot",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "start": "node bot.js"
+  },
+  "dependencies": {
+    "grammy": "latest"
+  }
+}

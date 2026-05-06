@@ -23,7 +23,10 @@ import BlueprintsPage from "@/routes/blueprints";
 import KnowledgePage from "@/routes/knowledge";
 import AutomationsPage from "@/routes/automations";
 import WizardPage from "@/routes/wizard";
-import CoderComingSoon from "@/routes/coder/coming-soon";
+import CoderProjectsPage from "@/routes/coder/projects";
+import CoderProjectDetailPage from "@/routes/coder/project-detail";
+import CoderRunningPage from "@/routes/coder/running";
+import CoderTemplatesPage from "@/routes/coder/templates";
 import { UpdateNotifier } from "@/components/update-notifier";
 
 function isWizardComplete(): boolean {
@@ -145,11 +148,11 @@ export default function App() {
                 <Route path="/approvals" element={<ApprovalsPage />} />
                 <Route path="/analytics" element={<AnalyticsPage />} />
                 <Route path="/settings" element={<SettingsPage />} />
-                {/* Coder mode (Phase 4 PR 5) — Coming Soon stubs. */}
-                <Route path="/coder/projects" element={<CoderComingSoon />} />
-                <Route path="/coder/projects/:id" element={<CoderComingSoon />} />
-                <Route path="/coder/running" element={<CoderComingSoon />} />
-                <Route path="/coder/templates" element={<CoderComingSoon />} />
+                {/* Coder mode (Phase 4 PR 6 — Coder MVP). */}
+                <Route path="/coder/projects" element={<CoderProjectsPage />} />
+                <Route path="/coder/projects/:id" element={<CoderProjectDetailPage />} />
+                <Route path="/coder/running" element={<CoderRunningPage />} />
+                <Route path="/coder/templates" element={<CoderTemplatesPage />} />
               </Route>
             </Routes>
           </BrowserRouter>

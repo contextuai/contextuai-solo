@@ -1,0 +1,10 @@
+{
+  "id": "telegram-bot",
+  "name": "Telegram Bot",
+  "description": "Minimal grammy-based Telegram bot — set BOT_TOKEN in .env and chat with it.",
+  "runtime": "node",
+  "init_commands": ["npm install"],
+  "run_command": "node bot.js",
+  "preview_port": null,
+  "starter_prompt": "Add a /weather command that fetches the forecast for a city."
+}
