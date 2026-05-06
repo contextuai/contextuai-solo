@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import {
   crewsApi,
@@ -8,6 +8,7 @@ import {
   type ConnectionBinding,
   type CrewTrigger,
 } from "@/lib/api/crews-client";
+import { AgentLibraryTabs } from "@/components/agents/agent-library-tabs";
 import {
   connectionsApi,
   type ConnectionSummary,
@@ -36,8 +37,6 @@ import {
   ArrowRight,
   ArrowLeft,
   BookOpen,
-  Search,
-  ChevronDown,
   Check,
   Eye,
   Cable,
@@ -165,26 +164,6 @@ const ROLE_OPTIONS = [
 ];
 
 // ---------------------------------------------------------------------------
-// Category colors for badges
-// ---------------------------------------------------------------------------
-const CATEGORY_COLORS: Record<string, string> = {
-  marketing: "bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-400",
-  sales: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400",
-  finance: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
-  engineering: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
-  operations: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400",
-  hr: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400",
-  legal: "bg-slate-100 text-slate-700 dark:bg-slate-900/30 dark:text-slate-400",
-  support: "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400",
-  product: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400",
-  data: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
-};
-
-function categoryBadgeClass(category: string) {
-  return CATEGORY_COLORS[category] ?? "bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400";
-}
-
-// ---------------------------------------------------------------------------
 // Library Panel (overlay inside crew builder)
 // ---------------------------------------------------------------------------
 function LibraryPanel({
@@ -196,86 +175,6 @@ function LibraryPanel({
   onClose: () => void;
   onSelect: (agent: LibraryAgent) => void;
 }) {
-  const [agents, setAgents] = useState<LibraryAgent[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [search, setSearch] = useState("");
-  const [category, setCategory] = useState("");
-  const [categories, setCategories] = useState<string[]>([]);
-  const [page, setPage] = useState(1);
-  const [totalCount, setTotalCount] = useState(0);
-  const pageSize = 20;
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>(null);
-
-  const fetchAgents = useCallback(
-    async (p: number, searchTerm: string, cat: string) => {
-      setLoading(true);
-      try {
-        const res = await crewsApi.listLibraryAgents({
-          page: p,
-          page_size: pageSize,
-          search: searchTerm || undefined,
-          category: cat || undefined,
-        });
-        setAgents(res.agents);
-        setTotalCount(res.total_count);
-        if (!cat && !searchTerm && p === 1 && res.agents.length > 0) {
-          setCategories((prev) => {
-            const cats = new Set(prev);
-            res.agents.forEach((a) => cats.add(a.category));
-            return Array.from(cats).sort();
-          });
-        }
-      } catch {
-        // silent
-      } finally {
-        setLoading(false);
-      }
-    },
-    []
-  );
-
-  useEffect(() => {
-    if (open) {
-      setPage(1);
-      fetchAgents(1, search, category);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
-
-  useEffect(() => {
-    if (open && categories.length === 0) {
-      crewsApi
-        .listLibraryAgents({ page: 1, page_size: 100 })
-        .then((res) => {
-          const cats = Array.from(new Set(res.agents.map((a) => a.category))).sort();
-          setCategories(cats);
-        })
-        .catch(() => {});
-    }
-  }, [open, categories.length]);
-
-  const handleSearch = (value: string) => {
-    setSearch(value);
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      setPage(1);
-      fetchAgents(1, value, category);
-    }, 300);
-  };
-
-  const handleCategory = (cat: string) => {
-    setCategory(cat);
-    setPage(1);
-    fetchAgents(1, search, cat);
-  };
-
-  const handlePage = (p: number) => {
-    setPage(p);
-    fetchAgents(p, search, category);
-  };
-
-  const totalPages = Math.ceil(totalCount / pageSize);
-
   if (!open) return null;
 
   return (
@@ -286,7 +185,6 @@ function LibraryPanel({
           <h3 className="text-sm font-semibold text-neutral-900 dark:text-white">
             Agent Library
           </h3>
-          <span className="text-xs text-neutral-400">({totalCount} agents)</span>
         </div>
         <button
           onClick={onClose}
@@ -296,95 +194,23 @@ function LibraryPanel({
         </button>
       </div>
 
-      <div className="flex items-center gap-2 px-5 py-3 border-b border-neutral-100 dark:border-neutral-800">
-        <div className="relative flex-1">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-neutral-400" />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => handleSearch(e.target.value)}
-            placeholder="Search agents..."
-            className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-sm focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 outline-none transition-colors"
-          />
-        </div>
-        <div className="relative">
-          <select
-            value={category}
-            onChange={(e) => handleCategory(e.target.value)}
-            className="appearance-none pl-3 pr-7 py-1.5 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-sm focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 outline-none transition-colors"
-          >
-            <option value="">All categories</option>
-            {categories.map((c) => (
-              <option key={c} value={c}>
-                {c.charAt(0).toUpperCase() + c.slice(1)}
-              </option>
-            ))}
-          </select>
-          <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-neutral-400 pointer-events-none" />
-        </div>
+      <div className="flex-1 overflow-y-auto">
+        <AgentLibraryTabs
+          variant="compact"
+          onSelect={(agent) =>
+            onSelect({
+              agent_id: agent.agent_id ?? agent.id,
+              name: agent.name,
+              description: agent.description,
+              category: agent.category ?? "",
+              capabilities: agent.capabilities ?? agent.tools ?? [],
+              suggested_role: agent.role ?? "specialist",
+              icon: agent.icon ?? "",
+            })
+          }
+          storageKey="solo.crews.builder.tab"
+        />
       </div>
-
-      <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
-        {loading && agents.length === 0 ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="w-5 h-5 animate-spin text-neutral-400" />
-          </div>
-        ) : agents.length === 0 ? (
-          <div className="text-center py-12 text-sm text-neutral-400">
-            No agents found
-          </div>
-        ) : (
-          agents.map((agent) => (
-            <button
-              key={agent.agent_id}
-              type="button"
-              onClick={() => onSelect(agent)}
-              className="w-full text-left px-4 py-3 rounded-xl border border-transparent hover:border-primary-200 dark:hover:border-primary-800 hover:bg-primary-50/50 dark:hover:bg-primary-500/5 transition-all group"
-            >
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-sm font-medium text-neutral-900 dark:text-white group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors">
-                  {agent.name}
-                </span>
-                <span
-                  className={cn(
-                    "px-2 py-0.5 rounded-full text-[10px] font-medium uppercase tracking-wide",
-                    categoryBadgeClass(agent.category)
-                  )}
-                >
-                  {agent.category}
-                </span>
-              </div>
-              <p className="text-xs text-neutral-500 dark:text-neutral-400 line-clamp-2">
-                {agent.description}
-              </p>
-            </button>
-          ))
-        )}
-      </div>
-
-      {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-2 px-5 py-3 border-t border-neutral-200 dark:border-neutral-800">
-          <button
-            type="button"
-            disabled={page <= 1}
-            onClick={() => handlePage(page - 1)}
-            className="px-3 py-1 rounded-lg text-xs font-medium text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 disabled:opacity-30 transition-colors"
-          >
-            Previous
-          </button>
-          <span className="text-xs text-neutral-500">
-            Page {page} of {totalPages}
-          </span>
-          <button
-            type="button"
-            disabled={page >= totalPages}
-            onClick={() => handlePage(page + 1)}
-            className="px-3 py-1 rounded-lg text-xs font-medium text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 disabled:opacity-30 transition-colors"
-          >
-            Next
-          </button>
-        </div>
-      )}
     </div>
   );
 }

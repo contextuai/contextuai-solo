@@ -1,16 +1,17 @@
 # TODO — ContextuAI Solo Moonshot
 
 > Master task list. Prioritized by phases. Check off as completed.
-> **Created:** 2026-03-19 | **Last synced with code:** 2026-04-30
+> **Created:** 2026-03-19 | **Last synced with code:** 2026-05-04
 
 ---
 
-## CURRENTLY PENDING (audit 2026-04-29)
+## CURRENTLY PENDING (audit 2026-05-04)
 
-Everything in Phase 0, 1, 2, 2.5, and 3 is shipped and verified against the codebase. The only meaningful work left:
+Everything in Phase 0, 1, 2, 2.5, and 3 is shipped and verified against the codebase. v1.0.0-10 cut on 2026-05-03 carried Personal Docs / folder-mapped RAG (P2.5-3) and the KB nav promotion. The only meaningful work left:
 
 - **P0-1 verification** — test the OpenAI-compat endpoint with Aider + Continue.dev (router is shipped, just unverified externally).
-- **3 starter RAG packs** — engine is shipped (P2.5-2). Need curated content packs (IRS tax, personal finance, cybersecurity-101) under `knowledge-base-packs/` for users to download.
+- **3 starter RAG packs** — engine is shipped (P2.5-2/3). `knowledge-base-packs/README.md` documents the manifest format. Still need curated content packs (IRS tax, personal finance, cybersecurity-101) for users to download.
+- **CI: bundle the all-MiniLM-L6-v2 ONNX weights** so the KB lifecycle + Personal Docs folder e2e tests can run on GitHub Actions (currently `test.skip(!!process.env.CI)`).
 - **Phase 3 dead-code cleanup** — `frontend/src/routes/distribution.tsx`, `frontend/src/routes/schedule.tsx` are still on disk but no longer routed or sidebared. Delete after one more release cycle.
 - **Backlog (BL-2 / BL-4 / BL-5 / BL-6 / BL-7)** — nice-to-haves, none committed.
 
@@ -168,7 +169,33 @@ Everything in Phase 0, 1, 2, 2.5, and 3 is shipped and verified against the code
 - [ ] "Knowledge Base" persona type (persona = KB + system prompt) — convenience wrapper
 - [ ] URL ingestion (scrape + chunk web pages)
 - [ ] Obsidian vault import
-- [ ] Incremental re-index on file change
+- [x] Incremental re-index on file change — covered by P2.5-3 folder mapping (mtime/size diff classifier)
+
+### P2.5-3: Personal Docs / Folder-Mapped RAG ⭐⭐ MAJOR DIFFERENTIATOR
+**Status:** [x] COMPLETE (2026-05-03, shipped in v1.0.0-10)
+**Effort:** 4-5 days → done across the `feat/p2.5-3-personal-docs-folder-rag` branch (16 commits)
+**Why:** Lets users point Solo at any folder on disk and treat it as a live, citeable knowledge base. Removes the "drag every PDF in by hand" friction from P2.5-2 and turns Solo into a true second brain for an existing notes/Documents folder. Crews + workspace agents can cite from these KBs automatically.
+
+**What was built:**
+- [x] `backend/services/folder_walker.py` — depth + glob filtered walk, classifies new/updated/removed via `(abs_path, size, mtime)` diff against existing docs
+- [x] `backend/services/personal_docs_service.py` — orchestrator: walk → friction check → embed → persist; surfaces SSE progress
+- [x] `backend/services/personal_docs_scheduler.py` — periodic loop honouring per-mapping `manual / 1h / 6h / 24h` schedules
+- [x] `backend/repositories/folder_source_repository.py`, `index_job_repository.py` — `kb_folder_sources` + `kb_index_jobs` collections
+- [x] `backend/models/personal_docs_models.py` — Pydantic v2 models for sources, jobs, friction-confirm payload
+- [x] `backend/routers/personal_docs.py` — REST CRUD + `POST /{kb_id}/folders/{id}/sync` + `GET /jobs/{job_id}/stream` (SSE)
+- [x] `backend/services/rag_service.py::ingest_from_path` + `delete_for_source` — re-uses chunk → embed pipeline for folder-sourced files
+- [x] **Friction guardrails:** walks above 1,000 files (env-overridable) pause in `awaiting_confirmation` so the UI can show ETA + require explicit confirm before any embeddings run. Hard caps: 10 MB / file, 5,000 files / mapping, depth 10
+- [x] Crew + workspace-agent KB binding: `knowledge_base_ids: string[]` on both, with per-agent override of crew default. `services/workspace/agent_runner.py` queries those KBs each turn and prepends a citation block to the system prompt
+- [x] Frontend: new `Folders` tab on each KB at `/knowledge/<kb_id>`, `AddFolderModal` (Tauri folder picker via `tauri-plugin-dialog` + `lib/tauri-fs.ts`), `FolderRow` with sync/pause/delete, `SyncProgressPanel` driven by SSE, `KbMultiSelect` shared component
+- [x] Sidebar reorder: Knowledge promoted to slot #2 right under Chat for discoverability
+- [x] `knowledge-base-packs/README.md` documents the manifest format for downloadable content packs
+- [x] Backend tests: `test_folder_walker.py`, `test_folder_source_repository.py`, `test_personal_docs_service.py`, `test_personal_docs_router.py`, `test_rag_ingest_from_path.py`, `test_agent_runner_kb.py`
+- [x] E2E: `frontend/tests/e2e/knowledge/personal-docs-folder.spec.ts` — add folder → ingest → docs visible (CI-skipped pending bundled embedding model)
+
+**Deferred / next steps:**
+- [ ] CI bundling of the ONNX embedding weights so the e2e suite covers the folder flow
+- [ ] Tauri-only inotify/FSEvents watcher for sub-minute incremental updates (current scheduler is poll-based, 1h minimum)
+- [ ] Per-source mime/extension allow-list editor in the UI (currently the supported set is static)
 
 ---
 
@@ -459,6 +486,167 @@ Must be idempotent, dry-run capable (`MIGRATE_DRY_RUN=1` env var), and must writ
 - Existing Crews from before migration continue to work (channel_bindings auto-converted to direction="both").
 - Migrated distribution channels appear in Connections with Outbound enabled.
 - Manual "Run" button still works on every crew.
+
+---
+
+## PHASE 4: REVISION — CONSOLIDATION + AUTOMATIONS + CODER MODE ⭐ HIGH PRIORITY
+**Status:** [ ] Draft (spec at `docs/superpowers/specs/2026-05-05-solo-revision-design.md`)
+**Added:** 2026-05-05
+**Effort estimate:** ~7 PRs, 6–8 weeks end-to-end
+
+> Consolidates the four overlapping nouns (Agents, Personas, Crews, Workspace) into {Crews, Automations}. Adds a natural-language Automations surface ported from the enterprise repo. Introduces Coder as a co-equal product mode via a top-center toggle (Solo / Coder). Sidebar drops 10 → 8 in Solo mode (Models stays as a daily-use surface); Coder mode gets its own 5-item sidebar. Personas and Workspace collapse into **tabbed pickers/pages** rather than filter chips — tabs make categorical distinctions visible (Database vs Prompt agent; Crew vs Project) instead of flattening them into one filterable list.
+
+### P4-1: Automations MVP ⭐ NEW SURFACE
+**Status:** [ ] Not Started
+**Effort:** 1 week
+**Why:** Crews require a 7-step wizard for one-off work. Automations gives users a natural-language fast path: write `@agent`-mention prompts, pick output actions, run. Lowest-friction authoring path Solo has ever had.
+
+- [ ] Port `services/automation_engine.py`, `automation_executor.py`, `automation_output_service.py` from `C:\Users\nagen\Projects\contextuai\backend` (replace Bedrock-specific bits with Solo's local-model service)
+- [ ] Add `services/automation_parser.py` — `@mention` regex + optional model-based exec-mode inference
+- [ ] `repositories/automation_repository.py`, `automation_execution_repository.py`
+- [ ] `routers/automations.py` — CRUD + `/run` + `/validate` + `/executions` + `/executions/{id}/stream` (SSE)
+- [ ] `models/automation_models.py` — adapt enterprise version, drop `user_id`
+- [ ] PDF output via reportlab/weasyprint; PPTX via python-pptx; reuse existing Distribution adapters for channel outputs
+- [ ] Frontend `/solo/automations` route — list + builder + run history
+- [ ] `solo/components/automations/automation-builder.tsx` + `output-action-picker.tsx`
+- [ ] `solo/lib/api/automations-client.ts`
+- [ ] "Promote to Crew" button — converts Automation into a scheduled Crew
+- [ ] Sidebar entry "Automations" added
+
+### P4-2: Personas → Agent types (tabbed picker)
+**Status:** [ ] Not Started
+**Effort:** 3 days
+**Why tabs not filters:** a Postgres connection and a system-prompt agent are *categorically* different things. A tab makes the mode-of-operation visible per kind; a filter chip flattens them into "narrow this list."
+- [ ] Migration `backend/migrations/0003_personas_to_agent_types.py` — idempotent, dry-run, version-marked
+- [ ] Add `kind: "prompt" | "database" | "web" | "mcp" | "api" | "file"` to `workspace_agents`
+- [ ] Backfill existing personas as workspace_agents with the right kind
+- [ ] Agent library picker is **tabbed by kind**: `Prompt | Database | Web | MCP | API | File`. Each tab = its own catalog (kind-specific empty state, "Add new" CTA, list columns).
+- [ ] Selected tab persists in localStorage per builder context; default = `Prompt` on first open
+- [ ] "Add Agent" opens directly into the active tab's kind (no separate kind-selector step)
+- [ ] Coming Soon stub on `/solo/personas` for one release; redirect to `/solo/agents?kind=...`
+- [ ] Delete `frontend/src/routes/personas.tsx` after one release
+
+### P4-3: Workspace → Crews tabbed page
+**Status:** [ ] Not Started
+**Effort:** 3 days
+**Why tabs not filters:** a Crew (recurring, channel-bound, scheduled) and a Project (one-shot, manual) have different mental models, list columns, empty states, and "New" CTAs. Tab signals "different mode of this module"; chip suggests "same thing, narrowed."
+- [ ] Migration `backend/migrations/0004_workspace_to_crew_runs.py` — idempotent, dry-run, version-marked
+- [ ] Add `kind: "crew" | "project"` to `crews` documents (default `"crew"`)
+- [ ] `workspace_projects` → `crews` rows with `kind="project"`
+- [ ] `workspace_jobs` → `crew_runs` rows with `trigger_type="manual"` default
+- [ ] Crews page becomes **tabbed**: `Crews | Projects | Runs`
+  - Each tab has its own toolbar: Crews/Projects tabs get "New" + blueprint picker; Runs tab gets status/date filters
+  - Runs tab spans both kinds and shows `kind` badge per row
+  - Selected tab persists in localStorage; deep-link via `?tab=crews|projects|runs`
+- [ ] Coming Soon on `/solo/workspace` for one release; redirect to `/solo/crews?tab=projects`; delete after
+
+### P4-4: Dead-code cleanup (Models stays in sidebar)
+**Status:** [ ] Not Started
+**Effort:** 1 day
+**Decision (2026-05-05):** Models is a daily-use surface — keep at `/solo/models`, do not collapse into Settings.
+- [ ] Models stays at `/solo/models`, sidebar entry retained
+- [ ] Delete `frontend/src/routes/distribution.tsx`, `schedule.tsx` (Phase 3 cleanup carryover)
+- [ ] Delete `frontend/src/routes/agents.tsx` (replaced by tabbed picker inside Crew/Automation builders — see P4-2)
+- [ ] Update navigation E2E test → **8 sidebar items** in Solo mode (Chat, Knowledge, Automations, Crews, Approvals, Distributions, Models, Settings)
+- [ ] **Library hub deferred** — tabbed pickers in P4-2 / P4-3 cover discoverability; revisit if usage data shows browsing pain
+
+### P4-5: App-shell mode toggle ⭐ FOUNDATION
+**Status:** [ ] Not Started
+**Effort:** 1 week
+**Why:** Solo + Solo Coder is the headline story. Toggle is the foundation everything in PRs 6–7 hangs on. Ships *before* Coder content so we can land Solo consolidation cleanly first.
+
+- [ ] `frontend/src/shell/ModeToggle.tsx` — segmented pill, top-center title bar, ~140px wide
+- [ ] `frontend/src/shell/ModeProvider.tsx` — context provider, persists in localStorage (`solo.app.mode`)
+- [ ] `frontend/src/shell/window-title.ts` — Tauri `setTitle` per mode
+- [ ] Restructure routes: `frontend/src/solo/*` and `frontend/src/coder/*`
+- [ ] Top-level `App.tsx` becomes thin mode-router; lazy-loads each mode's bundle
+- [ ] `Cmd+Shift+M` / `Ctrl+Shift+M` keyboard shortcut for toggle
+- [ ] Native menu adapts per mode (File menu items differ)
+- [ ] Coder mode v1 = "Coming soon" splash + working toggle
+- [ ] Settings → Coder → "Disable Coder mode" kill switch (hides toggle)
+- [ ] macOS title-bar fallback: pill in workspace area if title bar customization is constrained
+- [ ] E2E test for mode toggle (toggle visible, persists across reload)
+
+### P4-6: Coder MVP ⭐⭐ FLAGSHIP
+**Status:** [ ] Not Started
+**Effort:** 2–3 weeks
+**Why:** Local, free Codex/Claude Desktop Code equivalent for business users. Sharpest competitive wedge Solo has — every cloud alternative is $20/mo and uploads your code.
+
+**Backend:**
+- [ ] `models/coder_models.py` — CoderProject, CoderRun, CoderTemplate
+- [ ] `repositories/coder_project_repository.py`, `coder_run_repository.py`
+- [ ] `services/coder_project_service.py` — project CRUD, trust state, allowlist enforcement
+- [ ] `services/coder_run_service.py` — process lifecycle, stdout SSE
+- [ ] `services/coder_template_service.py` — scaffold from template
+- [ ] `routers/coder_projects.py` — CRUD + `/{id}/files` (read/write/diff) + `/{id}/run` + `/{id}/stop`
+- [ ] `routers/coder_run.py` — SSE stdout stream, kill, list-running
+
+**Tauri:**
+- [ ] Extend `frontend/src-tauri/capabilities/` with Coder capability — allowlisted shell exec, scoped FS
+- [ ] Default binary allowlist: `node, npm, npx, pnpm, bun, python, python3, pip, pipx, pytest, git, cargo, rustc, go`
+- [ ] Settings-extensible allowlist
+- [ ] CWD scoping enforced — no `..`, no symlink escape
+
+**Templates** (4 starters):
+- [ ] `coder-templates/web-app/` — Vite + React + TS, `npm run dev` → :5173
+- [ ] `coder-templates/telegram-bot/` — Node.js + grammy, reads `.env`
+- [ ] `coder-templates/cli-tool/` — Python + click
+- [ ] `coder-templates/static-site/` — plain HTML/CSS/JS landing page, served via `python -m http.server` or `npx serve` → :8080. Lowest-skill template; the "I just want a webpage" entry point.
+
+**Coder-companion agents** (5 NEW — none exist today, BL-2 carryover):
+- [ ] `agent-library/coder-companion/code-reviewer.md`
+- [ ] `agent-library/coder-companion/bug-analyzer.md`
+- [ ] `agent-library/coder-companion/test-writer.md`
+- [ ] `agent-library/coder-companion/doc-generator.md`
+- [ ] `agent-library/coder-companion/refactor-advisor.md`
+- [ ] Add `kind="coder"` so they only surface in Coder mode
+
+**Frontend:**
+- [ ] `coder/routes/projects.tsx` — list + new project modal
+- [ ] `coder/routes/project.tsx` — main workspace (chat + files + run + preview)
+- [ ] `coder/routes/running.tsx` — live process list across all projects
+- [ ] `coder/routes/templates.tsx` — template browse + scaffold
+- [ ] `coder/components/project/file-diff-card.tsx` — apply/undo per file
+- [ ] `coder/components/project/run-pane.tsx` — stdout stream + run/stop controls
+- [ ] `coder/components/project/preview-pane.tsx` — embedded iframe of `localhost:PORT`
+- [ ] `coder/components/project/trust-prompt.tsx` — first-run trust grant modal
+- [ ] `coder/lib/api/coder-projects-client.ts`
+- [ ] Right-click file → "Review with code-reviewer" / "Add tests with test-writer" / etc.
+
+**Settings:**
+- [ ] Settings → Coder tab (allowlist editor, network policy, default model, kill switch)
+
+**Acceptance:**
+- [ ] User can scaffold Web App template, "build a counter component," see edits applied, click Run, see preview iframe
+- [ ] User can scaffold Telegram Bot, paste token in `.env`, run, see bot stdout
+- [ ] User can scaffold Static Site, "make me a portfolio page about X," see preview iframe
+- [ ] Trust prompt appears once per project, not per command
+- [ ] Allowlist enforcement — `rm -rf` or other off-allowlist commands rejected with clear error
+- [ ] Settings → Disable Coder routes `/coder/*` to Solo with a notice
+- [ ] All four templates work end-to-end on Windows + macOS
+
+### P4-7: Cross-mode handoffs
+**Status:** [ ] Not Started
+**Effort:** 4 days
+**Why:** The integration story is the moat — cloud competitors can't compose Coder + Assistant because they're separate products. Solo can.
+**Scope discipline:** ship the high-leverage handoffs only; defer error→Crew bridge to avoid feature overload.
+
+- [ ] `OutputActionType.RUN_CODER_PROJECT` in automation models — invoke Coder project headlessly, return artifacts
+- [ ] `services/coder_run_service.py::run_headless()` — no-UI execution path
+- [ ] New crew step type `coder_project` referencing project by ID
+- [ ] Coder project menu: "Index as KB" — reuses existing Personal Docs folder-mapping pipeline; no new ingestion path, just a one-click wrapper around `services/personal_docs_service.py`
+- [ ] Coder project menu: "Distribute artifact" (output → Distributions picker)
+- [ ] Coder error → "Diagnose with @bug-analyzer" deep-link into Solo chat (chat-only)
+- [ ] Solo Automation builder gets the new output type
+- [ ] Solo Crew builder Step 3 gets the new step type
+- [ ] **Deferred:** error → Crew bridge. Adds picker friction and overlaps with the chat bridge. Asymmetry with Crew → Coder direction is acceptable for v1.
+
+### Risks & non-goals (cross-cutting)
+- **Non-goals:** No third mode in v1. No LSP/debugger/file-tree-rail/multi-tab editor in Coder. No cloud sync between machines. No mobile companion.
+- **Risk: Coder MVP scope creep into IDE territory** — hard line written into the spec. Pointer to OpenAI-compat (P0-1) + VS Code for users wanting that path.
+- **Risk: Tauri shell exec security** — per-project trust, allowlist, scoped paths, kill switch, default-block-network toggle.
+- **Risk: Local code-model quality lag** — recommend Qwen 2.5 Coder 32B / DeepSeek R1 14B (already in catalog); cloud opt-in via Anthropic/Bedrock keys; honest UI labels.
+- **Risk: Confusion vs enterprise ContextuAI** — marketing line: Solo Coder = "build your own software locally for free." Enterprise = engineering team platform. Different audiences, different repos.
 
 ---
 

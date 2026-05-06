@@ -1417,6 +1417,7 @@ async def respond_to_checkpoint(
 @router.get("/agents", response_model=AgentListResponse)
 async def list_agents(
     category: Optional[str] = Query(None, description="Filter by agent category"),
+    kind: Optional[str] = Query(None, description="Filter by agent kind (prompt|database|web|mcp|api|file)"),
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=100, description="Items per page"),
     agent_repo: WorkspaceAgentRepository = Depends(get_agent_repository)
@@ -1426,6 +1427,7 @@ async def list_agents(
 
     **Query Parameters:**
     - category: Filter by agent category
+    - kind: Filter by agent kind (Phase 4 PR 2)
     - page: Page number (default: 1)
     - page_size: Items per page (1-100, default: 20)
 
@@ -1433,12 +1435,17 @@ async def list_agents(
     - List of agents with pagination metadata
     """
     try:
-        logger.info(f"Listing agents, category={category}")
+        logger.info(f"Listing agents, category={category}, kind={kind}")
 
         offset = (page - 1) * page_size
 
-        # Get agents
-        if category:
+        # Get agents — kind filter takes precedence over category, mirrors how
+        # the new tabbed picker queries the API.
+        if kind:
+            agents_data = await agent_repo.get_by_kind(
+                kind=kind, skip=offset, limit=page_size
+            )
+        elif category:
             agents_data = await agent_repo.get_by_category(
                 category=category,
                 skip=offset,
@@ -1451,7 +1458,9 @@ async def list_agents(
 
         # Get total count (approximate for pagination)
         all_active = await agent_repo.get_all_active()
-        if category:
+        if kind:
+            total_count = len([a for a in all_active if (a.get("kind") or "prompt") == kind])
+        elif category:
             total_count = len([a for a in all_active if a.get("category") == category])
         else:
             total_count = len(all_active)
@@ -1471,6 +1480,22 @@ async def list_agents(
     except Exception as e:
         logger.error(f"Failed to list agents: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to list agents: {str(e)}")
+
+
+@router.get("/agents/kinds/counts")
+async def list_agent_kind_counts(
+    agent_repo: WorkspaceAgentRepository = Depends(get_agent_repository)
+):
+    """Phase 4 PR 2: per-kind counts for the tabbed agent picker.
+
+    Returns ``{ "prompt": int, "database": int, "web": int, "mcp": int,
+    "api": int, "file": int, "unknown": int }``.
+    """
+    try:
+        return {"counts": await agent_repo.count_by_kind()}
+    except Exception as e:
+        logger.error(f"Failed to count agents by kind: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/agents/custom")

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { Link } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import {
   Sparkles,
@@ -119,6 +120,14 @@ export default function PersonasPage() {
   const [personas, setPersonas] = useState<Persona[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [movedBannerDismissed, setMovedBannerDismissed] = useState(() => {
+    return localStorage.getItem("solo.personas.movedBannerDismissed") === "true";
+  });
+
+  function dismissMovedBanner() {
+    localStorage.setItem("solo.personas.movedBannerDismissed", "true");
+    setMovedBannerDismissed(true);
+  }
   const [activeCategory, setActiveCategory] = useState("All");
   const [wizardOpen, setWizardOpen] = useState(false);
   const [wizardStep, setWizardStep] = useState<1 | 2>(1);
@@ -227,6 +236,37 @@ export default function PersonasPage() {
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
+      {/* Moved-to-Agents banner */}
+      {!movedBannerDismissed && (
+        <div className="mb-6 flex items-start gap-4 rounded-xl border border-amber-200 dark:border-amber-700/40 bg-amber-50 dark:bg-amber-500/10 px-4 py-3">
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+              Personas have moved.
+            </p>
+            <p className="text-xs text-amber-800/90 dark:text-amber-200/80 mt-0.5">
+              They live alongside your other agents now, organised by kind (Prompt, Database, Web, MCP, API, File). This page stays available for one release while you migrate.
+            </p>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <Link
+              to="/agents"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary-500 hover:bg-primary-600 text-white text-xs font-medium transition-colors"
+            >
+              Open Agents
+              <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
+            <button
+              type="button"
+              onClick={dismissMovedBanner}
+              className="p-1.5 rounded-md text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-500/20 transition-colors"
+              aria-label="Dismiss"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">

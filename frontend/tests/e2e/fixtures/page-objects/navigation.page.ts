@@ -3,9 +3,21 @@ import { type Page, type Locator, expect } from "@playwright/test";
 /**
  * Page object for testing desktop sidebar navigation.
  *
- * The sidebar contains 7 nav items (Chat, Personas, Agents, Crews, Workspace,
- * Connections, Settings), a collapse/expand toggle, and connection status.
+ * Phase 4 PR 4: the sidebar contains 8 nav items
+ * (Chat, Knowledge, Automations, Crews, Approvals, Distributions, Models,
+ * Settings), a collapse/expand toggle, and connection status.
  */
+export const EXPECTED_NAV_LABELS = [
+  "Chat",
+  "Knowledge",
+  "Automations",
+  "Crews",
+  "Approvals",
+  "Distributions",
+  "Models",
+  "Settings",
+] as const;
+
 export class NavigationPage {
   readonly page: Page;
 

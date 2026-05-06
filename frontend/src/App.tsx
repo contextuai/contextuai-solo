@@ -1,10 +1,13 @@
-import { useState, useEffect } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { DesktopAuthProvider } from "@/lib/desktop-auth";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import { AiModeProvider } from "@/contexts/ai-mode-context";
 import { BackendStatusProvider } from "@/contexts/backend-status-context";
+import { ModeProvider, useMode } from "@/contexts/mode-context";
 import { DesktopLayout } from "@/components/navigation/desktop-layout";
+import { WindowTitle } from "@/components/shell/window-title";
+import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import ChatPage from "@/routes/chat";
 import AgentsPage from "@/routes/agents";
 import CrewsPage from "@/routes/crews";
@@ -18,7 +21,12 @@ import SettingsPage from "@/routes/settings";
 import ApprovalsPage from "@/routes/approvals";
 import BlueprintsPage from "@/routes/blueprints";
 import KnowledgePage from "@/routes/knowledge";
+import AutomationsPage from "@/routes/automations";
 import WizardPage from "@/routes/wizard";
+import CoderProjectsPage from "@/routes/coder/projects";
+import CoderProjectDetailPage from "@/routes/coder/project-detail";
+import CoderRunningPage from "@/routes/coder/running";
+import CoderTemplatesPage from "@/routes/coder/templates";
 import { UpdateNotifier } from "@/components/update-notifier";
 
 function isWizardComplete(): boolean {
@@ -93,6 +101,22 @@ function SidecarGate({ children }: { children: React.ReactNode }) {
   return null; // splash screen in index.html is visible
 }
 
+/** Wires the global Cmd/Ctrl+Shift+M shortcut for toggling app mode. */
+function ModeShortcutHandler() {
+  const { mode, setMode } = useMode();
+  const bindings = useMemo(
+    () => [
+      {
+        combo: "mod+shift+m",
+        handler: () => setMode(mode === "solo" ? "coder" : "solo"),
+      },
+    ],
+    [mode, setMode]
+  );
+  useKeyboardShortcuts(bindings);
+  return null;
+}
+
 export default function App() {
   return (
     <SidecarGate>
@@ -101,7 +125,10 @@ export default function App() {
         <ThemeProvider>
           <AiModeProvider>
           <BackendStatusProvider>
+          <ModeProvider>
           <BrowserRouter>
+            <WindowTitle />
+            <ModeShortcutHandler />
             <Routes>
               <Route path="/wizard" element={<WizardPage />} />
               <Route element={<RequireWizard><DesktopLayout /></RequireWizard>}>
@@ -117,12 +144,19 @@ export default function App() {
                 <Route path="/workspace/:id" element={<WorkspacePage />} />
                 <Route path="/connections" element={<ConnectionsPage />} />
                 <Route path="/knowledge" element={<KnowledgePage />} />
+                <Route path="/automations" element={<AutomationsPage />} />
                 <Route path="/approvals" element={<ApprovalsPage />} />
                 <Route path="/analytics" element={<AnalyticsPage />} />
                 <Route path="/settings" element={<SettingsPage />} />
+                {/* Coder mode (Phase 4 PR 6 — Coder MVP). */}
+                <Route path="/coder/projects" element={<CoderProjectsPage />} />
+                <Route path="/coder/projects/:id" element={<CoderProjectDetailPage />} />
+                <Route path="/coder/running" element={<CoderRunningPage />} />
+                <Route path="/coder/templates" element={<CoderTemplatesPage />} />
               </Route>
             </Routes>
           </BrowserRouter>
+          </ModeProvider>
           </BackendStatusProvider>
           </AiModeProvider>
         </ThemeProvider>

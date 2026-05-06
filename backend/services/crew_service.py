@@ -166,16 +166,27 @@ class CrewService:
         status: Optional[str] = None,
         page: int = 1,
         page_size: int = 20,
+        kind: Optional[str] = None,
     ) -> Tuple[List[Dict[str, Any]], int]:
-        """List crews for a user with pagination."""
+        """List crews for a user with pagination.
+
+        Phase 4 PR 3: ``kind`` accepts ``"crew" | "project" | "all"``.
+        """
         offset = (page - 1) * page_size
         crews, total = await self.crew_repo.get_user_crews(
-            user_id, status=status, limit=page_size, offset=offset
+            user_id,
+            status=status,
+            limit=page_size,
+            offset=offset,
+            kind=kind,
         )
-        # Add agent_count for list items
         for crew in crews:
             crew["agent_count"] = len(crew.get("agents", []))
         return crews, total
+
+    async def count_by_kind(self, user_id: str) -> Dict[str, int]:
+        """Phase 4 PR 3 — kind histogram for the Crews-page tab badges."""
+        return await self.crew_repo.count_by_kind(user_id)
 
     async def update_crew(
         self, crew_id: str, user_id: str, request: UpdateCrewRequest

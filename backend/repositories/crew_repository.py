@@ -67,11 +67,24 @@ class CrewRepository(BaseRepository):
         status: Optional[str] = None,
         limit: int = 50,
         offset: int = 0,
+        kind: Optional[str] = None,
     ) -> Tuple[List[Dict[str, Any]], int]:
-        """Get crews belonging to a user with optional status filter."""
+        """Get crews belonging to a user with optional status / kind filter.
+
+        Phase 4 PR 3: ``kind`` is one of ``"crew" | "project"``. ``None``
+        means *no filter* (return both — used by the unified Crews page
+        Runs tab). The migration backfills ``kind="crew"`` on every legacy
+        row so the absence of the field is treated the same as ``"crew"``.
+        """
         query: Dict[str, Any] = {"user_id": user_id, "deleted_at": None}
         if status:
             query["status"] = status
+        if kind == "crew":
+            query["$or"] = [{"kind": "crew"}, {"kind": {"$exists": False}}]
+        elif kind == "project":
+            query["kind"] = "project"
+        elif kind and kind != "all":
+            query["kind"] = kind
 
         total = await self.collection.count_documents(query)
         cursor = (
@@ -86,6 +99,20 @@ class CrewRepository(BaseRepository):
             docs.append(doc)
 
         return docs, total
+
+    async def count_by_kind(self, user_id: str) -> Dict[str, int]:
+        """Phase 4 PR 3: per-kind counts for the Crews-page tab badges."""
+        crew_count = await self.collection.count_documents(
+            {
+                "user_id": user_id,
+                "deleted_at": None,
+                "$or": [{"kind": "crew"}, {"kind": {"$exists": False}}],
+            }
+        )
+        project_count = await self.collection.count_documents(
+            {"user_id": user_id, "deleted_at": None, "kind": "project"}
+        )
+        return {"crew": crew_count, "project": project_count}
 
     async def get_by_name(self, user_id: str, name: str) -> Optional[Dict[str, Any]]:
         """Find a crew by exact name (case-insensitive) for a user."""
