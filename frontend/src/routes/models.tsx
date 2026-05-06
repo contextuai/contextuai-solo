@@ -38,6 +38,7 @@ import { getApiBaseUrl } from "@/lib/transport";
 import { useBackendStatus } from "@/contexts/backend-status-context";
 import { BackendWaiting } from "@/components/backend-waiting";
 import { Dialog } from "@/components/ui/dialog";
+import { CloudProvidersTab } from "@/components/cloud-providers/cloud-providers-tab";
 
 // ── Constants ────────────────────────────────────────────────────────────
 
@@ -63,7 +64,7 @@ const SPEED_LABELS: Record<string, string> = {
   slow: "Slow",
 };
 
-type Tab = "discover" | "installed";
+type Tab = "discover" | "installed" | "cloud";
 
 // ── RAM indicator ────────────────────────────────────────────────────────
 
@@ -653,6 +654,17 @@ export default function ModelsPage() {
               </span>
             )}
           </button>
+          <button
+            onClick={() => setTab("cloud")}
+            className={cn(
+              "px-4 py-2 text-sm font-medium rounded-lg transition-colors flex items-center gap-2",
+              tab === "cloud"
+                ? "bg-primary-50 dark:bg-primary-500/10 text-primary-600 dark:text-primary-400"
+                : "text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+            )}
+          >
+            Cloud
+          </button>
           {activeDownloadCount > 0 && (
             <span className="ml-2 px-2 py-1 text-[10px] font-bold rounded-full bg-primary-100 text-primary-700 dark:bg-primary-500/20 dark:text-primary-400 animate-pulse">
               {activeDownloadCount} downloading
@@ -836,6 +848,9 @@ export default function ModelsPage() {
             )}
           </>
         )}
+
+        {/* ── Cloud Tab ─────────────────────────────────────────────────── */}
+        {tab === "cloud" && <CloudProvidersTab />}
       </div>
 
       {/* Error modal */}
