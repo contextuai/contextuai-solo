@@ -15,7 +15,8 @@ export type OutputActionType =
   | "send_email"
   | "webhook"
   | "save_file"
-  | "distribute";
+  | "distribute"
+  | "run_coder_project";
 
 export interface OutputAction {
   type: OutputActionType;

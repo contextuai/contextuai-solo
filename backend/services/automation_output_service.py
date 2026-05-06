@@ -105,6 +105,7 @@ class AutomationOutputService:
             OutputActionType.WEBHOOK: self._send_webhook,
             OutputActionType.SAVE_FILE: self._save_file,
             OutputActionType.DISTRIBUTE: self._distribute,
+            OutputActionType.RUN_CODER_PROJECT: self._run_coder_project,
         }
         handler = handlers.get(action.type)
         if handler is None:
@@ -437,6 +438,80 @@ class AutomationOutputService:
             logger.exception("Distribute failed")
             return {
                 "type": OutputActionType.DISTRIBUTE.value,
+                "status": "failed",
+                "error": str(e),
+            }
+
+    # ------------------------------------------------------------------
+    # Run Coder project (headless)
+    # ------------------------------------------------------------------
+
+    async def _run_coder_project(
+        self, execution: AutomationExecutionResponse, config: Dict[str, Any], db
+    ) -> Dict[str, Any]:
+        """Run a trusted Coder project headlessly and capture its output.
+
+        Returns ``{type, status, project_id, output_lines, captured_output}``
+        on success. ``captured_output`` is the joined stdout+stderr trimmed
+        to 4000 chars so the artifact stays UI-friendly.
+        """
+        try:
+            project_id = config.get("project_id")
+            if not project_id:
+                return {
+                    "type": OutputActionType.RUN_CODER_PROJECT.value,
+                    "status": "failed",
+                    "error": "project_id is required",
+                }
+            timeout_seconds = int(config.get("timeout_seconds") or 60)
+
+            if db is None:
+                return {
+                    "type": OutputActionType.RUN_CODER_PROJECT.value,
+                    "status": "failed",
+                    "error": "Database handle not available",
+                }
+
+            from repositories.coder_project_repository import CoderProjectRepository
+            from services.coder_run_service import get_run_service
+
+            repo = CoderProjectRepository(db)
+            project = await repo.get_by_id(project_id)
+            if not project:
+                return {
+                    "type": OutputActionType.RUN_CODER_PROJECT.value,
+                    "status": "failed",
+                    "project_id": project_id,
+                    "error": f"Coder project '{project_id}' not found",
+                }
+            if not project.get("trusted"):
+                return {
+                    "type": OutputActionType.RUN_CODER_PROJECT.value,
+                    "status": "failed",
+                    "project_id": project_id,
+                    "error": "Project is not trusted; cannot run headlessly.",
+                }
+
+            run_service = get_run_service()
+            result = await run_service.run_headless(project, timeout_seconds)
+
+            joined = "\n".join(result.get("output_lines") or [])
+            captured = joined[:4000]
+
+            return {
+                "type": OutputActionType.RUN_CODER_PROJECT.value,
+                "status": "success",
+                "project_id": project_id,
+                "output_lines": len(result.get("output_lines") or []),
+                "captured_output": captured,
+                "exit_code": result.get("exit_code"),
+                "duration_seconds": result.get("duration_seconds"),
+                "timed_out": result.get("timed_out", False),
+            }
+        except Exception as e:
+            logger.exception("run_coder_project failed")
+            return {
+                "type": OutputActionType.RUN_CODER_PROJECT.value,
                 "status": "failed",
                 "error": str(e),
             }

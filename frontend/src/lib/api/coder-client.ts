@@ -135,6 +135,35 @@ export async function listRunningProjects(): Promise<RunningProject[]> {
 }
 
 // ---------------------------------------------------------------------------
+// Cross-mode handoff: index project folder as a Knowledge Base source
+// ---------------------------------------------------------------------------
+
+export type IndexAsKbSchedule = "manual" | "1h" | "6h" | "24h";
+
+export interface IndexAsKbInput {
+  kb_id: string;
+  label?: string;
+  schedule?: IndexAsKbSchedule;
+}
+
+export interface IndexAsKbResult {
+  success: boolean;
+  source_id: string;
+  kb_id: string;
+}
+
+export async function indexCoderProjectAsKb(
+  projectId: string,
+  input: IndexAsKbInput,
+): Promise<IndexAsKbResult> {
+  const { data } = await api.post<IndexAsKbResult>(
+    `/coder/projects/${projectId}/index-as-kb`,
+    input,
+  );
+  return data;
+}
+
+// ---------------------------------------------------------------------------
 // SSE: project run output stream
 // ---------------------------------------------------------------------------
 

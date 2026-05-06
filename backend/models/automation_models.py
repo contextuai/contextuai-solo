@@ -48,6 +48,7 @@ class OutputActionType(str, Enum):
     WEBHOOK = "webhook"
     SAVE_FILE = "save_file"
     DISTRIBUTE = "distribute"  # Sends through a configured Distribution (LinkedIn, Twitter, blog, slack_webhook, …)
+    RUN_CODER_PROJECT = "run_coder_project"  # Runs a Coder project headlessly and captures its output
 
 
 # =============================================================================

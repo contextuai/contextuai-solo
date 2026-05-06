@@ -18,11 +18,14 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Dict, List, Optional
+import os
+from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
 
+import settings
 from database import get_database
 from models.coder_models import (
     CoderProjectCreate,
@@ -34,10 +37,18 @@ from models.coder_models import (
     CoderRunResponse,
     CoderTemplateListResponse,
 )
+from models.personal_docs_models import DEFAULT_EXCLUDE_GLOBS
+from repositories.chunk_repository import ChunkRepository
 from repositories.coder_project_repository import CoderProjectRepository
+from repositories.document_repository import DocumentRepository
+from repositories.folder_source_repository import FolderSourceRepository
+from repositories.index_job_repository import IndexJobRepository
+from repositories.knowledge_base_repository import KnowledgeBaseRepository
 from services.coder_project_service import CoderProjectService
 from services.coder_run_service import get_run_service
 from services.coder_template_service import CoderTemplateService
+from services.personal_docs_service import PersonalDocsService
+from services.rag_service import RAGService
 
 logger = logging.getLogger(__name__)
 
@@ -236,3 +247,79 @@ async def stream_output(project_id: str) -> StreamingResponse:
 async def list_running() -> Dict[str, Any]:
     runs = get_run_service()
     return {"running": runs.running_projects()}
+
+
+# ---------------------------------------------------------------------------
+# Cross-mode handoff: register a Coder project folder as a KB folder source
+# ---------------------------------------------------------------------------
+
+class IndexAsKBRequest(BaseModel):
+    kb_id: str = Field(..., description="Existing knowledge base id")
+    label: Optional[str] = None
+    schedule: Literal["manual", "1h", "6h", "24h"] = "manual"
+
+
+@router.post("/projects/{project_id}/index-as-kb")
+async def index_project_as_kb(
+    project_id: str,
+    payload: IndexAsKBRequest,
+    repo: CoderProjectRepository = Depends(_project_repo),
+    db=Depends(get_database),
+) -> Dict[str, Any]:
+    """Register a Coder project folder as a Personal-Docs folder source.
+
+    Creates a row in ``kb_folder_sources`` and kicks off an initial
+    ``full_sync`` job — same pipeline as
+    ``POST /personal-docs/kbs/{kb_id}/folders``.
+    """
+    project = await repo.get_by_id(project_id)
+    if not project:
+        raise HTTPException(404, f"Project '{project_id}' not found")
+
+    folder_path = project.get("folder_path")
+    if not folder_path or not os.path.isdir(folder_path):
+        raise HTTPException(
+            400, f"Project folder is missing or invalid: {folder_path!r}"
+        )
+
+    kb_repo = KnowledgeBaseRepository(db)
+    if not await kb_repo.exists_by_id(payload.kb_id):
+        raise HTTPException(404, f"Knowledge base '{payload.kb_id}' not found")
+
+    src_repo = FolderSourceRepository(db)
+    label = (
+        payload.label
+        or f"{project.get('name') or 'Coder project'} (Coder project)"
+    )
+    source = await src_repo.create_source(
+        kb_id=payload.kb_id,
+        path=folder_path,
+        label=label,
+        include_globs=["**/*"],
+        exclude_globs=list(DEFAULT_EXCLUDE_GLOBS),
+        schedule=payload.schedule,
+        max_file_bytes=settings.PERSONAL_DOCS_MAX_FILE_BYTES,
+        max_files=settings.PERSONAL_DOCS_MAX_FILES,
+        max_depth=settings.PERSONAL_DOCS_MAX_DEPTH,
+    )
+
+    # Kick an initial full sync — mirrors personal_docs.create_folder.
+    job_repo = IndexJobRepository(db)
+    doc_repo = DocumentRepository(db)
+    chunk_repo = ChunkRepository(db)
+    rag = RAGService(kb_repo, doc_repo, chunk_repo)
+    svc = PersonalDocsService(
+        src_repo,
+        job_repo,
+        doc_repo,
+        rag,
+        friction_threshold=settings.PERSONAL_DOCS_FRICTION_THRESHOLD,
+    )
+    job = await svc.start_sync(source=source, kind="full_sync")
+
+    return {
+        "success": True,
+        "source_id": source["_id"],
+        "kb_id": payload.kb_id,
+        "job_id": job["_id"],
+    }

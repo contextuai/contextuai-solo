@@ -9,6 +9,7 @@ import {
   Mail,
   Save,
   Send,
+  Wrench,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -19,6 +20,10 @@ import {
   type OutputActionType,
   listOutboundConnections,
 } from "@/lib/api/automations-client";
+import {
+  type CoderProject,
+  listCoderProjects,
+} from "@/lib/api/coder-client";
 
 interface ActionPreset {
   type: OutputActionType;
@@ -71,6 +76,14 @@ const PRESETS: ActionPreset[] = [
     icon: Send,
     defaultConfig: { connection_id: "", platform: "" },
   },
+  {
+    type: "run_coder_project",
+    label: "Run Coder project",
+    description:
+      "Trigger a trusted Coder project as one of this automation's steps.",
+    icon: Wrench,
+    defaultConfig: { project_id: "", timeout_seconds: 60 },
+  },
 ];
 
 interface Props {
@@ -81,6 +94,8 @@ interface Props {
 export function OutputActionPicker({ value, onChange }: Props) {
   const [connections, setConnections] = useState<ConnectionSummary[]>([]);
   const [loadingConnections, setLoadingConnections] = useState(false);
+  const [coderProjects, setCoderProjects] = useState<CoderProject[]>([]);
+  const [loadingCoderProjects, setLoadingCoderProjects] = useState(false);
   const [open, setOpen] = useState<string | null>(null);
 
   useEffect(() => {
@@ -95,6 +110,24 @@ export function OutputActionPicker({ value, onChange }: Props) {
       })
       .finally(() => {
         if (!cancelled) setLoadingConnections(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoadingCoderProjects(true);
+    listCoderProjects()
+      .then((list) => {
+        if (!cancelled) setCoderProjects(list);
+      })
+      .catch(() => {
+        if (!cancelled) setCoderProjects([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingCoderProjects(false);
       });
     return () => {
       cancelled = true;
@@ -359,6 +392,75 @@ export function OutputActionPicker({ value, onChange }: Props) {
                         </select>
                       </div>
                     )}
+                  </>
+                ) : null}
+
+                {preset.type === "run_coder_project" ? (
+                  <>
+                    {loadingCoderProjects ? (
+                      <div className="flex items-center gap-2 text-xs text-neutral-500">
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        Loading Coder projects…
+                      </div>
+                    ) : coderProjects.filter((p) => p.trusted).length === 0 ? (
+                      <div className="rounded-lg border border-dashed border-neutral-300 dark:border-neutral-700 p-3 text-xs text-neutral-600 dark:text-neutral-400 flex items-center justify-between">
+                        <span className="flex items-center gap-2">
+                          <Wrench className="w-3.5 h-3.5" />
+                          No trusted Coder projects yet.
+                        </span>
+                        <Link
+                          to="/coder/projects"
+                          className="text-primary-600 hover:underline"
+                        >
+                          Create →
+                        </Link>
+                      </div>
+                    ) : (
+                      <div>
+                        <label className="text-xs font-medium text-neutral-600 dark:text-neutral-400">
+                          Coder project
+                        </label>
+                        <select
+                          value={(action.config.project_id as string) || ""}
+                          onChange={(e) =>
+                            updateConfig(preset.type, {
+                              ...action.config,
+                              project_id: e.target.value,
+                            })
+                          }
+                          className="mt-1 w-full rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-3 py-2 text-sm"
+                        >
+                          <option value="">Pick a project…</option>
+                          {coderProjects
+                            .filter((p) => p.trusted)
+                            .map((p) => (
+                              <option key={p.project_id} value={p.project_id}>
+                                {p.name} ({p.runtime})
+                              </option>
+                            ))}
+                        </select>
+                      </div>
+                    )}
+                    <Input
+                      label="Timeout (seconds)"
+                      type="number"
+                      min={1}
+                      value={
+                        action.config.timeout_seconds != null
+                          ? String(action.config.timeout_seconds)
+                          : "60"
+                      }
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        const parsed = Number.parseInt(raw, 10);
+                        updateConfig(preset.type, {
+                          ...action.config,
+                          timeout_seconds: Number.isFinite(parsed) && parsed > 0
+                            ? parsed
+                            : 60,
+                        });
+                      }}
+                    />
                   </>
                 ) : null}
               </div>

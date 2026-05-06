@@ -21,6 +21,7 @@ import asyncio
 import logging
 import os
 import shlex
+import time
 from collections import deque
 from datetime import datetime
 from typing import Any, AsyncGenerator, Dict, List, Optional
@@ -29,6 +30,61 @@ logger = logging.getLogger(__name__)
 
 
 _BUFFER_LINES = 2000
+_HEADLESS_LINE_CAP = 1000
+
+
+def resolve_run_command(
+    project: Dict[str, Any],
+    template_service: Any = None,
+    override: Optional[str] = None,
+) -> Optional[str]:
+    """Best-effort resolution of a project's run command.
+
+    Order:
+      1. ``override`` argument
+      2. ``project["_resolved_run_command"]`` if pre-stamped
+      3. The template manifest's ``run_command`` (when ``template_service`` is given)
+      4. ``CoderTemplateService.infer_run_command`` heuristics on the folder
+
+    Returns ``None`` if nothing matched. Pure helper so both ``start()``
+    and ``run_headless()`` (and the automation output handler) can share
+    the same logic.
+    """
+    if override:
+        return override
+    pre = project.get("_resolved_run_command")
+    if pre:
+        return pre
+
+    template_id = project.get("template_id")
+    if template_id and template_service is not None:
+        try:
+            manifest = template_service.get_raw_manifest(template_id)
+            if manifest and manifest.get("run_command"):
+                return manifest["run_command"]
+        except Exception:  # pragma: no cover — defensive
+            logger.exception("Failed to resolve template run_command")
+
+    if template_service is not None:
+        try:
+            cmd, _port = template_service.infer_run_command(
+                project.get("folder_path") or ""
+            )
+            if cmd:
+                return cmd
+        except Exception:  # pragma: no cover — defensive
+            logger.exception("Failed to infer run command from folder")
+
+    # Fallback: try inferring without an injected template service.
+    try:
+        from services.coder_template_service import CoderTemplateService
+
+        cmd, _port = CoderTemplateService().infer_run_command(
+            project.get("folder_path") or ""
+        )
+        return cmd
+    except Exception:  # pragma: no cover — defensive
+        return None
 
 
 class _RunState:
@@ -153,6 +209,103 @@ class CoderRunService:
                 state._reader_task.cancel()
             self._states.pop(project_id, None)
             return killed
+
+    # ------------------------------------------------------------------
+    # Headless one-shot
+    # ------------------------------------------------------------------
+
+    async def run_headless(
+        self,
+        project: Dict[str, Any],
+        timeout_seconds: int = 60,
+    ) -> Dict[str, Any]:
+        """Run a trusted project to completion and capture output.
+
+        Does NOT touch the in-memory ``_running`` registry — this is a
+        one-shot transient run used by automations and other server-side
+        callers. Streams stdout+stderr together (combined) and stops at
+        ``timeout_seconds`` or process exit, whichever comes first.
+
+        Returns ``{exit_code, output_lines: list[str], duration_seconds,
+        timed_out: bool}``. Output is capped at 1000 lines.
+
+        Raises ``RuntimeError`` if the project is not trusted, or
+        ``ValueError`` if no run command can be resolved / the folder is
+        invalid.
+        """
+        if not project.get("trusted"):
+            raise RuntimeError(
+                "Project is not trusted; cannot run headlessly."
+            )
+
+        command = resolve_run_command(project)
+        if not command:
+            raise ValueError(
+                "No run command could be resolved for this project."
+            )
+
+        cwd = project.get("folder_path")
+        if not cwd or not os.path.isdir(cwd):
+            raise ValueError(f"Project folder does not exist: {cwd!r}")
+
+        argv = shlex.split(command, posix=(os.name != "nt"))
+        if not argv:
+            raise ValueError("Empty command after shlex.split")
+
+        started = time.monotonic()
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *argv,
+                cwd=cwd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+            )
+        except FileNotFoundError as exc:
+            raise ValueError(f"Command not found: {argv[0]}") from exc
+
+        output_lines: List[str] = []
+        timed_out = False
+
+        async def _consume() -> None:
+            assert process.stdout is not None
+            while True:
+                raw = await process.stdout.readline()
+                if not raw:
+                    break
+                line = raw.decode(errors="replace").rstrip("\r\n")
+                if len(output_lines) < _HEADLESS_LINE_CAP:
+                    output_lines.append(line)
+
+        try:
+            await asyncio.wait_for(_consume(), timeout=timeout_seconds)
+            await process.wait()
+        except asyncio.TimeoutError:
+            timed_out = True
+            try:
+                process.terminate()
+            except ProcessLookupError:
+                pass
+            try:
+                await asyncio.wait_for(process.wait(), timeout=5.0)
+            except asyncio.TimeoutError:
+                try:
+                    process.kill()
+                    await process.wait()
+                except Exception:  # pragma: no cover
+                    logger.exception(
+                        "Failed to kill headless process for %s",
+                        project.get("project_id"),
+                    )
+            if len(output_lines) < _HEADLESS_LINE_CAP:
+                output_lines.append("[truncated due to timeout]")
+
+        duration = time.monotonic() - started
+        return {
+            "exit_code": process.returncode,
+            "output_lines": output_lines,
+            "duration_seconds": round(duration, 3),
+            "timed_out": timed_out,
+        }
 
     # ------------------------------------------------------------------
     # Introspection
