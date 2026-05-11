@@ -151,7 +151,7 @@ export class CrewsPage {
 
   /** Agent rows (buttons) inside the library panel list. */
   get libraryAgentRows(): Locator {
-    return this.libraryPanel.locator(".overflow-y-auto button.w-full");
+    return this.libraryPanel.locator('button.rounded-xl').filter({ has: this.page.locator('h3') });
   }
 
   /** Close button for the library panel. */

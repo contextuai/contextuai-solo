@@ -152,21 +152,17 @@ test.describe("CRUD via UI", () => {
 test.describe("Positive Workflows", () => {
   // DC-AGENT-08: Agent count badge matches visible cards
   test("DC-AGENT-08: agent count badge matches visible cards", async () => {
-    const countText = await agents.agentCountText.textContent();
-    if (!countText) {
+    // Get the active tab's badge count from the tab button
+    const activeTabBadge = agents.page.locator('button.border-primary-500 span').last();
+    const badgeText = await activeTabBadge.textContent();
+    if (!badgeText) {
       test.skip();
       return;
     }
 
-    const match = countText.match(/(\d+)/);
-    if (!match) {
-      test.skip();
-      return;
-    }
-
-    const reportedCount = parseInt(match[1], 10);
-    const visibleCount = await agents.getAgentCount();
-    expect(visibleCount).toBe(reportedCount);
+    const badgeNum = parseInt(badgeText, 10);
+    const cardCount = await agents.getAgentCount();
+    expect(cardCount).toBe(badgeNum);
   });
 
   // DC-AGENT-09: Search + role filter combine correctly
