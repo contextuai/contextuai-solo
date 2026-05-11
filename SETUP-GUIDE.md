@@ -13,7 +13,7 @@
 | **OpenAI-compat API** | Done | `/v1/chat/completions` — works with Aider, Continue.dev, etc. |
 | **Channel AI dispatch** | Done | Inbound messages → AI response (uses default local model) |
 | **Trigger system** | Done | Link channels to crews/agents, with cooldown |
-| **Trigger config UI** | Done | Auto-reply toggle per channel in Connections page |
+| **Trigger config UI** | Done | Auto-reply toggle per channel in Distributions page |
 | **Approval queue** | Done | Human-in-the-loop review before sending replies |
 | **Approvals page** | Done | Full review/edit/approve/reject UI at `/approvals` |
 

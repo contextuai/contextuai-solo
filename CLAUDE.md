@@ -110,7 +110,7 @@ Inbound polling via praw (Reddit API wrapper). `RedditPoller` runs a 60s backgro
 Desktop mode uses a static admin user — no login required. Auth is bypassed via dependency overrides in `app.py`. The `auth_service.py` has Cognito JWT support for the enterprise edition.
 
 ### Persona Types
-Desktop mode seeds 10 persona types: Nexus Agent, Web Researcher, PostgreSQL, MySQL, MSSQL, Snowflake, MongoDB, MCP Server, API Connector, File Operations. Social platforms (Slack, Twitter/X) are NOT persona types — they belong in Connections. Persona creation uses a 2-step wizard: Step 1 = type selection card grid with search, Step 2 = configure details (name, credentials, system prompt).
+Desktop mode seeds 10 persona types: Nexus Agent, Web Researcher, PostgreSQL, MySQL, MSSQL, Snowflake, MongoDB, MCP Server, API Connector, File Operations. Social platforms (Slack, Twitter/X) are NOT persona types — they belong in Distributions (the page formerly labelled Connections; URL and code identifiers still use `connections`). Persona creation uses a 2-step wizard: Step 1 = type selection card grid with search, Step 2 = configure details (name, credentials, system prompt).
 
 ### Key Configuration
 - `backend/settings.py` — Centralized env-var config with defaults (port 18741)
@@ -125,6 +125,7 @@ Backend API returns camelCase (`messageType`, `messageId`, `sessionId`) but fron
 
 ## Code Conventions
 
+- **Branching**: NEVER commit directly to `main`. `main` is branch-protected — direct commits will be rejected/reverted. Always create a topic branch first (`feat/<x>`, `fix/<x>`, `docs/<x>`, `chore/<x>`) and open a PR. Applies to docs-only changes too. Releases go through the `/prod-release` and `/release` skills, which handle branch hygiene correctly.
 - **Commits**: Conventional Commits (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`)
 - **TypeScript**: Strict mode, no untyped `any`. Functional components with hooks. `@/*` import alias. `cn()` utility for conditional Tailwind classes.
 - **Python**: Type hints on all signatures. Pydantic v2 for models. All I/O must be async. PEP 8 naming.

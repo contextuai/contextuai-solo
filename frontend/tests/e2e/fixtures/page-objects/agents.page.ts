@@ -22,16 +22,12 @@ export class AgentsPage {
 
   /** Search input for filtering agents. */
   get searchInput(): Locator {
-    return this.page.locator(
-      'input[placeholder*="Search agents"]'
-    );
+    return this.page.locator('input').filter({ hasText: /search/i }).first();
   }
 
-  /** All role filter pill buttons. */
+  /** All role filter pill buttons (kind tabs). */
   get roleFilters(): Locator {
-    return this.page.locator(
-      'button[class*="rounded-full"]'
-    );
+    return this.page.getByRole("tab");
   }
 
   /** All agent cards in the grid. */

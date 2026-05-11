@@ -19,13 +19,13 @@ test("DC-NAV-01: sidebar shows all navigation items", async () => {
   await expect(nav.sidebar).toBeVisible();
 
   const labels = await nav.getNavLabels();
-  const expectedItems = ["Chat", "Knowledge", "Model Hub", "Personas", "Agents", "Crews", "Blueprints", "Workspace", "Distributions", "Approvals", "Settings"];
+  const expectedItems = ["Chat", "Knowledge", "Automations", "Crews", "Approvals", "Distributions", "Models", "Settings"];
 
   for (const item of expectedItems) {
     expect(labels).toContain(item);
   }
 
-  expect(labels.length).toBe(11);
+  expect(labels.length).toBe(8);
 });
 
 // DC-NAV-02: Navigate to each page and verify heading
@@ -33,14 +33,11 @@ test("DC-NAV-02: navigate to each page and verify heading", async ({ page }) => 
   const routes: { label: string; heading: string }[] = [
     { label: "Chat", heading: "Start a conversation" },
     { label: "Knowledge", heading: "Knowledge Bases" },
-    { label: "Model Hub", heading: "Model Hub" },
-    { label: "Personas", heading: "Personas" },
-    { label: "Agents", heading: "Agent Library" },
+    { label: "Automations", heading: "Automations" },
     { label: "Crews", heading: "Crews" },
-    { label: "Blueprints", heading: "Blueprints" },
-    { label: "Workspace", heading: "Workspace" },
-    { label: "Distributions", heading: "Distributions" },
     { label: "Approvals", heading: "Approval Queue" },
+    { label: "Distributions", heading: "Distributions" },
+    { label: "Models", heading: "Model Hub" },
     { label: "Settings", heading: "Settings" },
   ];
 
@@ -55,11 +52,11 @@ test("DC-NAV-02: navigate to each page and verify heading", async ({ page }) => 
 
 // DC-NAV-03: Active page is highlighted in sidebar
 test("DC-NAV-03: active page is highlighted in sidebar", async ({ page }) => {
-  await nav.navigateTo("Personas");
+  await nav.navigateTo("Automations");
   await page.waitForTimeout(300);
 
-  const personasLink = page.locator("aside nav a", { hasText: "Personas" });
-  const classes = await personasLink.getAttribute("class");
+  const automationsLink = page.locator("aside nav a", { hasText: "Automations" });
+  const classes = await automationsLink.getAttribute("class");
   expect(classes).toContain("primary");
 
   await nav.navigateTo("Settings");
@@ -69,9 +66,9 @@ test("DC-NAV-03: active page is highlighted in sidebar", async ({ page }) => {
   const settingsClasses = await settingsLink.getAttribute("class");
   expect(settingsClasses).toContain("primary");
 
-  // Personas should no longer be active
-  const personasClassesAfter = await personasLink.getAttribute("class");
-  expect(personasClassesAfter).not.toContain("bg-primary");
+  // Automations should no longer be active
+  const automationsClassesAfter = await automationsLink.getAttribute("class");
+  expect(automationsClassesAfter).not.toContain("bg-primary");
 });
 
 // DC-NAV-04: Sidebar collapse/expand toggle works
@@ -102,12 +99,12 @@ test("DC-NAV-04: sidebar collapse/expand toggle works", async ({ page }) => {
   expect(expandedBox!.width).toBeGreaterThan(100);
 
   const expandedLabels = await nav.getNavLabels();
-  expect(expandedLabels.length).toBe(11);
+  expect(expandedLabels.length).toBe(8);
 });
 
 // DC-NAV-05: Page transitions are smooth (no flash)
 test("DC-NAV-05: page transitions are smooth", async ({ page }) => {
-  const routes = ["Personas", "Agents", "Crews", "Blueprints", "Workspace", "Distributions", "Knowledge", "Approvals", "Settings", "Chat"];
+  const routes = ["Chat", "Knowledge", "Automations", "Crews", "Approvals", "Distributions", "Models", "Settings"];
 
   for (const route of routes) {
     await nav.navigateTo(route);

@@ -5,7 +5,7 @@
  * Backend: http://127.0.0.1:18741 (no auth)
  * Frontend: http://localhost:1420 (Vite SPA)
  *
- * Settings page has 5 tabs: AI Providers, Brand Voice, Appearance, Data & Export, About.
+ * Settings page has 6 tabs: Cloud, AI Providers, Brand Voice, Appearance, Data & Export, About.
  */
 import { test, expect } from "@playwright/test";
 import { SettingsPage } from "../fixtures/page-objects";

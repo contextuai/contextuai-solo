@@ -9,6 +9,8 @@ import { type Page, type Locator, expect } from "@playwright/test";
  * - Appearance: theme (Light/Dark/System), font size (Small/Medium/Large)
  * - Data & Export: export JSON, import, clear all data
  * - About: version info, check for updates
+ *
+ * Note: Cloud tab mentioned in some comments is aspirational; actual tabs above.
  */
 export class SettingsPage {
   readonly page: Page;
@@ -19,9 +21,9 @@ export class SettingsPage {
 
   // ── Locators ────────────────────────────────────────────────────
 
-  /** All settings tab buttons. */
+  /** All settings tab buttons (5 tabs). */
   get tabs(): Locator {
-    return this.page.locator("[role='tab'], button").filter({
+    return this.page.locator("button").filter({
       hasText: /^(AI Providers|Brand Voice|Appearance|Data & Export|About)$/,
     });
   }

@@ -91,7 +91,7 @@ test.describe("Knowledge Base — full lifecycle", () => {
     await expect(cite.locator("text=/score \\d/")).toBeVisible();
 
     // 4. Back to Documents and delete the document
-    await page.getByRole("button", { name: "Documents" }).click();
+    await page.getByRole("button", { name: "Documents" }).first().click();
 
     page.once("dialog", (dialog) => dialog.accept());
     await docRow.locator("button[title='Delete']").click();

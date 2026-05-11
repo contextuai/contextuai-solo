@@ -30,17 +30,17 @@ export class CrewsPage {
 
   /** The "Crews" tab button. */
   get crewsTab(): Locator {
-    return this.page.locator("button").filter({ hasText: /Crews \(/ });
+    return this.page.getByRole("tab", { name: /Crews/ });
   }
 
   /** The "Runs" tab button. */
   get runsTab(): Locator {
-    return this.page.locator("button").filter({ hasText: /Runs \(/ });
+    return this.page.getByRole("tab", { name: /Runs/ });
   }
 
   /** The "Create Crew" button. */
   get createButton(): Locator {
-    return this.page.getByRole("button", { name: /create crew/i }).first();
+    return this.page.getByRole("button", { name: /new crew|new project/i }).first();
   }
 
   /** Search input. */

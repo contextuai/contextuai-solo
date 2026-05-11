@@ -1,14 +1,14 @@
-# Connections
+# Distributions
 
-Connections let you integrate ContextuAI Solo with external platforms. Connect to social channels so your Crews can send and receive messages on your behalf.
+The **Distributions** page (sidebar entry; URL still `/connections`) lets you integrate ContextuAI Solo with external platforms. Connect to social and outbound channels so your Crews can send and receive messages on your behalf.
 
-![Connections](../screenshots/012-Connections.png)
+![Distributions](../screenshots/012-Connections.png)
 
 ---
 
 ## Getting Started
 
-1. Navigate to **Connections** from the sidebar.
+1. Navigate to **Distributions** from the sidebar.
 2. Expand a platform card to set up the integration.
 3. Enter your credentials and save.
 4. Use the connection in Crew Builder (Step 4) to bind crews to channels.
@@ -105,4 +105,4 @@ After setting up a connection:
 - **Always enable approval** for social channels when first testing — review what the AI wants to post before it goes live.
 - **Telegram is the easiest to start with** — creating a bot takes less than a minute via BotFather.
 - **Keep your API keys secure** — credentials are stored locally on your machine, but treat them like passwords.
-- **Disconnect platforms you're not using** to keep your Connections page clean.
+- **Disconnect platforms you're not using** to keep your Distributions page clean.

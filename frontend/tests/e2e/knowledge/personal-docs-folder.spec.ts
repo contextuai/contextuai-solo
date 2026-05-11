@@ -23,12 +23,10 @@ test.describe("Personal Docs — folder mapping", () => {
   test("DC-KB-FOLDER: add folder, files appear in Documents tab", async ({
     page,
   }) => {
-    // Skipped on CI runners: same embedding-model dependency as the KB
-    // lifecycle test, plus the modal placeholder selector behaves
-    // differently in the CI Chromium build. Verified manually in the
-    // Tauri build; re-enable once CI bundles the ONNX weights and we
-    // adopt a label-based locator for the path input.
-    test.skip(!!process.env.CI, "needs bundled embedding model on CI");
+    // Skipped on CI runners: Tauri file picker unavailable in Playwright,
+    // plus the embedding-model dependency. Verified manually in the
+    // Tauri build; re-enable once CI bundles the ONNX weights.
+    test.skip(!!process.env.CI, "Tauri modal test, skipped on CI");
     test.setTimeout(180_000);
 
     // Author a temp folder of supported files
