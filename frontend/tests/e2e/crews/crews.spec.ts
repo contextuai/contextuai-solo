@@ -407,10 +407,11 @@ test.describe("Library Agent Browser", () => {
       return;
     }
 
-    // Capture the name of the first library agent before clicking
+    // Capture the name of the first library agent before clicking.
+    // Agent cards render the name as an <h3>, not a span.
     const firstAgentName = await crews.libraryAgentRows
       .first()
-      .locator("span.text-sm.font-medium")
+      .locator("h3")
       .first()
       .textContent();
 
