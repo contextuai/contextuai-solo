@@ -57,6 +57,7 @@ class AgentCategory(str, Enum):
     SOCIAL_ENGAGEMENT = "social_engagement"
     SPECIALIZED = "specialized"
     ENGINEERING = "engineering"
+    CODER_COMPANION = "coder_companion"
 
 
 class ProjectType(str, Enum):

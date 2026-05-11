@@ -275,6 +275,7 @@ _CATEGORY_ICONS = {
     "social_engagement": "message-circle",
     "specialized": "star",
     "startup_venture": "rocket",
+    "coder_companion": "code",
 }
 
 
@@ -289,6 +290,22 @@ async def _seed_agent_library(db):
     """
     try:
         collection = db["workspace_agents"]
+
+        # Clean up phase-4 PR 6 stale data: PR 6 added the coder-companion
+        # agent folder before its category was registered in CATEGORY_MAP, so
+        # early seeds stored the literal "coder-companion" string. That value
+        # fails AgentBlueprint enum validation on read.  Purge those rows so
+        # the corrected seed below recreates them with the canonical
+        # "coder_companion" category.
+        try:
+            purged = await collection.delete_many({"category": "coder-companion"})
+            if getattr(purged, "deleted_count", 0):
+                logger.info(
+                    "Purged %s stale coder-companion agent rows",
+                    purged.deleted_count,
+                )
+        except Exception:
+            logger.exception("Failed to purge stale coder-companion rows")
 
         from services.workspace.agent_library_service import AgentLibraryService
         library = AgentLibraryService()
