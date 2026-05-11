@@ -23,10 +23,9 @@ test.describe("Personal Docs — folder mapping", () => {
   test("DC-KB-FOLDER: add folder, files appear in Documents tab", async ({
     page,
   }) => {
-    // Skipped on CI runners: Tauri file picker unavailable in Playwright,
-    // plus the embedding-model dependency. Verified manually in the
-    // Tauri build; re-enable once CI bundles the ONNX weights.
-    test.skip(!!process.env.CI, "Tauri modal test, skipped on CI");
+    // Skipped on all runners: Tauri file picker unavailable in Playwright
+    // headless Chromium. Verified manually in Tauri build.
+    test.skip(true, "Folder picker requires Tauri runtime — not available in Playwright headless Chromium");
     test.setTimeout(180_000);
 
     // Author a temp folder of supported files

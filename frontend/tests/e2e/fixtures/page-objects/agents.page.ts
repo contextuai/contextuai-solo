@@ -22,12 +22,12 @@ export class AgentsPage {
 
   /** Search input for filtering agents. */
   get searchInput(): Locator {
-    return this.page.locator('input').filter({ hasText: /search/i }).first();
+    return this.page.getByPlaceholder(/Search\s+\w+\s+agents/i);
   }
 
   /** All role filter pill buttons (kind tabs). */
   get roleFilters(): Locator {
-    return this.page.getByRole("tab");
+    return this.page.getByRole("button", { name: /prompt|analyst|researcher|writer|visual|strategic|developer|technical/ });
   }
 
   /** All agent cards in the grid. */
@@ -56,7 +56,7 @@ export class AgentsPage {
 
   /** Agent count text in the header. */
   get agentCountText(): Locator {
-    return this.page.locator("span").filter({ hasText: /\d+ agents?/ }).first();
+    return this.page.getByText(/\d+ agents?\s+across/);
   }
 
   /** Empty state when no agents match. */
