@@ -329,6 +329,95 @@ class UniversalModelAdapter:
             for event in stream:
                 yield event
     
+    async def stream_chat(
+        self,
+        messages: List[Dict[str, Any]],
+        *,
+        model_id: str,
+        max_tokens: int = 2048,
+        temperature: float = 0.7,
+        top_p: float = 1.0,
+        stop: Optional[List[str]] = None,
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        """Normalized streaming wrapper around the Bedrock Converse Stream API.
+
+        Strips the ``bedrock:`` prefix if present, converts the OpenAI-style
+        ``messages`` list to Bedrock Converse format, and emits the same
+        normalized event shape used by the other direct services:
+        - ``{"type": "delta", "content": "..."}``
+        - ``{"type": "done", "finish_reason": "...", "usage": {...}}``
+        """
+        clean_model = model_id
+        if clean_model.startswith("bedrock:"):
+            clean_model = clean_model[len("bedrock:"):]
+
+        # Split system messages and build Bedrock Converse message list.
+        system_parts: List[Dict[str, str]] = []
+        converse_messages: List[Dict[str, Any]] = []
+        for msg in messages:
+            role = msg.get("role", "user")
+            content = msg.get("content", "")
+            if role == "system":
+                system_parts.append({"text": content})
+            else:
+                # Bedrock Converse accepts "user" / "assistant" directly.
+                converse_messages.append({
+                    "role": role,
+                    "content": [{"text": content}],
+                })
+
+        converse_params: Dict[str, Any] = {
+            "modelId": clean_model,
+            "messages": converse_messages,
+            "inferenceConfig": {
+                "maxTokens": max_tokens,
+                "temperature": temperature,
+                "topP": top_p,
+            },
+        }
+        if system_parts:
+            converse_params["system"] = system_parts
+        if stop:
+            converse_params["inferenceConfig"]["stopSequences"] = stop
+
+        loop = asyncio.get_event_loop()
+        try:
+            response = await loop.run_in_executor(
+                None,
+                lambda: self.bedrock_runtime_client.converse_stream(**converse_params),
+            )
+        except Exception as exc:
+            raise RuntimeError(f"Bedrock converse_stream failed: {exc}") from exc
+
+        finish_reason = "stop"
+        input_tokens = 0
+        output_tokens = 0
+
+        stream = response.get("stream")
+        if stream:
+            for event in stream:
+                if "contentBlockDelta" in event:
+                    delta = event["contentBlockDelta"].get("delta") or {}
+                    text = delta.get("text") or ""
+                    if text:
+                        yield {"type": "delta", "content": text}
+                elif "messageStop" in event:
+                    finish_reason = event["messageStop"].get("stopReason") or "stop"
+                elif "metadata" in event:
+                    usage = event["metadata"].get("usage") or {}
+                    input_tokens = int(usage.get("inputTokens") or 0)
+                    output_tokens = int(usage.get("outputTokens") or 0)
+
+        yield {
+            "type": "done",
+            "finish_reason": finish_reason,
+            "usage": {
+                "prompt_tokens": input_tokens,
+                "completion_tokens": output_tokens,
+                "total_tokens": input_tokens + output_tokens,
+            },
+        }
+
     def clear_cache(self):
         """Clear the pipeline executor cache"""
         self._pipeline_cache.clear()

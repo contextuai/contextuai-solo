@@ -176,9 +176,75 @@ Open **Model Hub** in Solo to see what's downloaded. Some recommendations for co
 
 The model ID Solo expects is the filename stem from the Model Hub — e.g. `qwen2.5-coder-7b`, not `qwen/Qwen2.5-Coder-7B-Instruct-GGUF`. You can confirm any model's ID by hitting `GET /v1/models`.
 
-## Coming soon — cloud models behind the same endpoint
+## Using cloud models through the same endpoint
 
-Today the `/v1/chat/completions` endpoint serves your **local** models. The next release extends it so the same URL can route to your saved cloud keys (Anthropic, Google, OpenAI, AWS Bedrock, Ollama) just by prefixing the model name — e.g. `anthropic:claude-opus-4-7` or `google:gemini-2.5-pro`. Your IDE keeps pointing at `http://localhost:18741/v1`; Solo handles the rest.
+The `/v1/chat/completions` endpoint routes to **any** provider — just prefix the model name. Your IDE keeps pointing at `http://localhost:18741/v1`; Solo handles the dispatch.
+
+### Step 1 — Save your provider keys
+
+Open **Settings → AI Providers** and add a key for any provider you want to use. Solo stores keys locally and never sends them anywhere except the provider's own API.
+
+### Step 2 — Pick the prefixed model name
+
+| Provider | Model ID prefix | Example |
+|---|---|---|
+| Anthropic | `anthropic:` | `anthropic:claude-sonnet-4-20250514` |
+| Google Gemini | `google:` | `google:gemini-2.0-flash` |
+| OpenAI | `openai:` | `openai:gpt-4o` |
+| AWS Bedrock | `bedrock:` | `bedrock:anthropic.claude-3-sonnet` |
+| Ollama (local) | `ollama:` | `ollama:qwen2.5:7b` |
+| Local GGUF | *(bare name)* | `qwen2.5-coder-7b` |
+
+`GET /v1/models` returns all available IDs — local and cloud — in one list. Ollama models are discovered automatically if Ollama is running.
+
+### curl example
+
+```bash
+curl http://localhost:18741/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "model": "anthropic:claude-sonnet-4-20250514",
+    "messages": [
+      {"role": "system", "content": "You are a senior Python engineer."},
+      {"role": "user", "content": "Explain async generators in two sentences."}
+    ],
+    "stream": true
+  }'
+```
+
+### Continue.dev — mix local and cloud in one config
+
+With the dispatcher live you can give each Continue.dev role a different model:
+
+```json
+{
+  "models": [
+    {
+      "title": "Solo — Claude (cloud)",
+      "provider": "openai",
+      "model": "anthropic:claude-sonnet-4-20250514",
+      "apiBase": "http://localhost:18741/v1",
+      "apiKey": "not-needed"
+    },
+    {
+      "title": "Solo — Qwen Coder (local)",
+      "provider": "openai",
+      "model": "qwen2.5-coder-7b",
+      "apiBase": "http://localhost:18741/v1",
+      "apiKey": "not-needed"
+    }
+  ],
+  "tabAutocompleteModel": {
+    "title": "Solo — FIM (local)",
+    "provider": "openai",
+    "model": "qwen2.5-coder-7b",
+    "apiBase": "http://localhost:18741/v1",
+    "apiKey": "not-needed"
+  }
+}
+```
+
+Use the fast local model for inline autocomplete (latency matters) and a cloud model for chat (quality matters). Switch providers without changing the IDE config — just change the `model` field.
 
 ## Troubleshooting
 

@@ -3,11 +3,22 @@ OpenAI-Compatible API Router
 
 Exposes ``/v1/chat/completions``, ``/v1/completions``, and ``/v1/models``
 so external tools (Aider, Continue.dev, Cursor, Cody, Tabby, any OpenAI SDK
-client) can use Solo's local GGUF models as a drop-in replacement.
+client) can use Solo's local GGUF models as a drop-in replacement — or any
+cloud provider by prefixing the model name.
+
+Dispatching by model-id prefix:
+    anthropic:<model>  →  AnthropicDirectService.stream_chat()
+    google:<model>     →  GoogleDirectService.stream_chat()
+    openai:<model>     →  OpenAIDirectService.stream_chat()
+    bedrock:<model>    →  UniversalModelAdapter.stream_chat()
+    ollama:<model>     →  OllamaDirectService.stream_chat()
+    <bare name>        →  local llama-cpp (existing path)
 
 Chat completions:
     curl http://localhost:18741/v1/chat/completions \
       -d '{"model":"qwen2.5-7b","messages":[{"role":"user","content":"hello"}]}'
+    curl http://localhost:18741/v1/chat/completions \
+      -d '{"model":"anthropic:claude-sonnet-4-20250514","messages":[...]}'
 
 Text / FIM completions (inline autocomplete):
     curl http://localhost:18741/v1/completions \
@@ -20,12 +31,13 @@ import logging
 import time
 import uuid
 from functools import partial
-from typing import Any, Dict, List, Optional
+from typing import Any, AsyncIterator, Dict, List, Optional, Tuple
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
+from database import get_database
 from services.local_model_service import local_model_service, LLAMA_CPP_AVAILABLE
 from services.model_catalog import LOCAL_MODEL_CATALOG
 from services.think_tag_parser import parse_think_tags, StreamingThinkParser
@@ -33,6 +45,27 @@ from services.think_tag_parser import parse_think_tags, StreamingThinkParser
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["openai-compat"])
+
+# ── Cloud provider model catalogs (short curated lists) ─────────────────────
+# Mirrors the frontend settings.tsx provider model lists.
+
+_CLOUD_MODELS: Dict[str, List[str]] = {
+    "anthropic": [
+        "claude-sonnet-4-20250514",
+        "claude-opus-4-20250514",
+        "claude-3-5-haiku-20241022",
+    ],
+    "openai": ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "o1-preview"],
+    "google": ["gemini-2.0-flash", "gemini-2.0-pro", "gemini-1.5-flash"],
+    "bedrock": [
+        "anthropic.claude-3-sonnet",
+        "anthropic.claude-3-haiku",
+        "amazon.titan-text-express",
+    ],
+    # Ollama models are discovered dynamically via list_models().
+}
+
+_KNOWN_PREFIXES = ("anthropic", "google", "openai", "bedrock", "ollama")
 
 
 # ── Request / Response models ────────────────────────────────────────────────
@@ -106,6 +139,41 @@ def _generate_id(prefix: str = "chatcmpl") -> str:
     return f"{prefix}-{uuid.uuid4().hex[:12]}"
 
 
+# ── Provider dispatch helpers ────────────────────────────────────────────────
+
+def _parse_provider(model_name: str) -> Tuple[str, str]:
+    """Return (provider, clean_model_id).
+
+    Provider is one of: anthropic | google | openai | bedrock | ollama | local.
+    """
+    for prefix in _KNOWN_PREFIXES:
+        if model_name.startswith(f"{prefix}:"):
+            return prefix, model_name[len(prefix) + 1:]
+    return "local", model_name
+
+
+def _emit_openai_chunk(
+    completion_id: str,
+    model_id: str,
+    created: int,
+    content: str = "",
+    finish_reason: Optional[str] = None,
+) -> str:
+    """Serialize a single OpenAI SSE chat.completion.chunk to ``data: {...}\\n\\n``."""
+    chunk: Dict[str, Any] = {
+        "id": completion_id,
+        "created": created,
+        "model": model_id,
+        "object": "chat.completion.chunk",
+        "choices": [{
+            "index": 0,
+            "delta": {"content": content} if content else {},
+            "finish_reason": finish_reason,
+        }],
+    }
+    return f"data: {json.dumps(chunk)}\n\n"
+
+
 # ── FIM (Fill-in-the-Middle) helpers ─────────────────────────────────────────
 
 # FIM token formats by model family.  When a model supports FIM natively we
@@ -174,18 +242,21 @@ def _resolve_model_and_load(model_name: str):
 # ── GET /v1/models ───────────────────────────────────────────────────────────
 
 @router.get("/v1/models")
-async def list_models():
-    """List installed local models in OpenAI format.
+async def list_models(db=Depends(get_database)):
+    """List all available models in OpenAI format.
 
-    Includes both catalog models and manually-added GGUF files so IDE
-    extensions can discover everything available.
+    Includes:
+    - Installed local GGUF models (from catalog + manually added)
+    - Cloud provider models for each saved provider key
+    - Ollama models discovered from a running local Ollama server
     """
     from services.model_manager import model_manager
+    from services.cloud_provider_service import CloudProviderService
 
-    models = []
-    seen_ids = set()
+    models: List[Dict[str, Any]] = []
+    seen_ids: set = set()
 
-    # Catalog models
+    # ── Local catalog models ─────────────────────────────────────────────────
     for entry in LOCAL_MODEL_CATALOG:
         if model_manager.is_installed(entry["id"]):
             seen_ids.add(entry["id"])
@@ -213,21 +284,126 @@ async def list_models():
                 "parent": None,
             })
 
+    # ── Cloud provider models ────────────────────────────────────────────────
+    svc = CloudProviderService(db)
+    for provider, model_list in _CLOUD_MODELS.items():
+        try:
+            creds = await svc.get_credentials(provider)
+            if not creds:
+                continue
+            # At least one real credential must be present.
+            has_cred = bool(
+                creds.get("api_key")
+                or creds.get("aws_access_key_id")
+                or creds.get("base_url")
+            )
+            if not has_cred:
+                continue
+            for m in model_list:
+                full_id = f"{provider}:{m}"
+                if full_id not in seen_ids:
+                    seen_ids.add(full_id)
+                    models.append({
+                        "id": full_id,
+                        "object": "model",
+                        "created": 0,
+                        "owned_by": provider,
+                        "permission": [],
+                        "root": full_id,
+                        "parent": None,
+                    })
+        except Exception:
+            logger.debug("Could not fetch %s credentials for /v1/models", provider)
+
+    # ── Ollama models (dynamic) ──────────────────────────────────────────────
+    try:
+        from services.cloud_provider_service import CloudProviderService as _CPS
+        ollama_creds = await svc.get_credentials("ollama")
+        ollama_base = (ollama_creds or {}).get("base_url")
+
+        from services.ollama_direct_service import OllamaDirectService
+        ollama_svc = OllamaDirectService()
+        ollama_models = await ollama_svc.list_models(base_url=ollama_base)
+        for m in ollama_models:
+            name = m.get("name") or m.get("model") or ""
+            if not name:
+                continue
+            full_id = f"ollama:{name}"
+            if full_id not in seen_ids:
+                seen_ids.add(full_id)
+                models.append({
+                    "id": full_id,
+                    "object": "model",
+                    "created": 0,
+                    "owned_by": "ollama",
+                    "permission": [],
+                    "root": full_id,
+                    "parent": None,
+                })
+    except Exception:
+        # Ollama not running or not configured — non-fatal.
+        pass
+
     return {"object": "list", "data": models}
 
 
 # ── POST /v1/chat/completions ────────────────────────────────────────────────
 
 @router.post("/v1/chat/completions")
-async def chat_completions(request: ChatCompletionRequest, http_request: Request):
-    """OpenAI-compatible chat completions endpoint."""
+async def chat_completions(
+    request: ChatCompletionRequest,
+    http_request: Request,
+    db=Depends(get_database),
+):
+    """OpenAI-compatible chat completions endpoint.
+
+    Routes by model-id prefix to the appropriate provider.
+    Bare model names use the local llama-cpp path.
+    """
     include_thinking = http_request.query_params.get("include_thinking", "").lower() in ("true", "1", "yes")
 
-    llm, catalog_entry = _resolve_model_and_load(request.model)
-
+    provider, clean_model = _parse_provider(request.model)
     messages = [{"role": m.role, "content": m.content} for m in request.messages]
     completion_id = _generate_id()
     created = int(time.time())
+
+    # ── Cloud provider path ──────────────────────────────────────────────────
+    if provider != "local":
+        from services.cloud_provider_service import CloudProviderService
+        svc = CloudProviderService(db)
+        creds = await svc.get_credentials(provider)
+        if not creds:
+            raise HTTPException(
+                status_code=401,
+                detail=f"No saved credentials for provider '{provider}'. "
+                       "Add a key in Settings → AI Providers.",
+            )
+
+        # Build the adapter's stream iterator
+        try:
+            stream_iter = await _cloud_stream_iter(
+                provider=provider,
+                clean_model=clean_model,
+                creds=creds,
+                messages=messages,
+                request=request,
+            )
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(502, f"Provider error: {exc}") from exc
+
+        if request.stream:
+            return StreamingResponse(
+                _stream_cloud_chat(stream_iter, completion_id, request.model, created),
+                media_type="text/event-stream",
+                headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+            )
+        else:
+            return await _sync_cloud_chat(stream_iter, completion_id, request.model, created)
+
+    # ── Local llama-cpp path (unchanged) ────────────────────────────────────
+    llm, catalog_entry = _resolve_model_and_load(request.model)
 
     if request.stream:
         return StreamingResponse(
@@ -237,6 +413,122 @@ async def chat_completions(request: ChatCompletionRequest, http_request: Request
         )
     else:
         return await _sync_chat(llm, messages, request, completion_id, created, catalog_entry["id"], include_thinking)
+
+
+async def _cloud_stream_iter(
+    *,
+    provider: str,
+    clean_model: str,
+    creds: Dict[str, Any],
+    messages: List[Dict[str, Any]],
+    request: ChatCompletionRequest,
+) -> AsyncIterator[Dict[str, Any]]:
+    """Build and return the provider-specific normalized stream iterator."""
+    stop = request.stop
+    if isinstance(stop, str):
+        stop = [stop]
+
+    kwargs: Dict[str, Any] = dict(
+        model_id=clean_model,
+        max_tokens=request.max_tokens or 2048,
+        temperature=request.temperature or 0.7,
+        top_p=request.top_p or 1.0,
+        stop=stop or None,
+    )
+
+    if provider == "anthropic":
+        api_key = creds.get("api_key") or ""
+        if not api_key:
+            raise HTTPException(401, "Anthropic API key not configured")
+        from services.anthropic_direct_service import AnthropicDirectService
+        svc = AnthropicDirectService()
+        return svc.stream_chat(messages, api_key=api_key, **kwargs)
+
+    if provider == "openai":
+        api_key = creds.get("api_key") or ""
+        if not api_key:
+            raise HTTPException(401, "OpenAI API key not configured")
+        from services.openai_direct_service import OpenAIDirectService
+        svc = OpenAIDirectService()
+        return svc.stream_chat(messages, api_key=api_key, **kwargs)
+
+    if provider == "google":
+        api_key = creds.get("api_key") or ""
+        if not api_key:
+            raise HTTPException(401, "Google API key not configured")
+        from services.google_direct_service import GoogleDirectService
+        svc = GoogleDirectService()
+        return svc.stream_chat(messages, api_key=api_key, **kwargs)
+
+    if provider == "bedrock":
+        aws_key = creds.get("aws_access_key_id") or ""
+        aws_secret = creds.get("aws_secret_access_key") or ""
+        if not (aws_key and aws_secret):
+            raise HTTPException(401, "AWS Bedrock credentials not configured")
+        from services.universal_model_adapter import UniversalModelAdapter
+        adapter = UniversalModelAdapter(bedrock_credentials=creds)
+        return adapter.stream_chat(messages, model_id=clean_model, **{
+            k: v for k, v in kwargs.items() if k != "model_id"
+        })
+
+    if provider == "ollama":
+        base_url = creds.get("base_url")
+        from services.ollama_direct_service import OllamaDirectService
+        svc = OllamaDirectService()
+        return svc.stream_chat(messages, base_url=base_url, **kwargs)
+
+    raise HTTPException(400, f"Unknown provider: {provider!r}")
+
+
+async def _stream_cloud_chat(
+    stream_iter: AsyncIterator[Dict[str, Any]],
+    completion_id: str,
+    model_id: str,
+    created: int,
+):
+    """Convert normalized provider events to OpenAI SSE chunks."""
+    async for event in stream_iter:
+        if event["type"] == "delta":
+            yield _emit_openai_chunk(completion_id, model_id, created, content=event["content"])
+        elif event["type"] == "done":
+            yield _emit_openai_chunk(
+                completion_id, model_id, created,
+                finish_reason=event.get("finish_reason", "stop"),
+            )
+    yield "data: [DONE]\n\n"
+
+
+async def _sync_cloud_chat(
+    stream_iter: AsyncIterator[Dict[str, Any]],
+    completion_id: str,
+    model_id: str,
+    created: int,
+) -> Dict[str, Any]:
+    """Accumulate the normalized stream and return a single chat.completion."""
+    content_parts: List[str] = []
+    finish_reason = "stop"
+    usage: Dict[str, int] = {}
+
+    async for event in stream_iter:
+        if event["type"] == "delta":
+            content_parts.append(event["content"])
+        elif event["type"] == "done":
+            finish_reason = event.get("finish_reason", "stop")
+            usage = event.get("usage", {})
+
+    full_content = "".join(content_parts)
+    return {
+        "id": completion_id,
+        "object": "chat.completion",
+        "created": created,
+        "model": model_id,
+        "choices": [{
+            "index": 0,
+            "message": {"role": "assistant", "content": full_content},
+            "finish_reason": finish_reason,
+        }],
+        "usage": usage,
+    }
 
 
 async def _sync_chat(
