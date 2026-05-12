@@ -16,6 +16,7 @@ Welcome to ContextuAI Solo, your private desktop AI assistant with 96 pre-built 
 | 8 | [Distributions](08-connections.md) | Connect to Telegram, Discord, Reddit, LinkedIn, Twitter/X, Instagram, Facebook, Blog, Email, Slack |
 | 9 | Knowledge | Upload PDFs / DOCX / TXT / MD and chat with citations (local RAG) |
 | 10 | [Settings](09-settings.md) | API keys, brand voice, appearance, data export |
+| 11 | [VS Code / IDE](10-openai-endpoint.md) | Use Solo as the model backend for Continue, Cline, Cursor, Aider, Zed, etc. |
 
 ## Quick Start
 

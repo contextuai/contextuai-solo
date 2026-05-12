@@ -448,32 +448,73 @@ export default function CoderProjectDetailPage() {
 }
 
 // ---------------------------------------------------------------------------
-// Chat panel — stub for PR 6
+// Chat panel — wired to /api/v1/ai-chat (PR 12). One session per project so
+// chat history is isolated from the global Chat page.
 // ---------------------------------------------------------------------------
 
-function ChatPanel({ projectId: _projectId }: { projectId: string }) {
-  // TODO(PR7): wire to /api/v1/ai-chat with streaming + persistent thread per
-  // project. For PR 6 this is a local-only stub that echoes a stubbed reply
-  // so the surface is in place.
+function ChatPanel({ projectId }: { projectId: string }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState("");
+  const [busy, setBusy] = useState(false);
+  const sessionIdRef = useRef<string>(`coder-${projectId}`);
+  const abortRef = useRef<AbortController | null>(null);
 
-  function handleSend() {
+  async function handleSend() {
     const text = draft.trim();
-    if (!text) return;
+    if (!text || busy) return;
+
     const userMsg: ChatMessage = {
       id: `u-${Date.now()}`,
       role: "user",
       content: text,
     };
+    const assistantId = `a-${Date.now()}`;
     const assistantMsg: ChatMessage = {
-      id: `a-${Date.now()}`,
+      id: assistantId,
       role: "assistant",
-      content:
-        "Chat wiring lands in PR 7 — your message was captured but not sent to the model yet.",
+      content: "",
     };
     setMessages((prev) => [...prev, userMsg, assistantMsg]);
     setDraft("");
+    setBusy(true);
+
+    const ctl = new AbortController();
+    abortRef.current = ctl;
+
+    try {
+      const { sendMessageStream } = await import("@/lib/api/chat-client");
+      for await (const chunk of sendMessageStream(
+        text,
+        sessionIdRef.current,
+        undefined,
+        undefined,
+        ctl.signal,
+        undefined,
+      )) {
+        if (chunk.type === "chunk") {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantId ? { ...m, content: m.content + chunk.data } : m,
+            ),
+          );
+        } else if (chunk.type === "error") {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantId
+                ? { ...m, content: m.content + `\n\n[error] ${chunk.data}` }
+                : m,
+            ),
+          );
+        }
+      }
+    } finally {
+      setBusy(false);
+      abortRef.current = null;
+    }
+  }
+
+  function handleStop() {
+    abortRef.current?.abort();
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -490,7 +531,9 @@ function ChatPanel({ projectId: _projectId }: { projectId: string }) {
         <span className="text-xs font-semibold text-neutral-900 dark:text-white">
           Chat
         </span>
-        <span className="text-[11px] text-neutral-400">PR 6 stub</span>
+        <span className="text-[11px] text-neutral-400 truncate">
+          session {sessionIdRef.current.slice(0, 14)}…
+        </span>
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3 min-h-0">
@@ -499,8 +542,7 @@ function ChatPanel({ projectId: _projectId }: { projectId: string }) {
             Tell Solo Coder what you want to build.
             <br />
             <span className="text-[11px]">
-              (Chat is wired in PR 7 — for now, the surface is here so you can
-              see the layout.)
+              Uses your default model. Multi-agent roles arrive in the next PR.
             </span>
           </div>
         ) : (
@@ -516,6 +558,7 @@ function ChatPanel({ projectId: _projectId }: { projectId: string }) {
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={handleKeyDown}
           rows={2}
+          disabled={busy}
           placeholder="Describe what to build, or ask a question…"
           className={cn(
             "flex-1 resize-none px-3 py-2 rounded-xl text-sm",
@@ -524,11 +567,18 @@ function ChatPanel({ projectId: _projectId }: { projectId: string }) {
             "text-neutral-900 dark:text-white",
             "placeholder:text-neutral-400 dark:placeholder:text-neutral-500",
             "focus:outline-none focus:ring-2 focus:ring-primary-500/40 focus:border-primary-500",
+            "disabled:opacity-60",
           )}
         />
-        <Button size="sm" variant="primary" onClick={handleSend}>
-          <Send className="w-3.5 h-3.5" /> Send
-        </Button>
+        {busy ? (
+          <Button size="sm" variant="ghost" onClick={handleStop}>
+            <Square className="w-3.5 h-3.5" /> Stop
+          </Button>
+        ) : (
+          <Button size="sm" variant="primary" onClick={handleSend}>
+            <Send className="w-3.5 h-3.5" /> Send
+          </Button>
+        )}
       </div>
     </div>
   );

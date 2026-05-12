@@ -7,12 +7,26 @@
 import { open } from "@tauri-apps/plugin-dialog";
 
 export function isTauri(): boolean {
-  return Boolean((window as unknown as { __TAURI__?: unknown }).__TAURI__);
+  // Tauri v2 sets `__TAURI_INTERNALS__`; the legacy `__TAURI__` key is gone.
+  return Boolean(
+    (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__
+  );
 }
 
-/** Open a native folder picker. Returns the selected absolute path or null. */
+/**
+ * Open a native folder picker. Returns the selected absolute path or null.
+ * In non-Tauri (browser dev) contexts falls back to `window.prompt` so the
+ * Browse button still works against a local path the user types in.
+ */
 export async function pickFolder(): Promise<string | null> {
-  if (!isTauri()) return null;
+  if (!isTauri()) {
+    const typed = window.prompt(
+      "Native folder picker is only available in the desktop build.\n" +
+      "Type or paste an absolute folder path:"
+    );
+    const trimmed = typed?.trim();
+    return trimmed ? trimmed : null;
+  }
   const result = await open({ directory: true, multiple: false });
   if (!result) return null;
   return Array.isArray(result) ? result[0] ?? null : (result as string);

@@ -10,10 +10,12 @@ export function DesktopLayout() {
 
   return (
     <div className="min-h-screen bg-neutral-50 dark:bg-[#242523]">
-      {/* Top bar with centred mode toggle */}
+      {/* Top bar with centred mode toggle — sticky so it stays visible when
+          inner pages (e.g. Coder project detail, terminal output) grow past
+          the viewport. */}
       <div
         className={cn(
-          "flex items-center justify-center h-12 px-4",
+          "sticky top-0 z-30 flex items-center justify-center h-12 px-4",
           "bg-white dark:bg-neutral-900",
           "border-b border-neutral-200 dark:border-neutral-800"
         )}
