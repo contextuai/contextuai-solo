@@ -52,6 +52,7 @@ from routers.automations import router as automations_router
 from routers.cloud_providers import router as cloud_providers_router
 from routers.coder_projects import router as coder_projects_router
 from routers.coder_roles import router as coder_roles_router
+from routers.coder_workflow import router as coder_workflow_router
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -110,6 +111,7 @@ app.include_router(automations_router)
 app.include_router(cloud_providers_router)
 app.include_router(coder_projects_router)
 app.include_router(coder_roles_router)
+app.include_router(coder_workflow_router)
 
 
 # ---------------------------------------------------------------------------
