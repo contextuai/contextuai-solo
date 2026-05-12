@@ -99,6 +99,7 @@ def _to_response(row: Dict[str, Any]) -> CoderProjectResponse:
         chat_thread_id=row.get("chat_thread_id"),
         last_run_at=row.get("last_run_at"),
         status=status,
+        workflow_mode=row.get("workflow_mode") or "solo",
         created_at=row.get("created_at") or "",
         updated_at=row.get("updated_at") or "",
         process_pid=pid,

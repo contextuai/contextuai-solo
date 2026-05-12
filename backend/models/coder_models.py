@@ -13,9 +13,9 @@ Scope notes:
 """
 
 from enum import Enum
-from typing import List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 # =============================================================================
@@ -31,6 +31,18 @@ class CoderProjectStatus(str, Enum):
 
 CoderRuntime = Literal["node", "python", "static", "auto"]
 CoderNetworkPolicy = Literal["allow", "block"]
+CoderWorkflowMode = Literal["solo", "sequential", "parallel", "custom"]
+
+
+class RoleKind(str, Enum):
+    CODER = "coder"
+    REVIEWER = "reviewer"
+    SECURITY = "security"
+    UI_UX = "ui_ux"
+    DOCS = "docs"
+    TESTER = "tester"
+    PLANNER = "planner"
+    CUSTOM = "custom"
 
 
 # =============================================================================
@@ -50,6 +62,7 @@ class CoderProject(BaseModel):
     chat_thread_id: Optional[str] = None
     last_run_at: Optional[str] = None
     status: CoderProjectStatus = CoderProjectStatus.CREATED
+    workflow_mode: CoderWorkflowMode = "solo"
     created_at: str
     updated_at: str
 
@@ -95,6 +108,7 @@ class CoderProjectResponse(BaseModel):
     chat_thread_id: Optional[str] = None
     last_run_at: Optional[str] = None
     status: CoderProjectStatus = CoderProjectStatus.CREATED
+    workflow_mode: CoderWorkflowMode = "solo"
     created_at: str
     updated_at: str
     process_pid: Optional[int] = None
@@ -134,3 +148,133 @@ class CoderRunResponse(BaseModel):
     project_id: str
     status: CoderRunStatus
     error: Optional[str] = None
+
+
+# =============================================================================
+# Agent role models
+# =============================================================================
+
+def _validate_model_id(v: str) -> str:
+    """Reject empty, whitespace-only, or obviously bogus model_id strings."""
+    if not v or not v.strip():
+        raise ValueError("model_id must not be empty or whitespace")
+    stripped = v.strip()
+    if len(stripped) < 2:
+        raise ValueError("model_id is too short")
+    return stripped
+
+
+class CoderAgentRole(BaseModel):
+    """Persisted shape of a single agent role in the ``coder_agent_roles`` collection."""
+
+    role_id: str
+    project_id: str
+    role_kind: RoleKind
+    display_name: str
+    system_prompt: str
+    model_id: str
+    temperature: float = 0.7
+    max_tokens: int = 4096
+    enabled: bool = True
+    order: int
+    created_at: str
+    updated_at: str
+
+
+class CoderAgentRoleCreate(BaseModel):
+    role_kind: RoleKind
+    display_name: str = Field(..., min_length=1, max_length=200)
+    system_prompt: str = Field(..., min_length=1)
+    model_id: str
+    temperature: float = Field(default=0.7, ge=0.0, le=2.0)
+    max_tokens: int = Field(default=4096, gt=0, le=131072)
+    enabled: bool = True
+    order: Optional[int] = None
+
+    @field_validator("model_id")
+    @classmethod
+    def validate_model_id(cls, v: str) -> str:
+        return _validate_model_id(v)
+
+
+class CoderAgentRoleUpdate(BaseModel):
+    display_name: Optional[str] = Field(None, min_length=1, max_length=200)
+    system_prompt: Optional[str] = Field(None, min_length=1)
+    model_id: Optional[str] = None
+    temperature: Optional[float] = Field(None, ge=0.0, le=2.0)
+    max_tokens: Optional[int] = Field(None, gt=0, le=131072)
+    enabled: Optional[bool] = None
+    order: Optional[int] = None
+
+    @field_validator("model_id")
+    @classmethod
+    def validate_model_id(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        return _validate_model_id(v)
+
+
+class CoderAgentRoleResponse(BaseModel):
+    role_id: str
+    project_id: str
+    role_kind: RoleKind
+    display_name: str
+    system_prompt: str
+    model_id: str
+    temperature: float
+    max_tokens: int
+    enabled: bool
+    order: int
+    created_at: str
+    updated_at: str
+
+
+# =============================================================================
+# Preset models
+# =============================================================================
+
+class RolePresetRole(BaseModel):
+    role_kind: RoleKind
+    display_name: str
+    system_prompt: str
+    model_id: str
+    temperature: float = 0.7
+    max_tokens: int = 4096
+    enabled: bool = True
+    order: int
+
+
+class RolePresetSummary(BaseModel):
+    preset_id: str
+    name: str
+    description: str
+    workflow_mode: CoderWorkflowMode
+
+
+class RolePresetDetail(BaseModel):
+    preset_id: str
+    name: str
+    description: str
+    workflow_mode: CoderWorkflowMode
+    roles: List[RolePresetRole]
+
+
+# =============================================================================
+# Workflow request/response
+# =============================================================================
+
+class WorkflowModeResponse(BaseModel):
+    project_id: str
+    workflow_mode: CoderWorkflowMode
+
+
+class WorkflowModeUpdate(BaseModel):
+    workflow_mode: CoderWorkflowMode
+
+
+class ApplyPresetRequest(BaseModel):
+    preset_id: str
+
+
+class ReorderRolesRequest(BaseModel):
+    role_ids: List[str]

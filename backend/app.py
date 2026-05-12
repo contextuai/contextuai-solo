@@ -51,6 +51,7 @@ from routers.personal_docs import router as personal_docs_router
 from routers.automations import router as automations_router
 from routers.cloud_providers import router as cloud_providers_router
 from routers.coder_projects import router as coder_projects_router
+from routers.coder_roles import router as coder_roles_router
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -108,6 +109,7 @@ app.include_router(personal_docs_router)
 app.include_router(automations_router)
 app.include_router(cloud_providers_router)
 app.include_router(coder_projects_router)
+app.include_router(coder_roles_router)
 
 
 # ---------------------------------------------------------------------------
@@ -545,6 +547,15 @@ async def startup_event():
             await run_workspace_to_crew_runs_migration(proxy)
         except Exception:
             logger.exception("workspace_to_crew_runs migration failed; continuing startup")
+
+        # PR 14: backfill workflow_mode on coder_projects rows.
+        try:
+            from services.migrations.coder_workflow_mode_migration import (
+                run_coder_workflow_mode_migration,
+            )
+            await run_coder_workflow_mode_migration(proxy)
+        except Exception:
+            logger.exception("coder_workflow_mode migration failed; continuing startup")
 
         # Start Reddit poller (runs only when a Reddit account is configured)
         from services.reddit_poller import get_poller
