@@ -30,9 +30,7 @@ export class SettingsPage {
 
   /** Provider cards (in the AI Providers tab). */
   get providerCards(): Locator {
-    return this.page.locator("[class*='rounded-2xl'][class*='border']").filter({
-      has: this.page.locator("[class*='rounded-xl'][class*='bg-gradient-to-br']"),
-    });
+    return this.page.locator('[data-testid^="provider-card-"]');
   }
 
   /** API key input fields (visible when a provider is expanded). */
@@ -42,7 +40,7 @@ export class SettingsPage {
 
   /** Test Connection buttons. */
   get testButtons(): Locator {
-    return this.page.getByRole("button", { name: /test connection|detect ollama/i });
+    return this.page.locator('[data-testid*="test-btn-"]');
   }
 
   /** Theme selection buttons (Light, Dark, System). */
@@ -98,7 +96,7 @@ export class SettingsPage {
 
   /** "Connection successful" confirmation text. */
   get connectionSuccessText(): Locator {
-    return this.page.getByText(/connection successful/i);
+    return this.page.getByText(/test passed|connection successful/i);
   }
 
   // ── Local AI Locators ───────────────────────────────────────────
@@ -149,8 +147,9 @@ export class SettingsPage {
    */
   async expandProvider(name: string): Promise<void> {
     const card = this.providerCards.filter({ hasText: name }).first();
-    // Click the card header button to expand
-    await card.locator("button").first().click();
+    // Find the steps-toggle button within the card
+    const toggle = card.locator('[data-testid*="steps-toggle-"]');
+    await toggle.click();
     await this.page.waitForTimeout(300);
   }
 
@@ -171,9 +170,7 @@ export class SettingsPage {
    */
   async testConnection(provider: string): Promise<void> {
     const card = this.providerCards.filter({ hasText: provider }).first();
-    const testBtn = card.getByRole("button", {
-      name: /test connection|detect ollama/i,
-    });
+    const testBtn = card.locator('[data-testid*="test-btn-"]');
     await testBtn.click();
 
     // Wait for test to complete (loading spinner disappears)

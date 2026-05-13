@@ -22,9 +22,13 @@ export class CoderProjectPage {
   // ── Navigation ─────────────────────────────────────────────────────────────
 
   async goto(projectId: string): Promise<void> {
-    await this.page.goto(`/coder/projects/${projectId}`);
+    const response = await this.page.goto(`/coder/projects/${projectId}`);
+    if (!response?.ok()) {
+      throw new Error(`Failed to navigate to project: ${response?.status()}`);
+    }
+    // Wait for the page to fully load
     await this.page.waitForLoadState("networkidle");
-    await this.page.waitForTimeout(500);
+    await this.page.waitForTimeout(2000);
   }
 
   // ── Tabs ───────────────────────────────────────────────────────────────────

@@ -25,8 +25,11 @@ const FRONTEND = "http://localhost:1420";
 async function openNewProjectDialog(page: Page): Promise<void> {
   await page.goto("/coder/projects");
   await page.waitForLoadState("networkidle");
-  // Click "New Project" button
-  await page.getByRole("button", { name: /new project/i }).first().click();
+  // Wait for the New Project button to be visible
+  const newProjectBtn = page.getByRole("button", { name: /new project/i }).first();
+  await newProjectBtn.waitFor({ state: "visible", timeout: 15_000 });
+  // Click the button
+  await newProjectBtn.click();
   await page.waitForTimeout(300);
 }
 
