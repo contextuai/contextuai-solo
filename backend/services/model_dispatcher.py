@@ -50,10 +50,18 @@ def _parse_provider(model_id: str) -> tuple[str, str]:
     """Return (provider, clean_model_id).
 
     Provider is one of: anthropic | google | openai | bedrock | ollama | local.
+    The ``local:`` and ``local-`` prefixes are stripped — the seeder writes
+    local model rows with ``_id = "local:<catalog_id>"`` so any default-model
+    resolution will carry the prefix.
     """
     for prefix in _KNOWN_PREFIXES:
         if model_id.startswith(f"{prefix}:"):
             return prefix, model_id[len(prefix) + 1:]
+    # Local sentinels — strip and dispatch to llama-cpp.
+    if model_id.startswith("local:"):
+        return "local", model_id[len("local:"):]
+    if model_id.startswith("local-"):
+        return "local", model_id[len("local-"):]
     return "local", model_id
 
 
