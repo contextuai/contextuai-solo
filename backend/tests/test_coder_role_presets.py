@@ -47,7 +47,9 @@ def test_preset_schema(preset_service, preset_id):
         assert role.role_kind
         assert role.display_name
         assert role.system_prompt
-        assert role.model_id
+        # model_id may be "" (not-yet-configured sentinel) or "__DEFAULT__"
+        # (custom preset) — both are valid at the schema level.
+        assert isinstance(role.model_id, str)
         assert 0.0 <= role.temperature <= 2.0
         assert role.max_tokens > 0
 
@@ -58,21 +60,38 @@ def test_local_solo_has_coder_role(preset_service):
     assert "coder" in kinds
 
 
-def test_cloud_premium_uses_cloud_models(preset_service):
+def test_local_solo_all_roles_have_empty_model_id(preset_service):
+    """After the PR-17 cleanup, local-solo ships no hardcoded model IDs."""
+    detail = preset_service.get_preset("local-solo")
+    for role in detail.roles:
+        assert role.model_id == "", (
+            f"Role '{role.display_name}' has model_id={role.model_id!r}; "
+            "expected empty string (not-yet-configured sentinel)"
+        )
+
+
+def test_cloud_premium_all_roles_have_empty_model_id(preset_service):
+    """After the PR-17 cleanup, cloud-premium ships no hardcoded model IDs."""
     detail = preset_service.get_preset("cloud-premium")
-    model_ids = [r.model_id for r in detail.roles]
-    assert any("anthropic:" in m or "google:" in m for m in model_ids)
+    for role in detail.roles:
+        assert role.model_id == "", (
+            f"Role '{role.display_name}' has model_id={role.model_id!r}; "
+            "expected empty string (not-yet-configured sentinel)"
+        )
 
 
-def test_hybrid_has_both_cloud_and_local(preset_service):
+def test_hybrid_all_roles_have_empty_model_id(preset_service):
+    """After the PR-17 cleanup, hybrid ships no hardcoded model IDs."""
     detail = preset_service.get_preset("hybrid")
-    model_ids = [r.model_id for r in detail.roles]
-    has_cloud = any(":" in m for m in model_ids)
-    has_local = any(":" not in m for m in model_ids)
-    assert has_cloud and has_local
+    for role in detail.roles:
+        assert role.model_id == "", (
+            f"Role '{role.display_name}' has model_id={role.model_id!r}; "
+            "expected empty string (not-yet-configured sentinel)"
+        )
 
 
 def test_custom_uses_default_placeholder(preset_service):
+    """The custom preset keeps __DEFAULT__ — user's deliberate intent."""
     detail = preset_service.get_preset("custom")
     model_ids = [r.model_id for r in detail.roles]
     assert "__DEFAULT__" in model_ids
@@ -141,3 +160,45 @@ async def test_apply_each_preset(preset_service, role_repo, preset_id):
     pid = str(uuid.uuid4())
     rows = await preset_service.apply_preset(pid, preset_id, role_repo)
     assert len(rows) >= 1
+
+
+@pytest.mark.asyncio
+async def test_apply_local_solo_roles_have_empty_model_id(preset_service, role_repo):
+    """After apply_preset('local-solo'), every role has model_id == ''."""
+    pid = str(uuid.uuid4())
+    rows = await preset_service.apply_preset(pid, "local-solo", role_repo)
+    for row in rows:
+        assert row["model_id"] == "", (
+            f"Role '{row['display_name']}' has model_id={row['model_id']!r}"
+        )
+
+
+@pytest.mark.asyncio
+async def test_apply_cloud_premium_roles_have_empty_model_id(preset_service, role_repo):
+    """After apply_preset('cloud-premium'), every role has model_id == ''."""
+    pid = str(uuid.uuid4())
+    rows = await preset_service.apply_preset(pid, "cloud-premium", role_repo)
+    for row in rows:
+        assert row["model_id"] == "", (
+            f"Role '{row['display_name']}' has model_id={row['model_id']!r}"
+        )
+
+
+@pytest.mark.asyncio
+async def test_apply_hybrid_roles_have_empty_model_id(preset_service, role_repo):
+    """After apply_preset('hybrid'), every role has model_id == ''."""
+    pid = str(uuid.uuid4())
+    rows = await preset_service.apply_preset(pid, "hybrid", role_repo)
+    for row in rows:
+        assert row["model_id"] == "", (
+            f"Role '{row['display_name']}' has model_id={row['model_id']!r}"
+        )
+
+
+@pytest.mark.asyncio
+async def test_apply_custom_role_has_default_sentinel(preset_service, role_repo):
+    """After apply_preset('custom'), the single role has model_id == '__DEFAULT__'."""
+    pid = str(uuid.uuid4())
+    rows = await preset_service.apply_preset(pid, "custom", role_repo)
+    assert len(rows) == 1
+    assert rows[0]["model_id"] == "__DEFAULT__"

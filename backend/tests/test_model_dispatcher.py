@@ -81,6 +81,58 @@ def test_parse_provider_local_bare():
     assert model == "qwen2.5-coder-7b"
 
 
+def test_parse_provider_local_colon_prefix():
+    """local: prefix written by the seeder is stripped correctly."""
+    from services.model_dispatcher import _parse_provider
+    provider, model = _parse_provider("local:qwen2.5-7b")
+    assert provider == "local"
+    assert model == "qwen2.5-7b"
+
+
+def test_parse_provider_local_dash_prefix():
+    """local- prefix is stripped correctly."""
+    from services.model_dispatcher import _parse_provider
+    provider, model = _parse_provider("local-qwen2.5-7b")
+    assert provider == "local"
+    assert model == "qwen2.5-7b"
+
+
+# ---------------------------------------------------------------------------
+# stream_chat — local: prefix round-trip (mocked llama-cpp)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_stream_chat_local_prefix_dispatches_to_local_stream():
+    """stream_chat('local:qwen2.5-1.5b', ...) must call _local_stream,
+    not a cloud provider.  The llama-cpp call is fully mocked."""
+    from services.model_dispatcher import stream_chat
+
+    # Minimal catalog entry so catalog lookup succeeds.
+    fake_catalog_entry = {
+        "id": "qwen2.5-1.5b",
+        "hf_filename": "qwen2.5-1.5b.Q4_K_M.gguf",
+    }
+
+    async def _fake_local_stream(model_id, messages, **kwargs):
+        assert model_id == "qwen2.5-1.5b", (
+            f"Expected un-prefixed model id; got {model_id!r}"
+        )
+        yield {"type": "delta", "content": "hello"}
+        yield {"type": "done", "finish_reason": "stop", "usage": {}}
+
+    with patch("services.model_dispatcher._local_stream", side_effect=_fake_local_stream):
+        events = []
+        async for evt in stream_chat(
+            "local:qwen2.5-1.5b",
+            [{"role": "user", "content": "hi"}],
+            db=None,
+        ):
+            events.append(evt)
+
+    assert any(e["type"] == "delta" for e in events)
+    assert any(e["type"] == "done" for e in events)
+
+
 # ---------------------------------------------------------------------------
 # stream_chat — Anthropic (mocked)
 # ---------------------------------------------------------------------------

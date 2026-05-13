@@ -97,13 +97,19 @@ def test_create_role_empty_system_prompt_rejected(test_app):
     assert r.status_code == 422
 
 
-def test_create_role_empty_model_id_rejected(test_app):
+def test_create_role_empty_model_id_accepted(test_app):
+    """Empty model_id is now valid — it is the 'not yet configured' sentinel.
+
+    The workflow service will fail fast with a clear error if the user tries
+    to run a role that still has model_id == "".
+    """
     pid = _create_project(test_app)
     r = test_app.post(
         f"/api/v1/coder/projects/{pid}/roles",
         json={**VALID_ROLE, "model_id": ""},
     )
-    assert r.status_code == 422
+    assert r.status_code == 201, r.text
+    assert r.json()["model_id"] == ""
 
 
 def test_create_role_whitespace_model_id_rejected(test_app):

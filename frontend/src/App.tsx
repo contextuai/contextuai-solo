@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect } from "react";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 import { DesktopAuthProvider } from "@/lib/desktop-auth";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import { AiModeProvider } from "@/contexts/ai-mode-context";
@@ -101,6 +101,32 @@ function SidecarGate({ children }: { children: React.ReactNode }) {
   return null; // splash screen in index.html is visible
 }
 
+/**
+ * Navigates to the correct home route whenever the app mode changes.
+ *
+ * - solo  → "/"               (if currently on a /coder/* route)
+ * - coder → "/coder/projects" (if not already on a /coder/* route)
+ *
+ * Effect deps are intentionally [mode] only — we do not want to re-run
+ * when the user navigates freely within /coder/* routes.
+ */
+function ModeRedirector() {
+  const { mode } = useMode();
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  useEffect(() => {
+    const onCoderRoute = location.pathname.startsWith("/coder/");
+    if (mode === "coder" && !onCoderRoute) {
+      navigate("/coder/projects", { replace: true });
+    } else if (mode === "solo" && onCoderRoute) {
+      navigate("/", { replace: true });
+    }
+  }, [mode]); // intentionally not depending on location
+
+  return null;
+}
+
 /** Wires the global Cmd/Ctrl+Shift+M shortcut for toggling app mode. */
 function ModeShortcutHandler() {
   const { mode, setMode } = useMode();
@@ -129,6 +155,7 @@ export default function App() {
           <BrowserRouter>
             <WindowTitle />
             <ModeShortcutHandler />
+            <ModeRedirector />
             <Routes>
               <Route path="/wizard" element={<WizardPage />} />
               <Route element={<RequireWizard><DesktopLayout /></RequireWizard>}>

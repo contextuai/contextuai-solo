@@ -170,6 +170,21 @@ class CoderWorkflowService:
 
         ordered = self._order_roles(workflow_mode, enabled)
 
+        # ── Fail-fast: every enabled role must have a model selected ────
+        for role in ordered:
+            mid = role.get("model_id", "")
+            if mid == "":
+                display = role.get("display_name") or role.get("role_kind") or "Unknown"
+                yield _fmt_sse({
+                    "type": "error",
+                    "error": (
+                        f"Role '{display}' has no model selected. "
+                        "Open the Team panel and pick one."
+                    ),
+                })
+                yield "data: [DONE]\n\n"
+                return
+
         # ── workflow_start ──────────────────────────────────────────────
         yield _fmt_sse({
             "type": "workflow_start",
@@ -465,9 +480,14 @@ class CoderWorkflowService:
         project_id: str,
         project: Dict[str, Any],
     ) -> List[Dict[str, Any]]:
-        """Create an inline Coder role when the project has zero enabled roles."""
-        # Try to get the project's preferred model_id, fall back to __DEFAULT__.
-        model_id = project.get("model_id") or DEFAULT_SENTINEL
+        """Return an inline Coder role when the project has zero enabled roles.
+
+        If the project document has no model_id set, the returned role will
+        have model_id == "" so the fail-fast validator in ``_run_unlocked``
+        catches it and emits a clear error instead of silently falling back
+        to a default model.
+        """
+        model_id = project.get("model_id") or ""
         return [{
             "role_id": f"{project_id}-fallback",
             "project_id": project_id,

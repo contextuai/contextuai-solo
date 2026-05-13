@@ -155,9 +155,25 @@ class CoderRunResponse(BaseModel):
 # =============================================================================
 
 def _validate_model_id(v: str) -> str:
-    """Reject empty, whitespace-only, or obviously bogus model_id strings."""
-    if not v or not v.strip():
-        raise ValueError("model_id must not be empty or whitespace")
+    """Validate model_id values.
+
+    Allowed values:
+    - Empty string ``""`` — sentinel meaning "not yet configured; the workflow
+      will fail fast with a clear error until the user picks a model in the
+      Team panel."
+    - ``"__DEFAULT__"`` — sentinel meaning "use whatever default model is
+      configured."  Only the Custom preset uses this intentionally.
+    - Any non-empty, non-whitespace string of length >= 2 — a concrete model ID
+      (local catalog ID, or ``provider:model`` prefixed cloud ID).
+
+    Whitespace-only strings are rejected because they are almost certainly
+    accidental and would produce confusing "model not found" errors at runtime.
+    """
+    # Empty string is the "not yet configured" sentinel — always allowed.
+    if v == "":
+        return v
+    if not v.strip():
+        raise ValueError("model_id must not be whitespace-only")
     stripped = v.strip()
     if len(stripped) < 2:
         raise ValueError("model_id is too short")
