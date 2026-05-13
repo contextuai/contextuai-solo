@@ -16,6 +16,7 @@ import { test, expect, type Page } from "@playwright/test";
 test.setTimeout(45_000);
 
 const API = "http://127.0.0.1:18741/api/v1";
+const BACKEND_ROOT = "http://127.0.0.1:18741"; // /v1/models is OpenAI-compat, mounted at root
 const FRONTEND = "http://localhost:1420";
 
 // ---------------------------------------------------------------------------
@@ -40,8 +41,10 @@ async function stepThroughToStep3(page: Page): Promise<void> {
   await emptyFolder.click();
 
   // Step 2: fill in name + folder path
+  // Use placeholders — the Input component renders <label> + <input> without
+  // an htmlFor link, so getByLabel can't match.
   await page.waitForTimeout(200);
-  const nameInput = page.getByLabel(/project name/i);
+  const nameInput = page.locator("input[placeholder='e.g. landing-page']");
   await nameInput.fill("Test Project PR18");
 
   const folderInput = page.locator("input[placeholder='/path/to/folder']");
@@ -65,7 +68,7 @@ async function presetsAvailable(page: Page): Promise<boolean> {
 
 async function modelsAvailable(page: Page): Promise<boolean> {
   try {
-    const resp = await page.request.get(`${API}/v1/models`);
+    const resp = await page.request.get(`${BACKEND_ROOT}/v1/models`);
     if (!resp.ok()) return false;
     const data = await resp.json() as { data?: unknown[] };
     return Array.isArray(data.data) && data.data.length > 0;
@@ -76,7 +79,7 @@ async function modelsAvailable(page: Page): Promise<boolean> {
 
 async function getFirstModelId(page: Page): Promise<string | null> {
   try {
-    const resp = await page.request.get(`${API}/v1/models`);
+    const resp = await page.request.get(`${BACKEND_ROOT}/v1/models`);
     if (!resp.ok()) return null;
     const data = await resp.json() as { data?: Array<{ id: string }> };
     return data.data?.[0]?.id ?? null;

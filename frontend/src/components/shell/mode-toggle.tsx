@@ -1,3 +1,4 @@
+import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { useMode, type AppMode } from "@/contexts/mode-context";
 
@@ -6,8 +7,14 @@ const SEGMENTS: { value: AppMode; label: string }[] = [
   { value: "coder", label: "Coder" },
 ];
 
+const HOME_FOR: Record<AppMode, string> = {
+  solo: "/",
+  coder: "/coder/projects",
+};
+
 export function ModeToggle() {
   const { mode, setMode } = useMode();
+  const navigate = useNavigate();
 
   return (
     <div
@@ -26,7 +33,10 @@ export function ModeToggle() {
             type="button"
             role="tab"
             aria-selected={active}
-            onClick={() => setMode(seg.value)}
+            onClick={() => {
+              setMode(seg.value);
+              navigate(HOME_FOR[seg.value]);
+            }}
             className={cn(
               "flex-1 inline-flex items-center justify-center",
               "rounded-full text-xs font-medium",

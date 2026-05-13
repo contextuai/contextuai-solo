@@ -365,8 +365,12 @@ function AIProvidersTab() {
       ) : (
         <div className="grid grid-cols-1 gap-4">
           {/* Local AI Built-in — always at top, accordion only */}
-          <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 overflow-hidden">
+          <div
+            data-testid="provider-card-local-ai"
+            className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 overflow-hidden"
+          >
             <button
+              data-testid="steps-toggle-local-ai"
               onClick={() => {
                 const el = document.getElementById("local-ai-expand");
                 if (el) el.classList.toggle("hidden");

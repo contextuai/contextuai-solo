@@ -102,27 +102,35 @@ function SidecarGate({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * Navigates to the correct home route whenever the app mode changes.
+ * Keeps `mode` and the URL in sync.
  *
- * - solo  → "/"               (if currently on a /coder/* route)
- * - coder → "/coder/projects" (if not already on a /coder/* route)
+ * Two effects, deliberately decoupled:
  *
- * Effect deps are intentionally [mode] only — we do not want to re-run
- * when the user navigates freely within /coder/* routes.
+ * 1. URL → mode (URL is the source of truth on deep-link / refresh / back-button).
+ *    Deep-linking to /coder/<anything> flips `mode` to "coder" so the Coder
+ *    sidebar + page render — without this, persisted mode=solo would force
+ *    a redirect away from the Coder URL the user actually wants.
+ *
+ * 2. mode → URL (user toggled the top-bar Solo/Coder control).
+ *    Lands the user on the right home route. Watches `mode` only so we don't
+ *    fight free navigation within /coder/*.
  */
-function ModeRedirector() {
-  const { mode } = useMode();
-  const navigate = useNavigate();
+function ModeRouter() {
+  const { mode, setMode } = useMode();
   const location = useLocation();
 
+  // URL → mode: deep-links / refresh on /coder/* flip the mode so the
+  // Coder sidebar renders. Navigation in the *other* direction (toggle
+  // button, keyboard shortcut) calls navigate() explicitly from the
+  // ModeToggle component, so we don't need a mode → URL effect here —
+  // and an effect here would fight StrictMode's double-invoke anyway.
   useEffect(() => {
-    const onCoderRoute = location.pathname.startsWith("/coder/");
-    if (mode === "coder" && !onCoderRoute) {
-      navigate("/coder/projects", { replace: true });
-    } else if (mode === "solo" && onCoderRoute) {
-      navigate("/", { replace: true });
+    if (location.pathname.startsWith("/coder/") && mode !== "coder") {
+      setMode("coder");
+    } else if (!location.pathname.startsWith("/coder/") && mode === "coder") {
+      setMode("solo");
     }
-  }, [mode]); // intentionally not depending on location
+  }, [location.pathname]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return null;
 }
@@ -130,14 +138,19 @@ function ModeRedirector() {
 /** Wires the global Cmd/Ctrl+Shift+M shortcut for toggling app mode. */
 function ModeShortcutHandler() {
   const { mode, setMode } = useMode();
+  const navigate = useNavigate();
   const bindings = useMemo(
     () => [
       {
         combo: "mod+shift+m",
-        handler: () => setMode(mode === "solo" ? "coder" : "solo"),
+        handler: () => {
+          const next = mode === "solo" ? "coder" : "solo";
+          setMode(next);
+          navigate(next === "coder" ? "/coder/projects" : "/");
+        },
       },
     ],
-    [mode, setMode]
+    [mode, setMode, navigate]
   );
   useKeyboardShortcuts(bindings);
   return null;
@@ -155,7 +168,7 @@ export default function App() {
           <BrowserRouter>
             <WindowTitle />
             <ModeShortcutHandler />
-            <ModeRedirector />
+            <ModeRouter />
             <Routes>
               <Route path="/wizard" element={<WizardPage />} />
               <Route element={<RequireWizard><DesktopLayout /></RequireWizard>}>
