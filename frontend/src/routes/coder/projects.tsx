@@ -16,7 +16,6 @@ import { cn } from "@/lib/utils";
 import {
   type CoderProject,
   type CoderTemplateInfo,
-  createCoderProject,
   listCoderProjects,
   listCoderTemplates,
 } from "@/lib/api/coder-client";
@@ -40,7 +39,6 @@ export default function CoderProjectsPage() {
   const [templates, setTemplates] = useState<CoderTemplateInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
   const [presetTemplateId, setPresetTemplateId] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
@@ -74,25 +72,11 @@ export default function CoderProjectsPage() {
     }
   }, [searchParams, setSearchParams]);
 
-  async function handleCreate(input: {
-    name: string;
-    folder_path: string;
-    template_id: string | null;
-  }) {
-    setSubmitting(true);
-    try {
-      const created = await createCoderProject({
-        name: input.name,
-        folder_path: input.folder_path,
-        template_id: input.template_id ?? undefined,
-      });
-      setProjects((prev) => [created, ...prev]);
-      setCreateOpen(false);
-      setPresetTemplateId(null);
-      navigate(`/coder/projects/${created.project_id}`);
-    } finally {
-      setSubmitting(false);
-    }
+  function handleCreated() {
+    setCreateOpen(false);
+    setPresetTemplateId(null);
+    // Reload the project list in the background
+    reload();
   }
 
   return (
@@ -146,15 +130,12 @@ export default function CoderProjectsPage() {
       <NewProjectDialog
         open={createOpen}
         onClose={() => {
-          if (!submitting) {
-            setCreateOpen(false);
-            setPresetTemplateId(null);
-          }
+          setCreateOpen(false);
+          setPresetTemplateId(null);
         }}
         templates={templates}
         presetTemplateId={presetTemplateId}
-        submitting={submitting}
-        onSubmit={handleCreate}
+        onCreated={handleCreated}
       />
     </div>
   );

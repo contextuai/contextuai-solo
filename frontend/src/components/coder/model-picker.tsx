@@ -86,9 +86,11 @@ interface ModelPickerProps {
   value: string;
   onChange: (modelId: string) => void;
   className?: string;
+  /** "sm" renders a more compact trigger button */
+  size?: "sm" | "md";
 }
 
-export function ModelPicker({ value, onChange, className }: ModelPickerProps) {
+export function ModelPicker({ value, onChange, className, size = "md" }: ModelPickerProps) {
   const [open, setOpen] = useState(false);
   const [models, setModels] = useState<OpenAIModel[]>([]);
   const [savedProviders, setSavedProviders] = useState<CloudProvider[]>([]);
@@ -147,7 +149,8 @@ export function ModelPicker({ value, onChange, className }: ModelPickerProps) {
         type="button"
         onClick={() => setOpen((v) => !v)}
         className={cn(
-          "w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl text-sm",
+          "w-full flex items-center justify-between gap-2 rounded-xl",
+          size === "sm" ? "px-2.5 py-1.5 text-xs" : "px-3 py-2 text-sm",
           "bg-neutral-50 dark:bg-neutral-800",
           "border border-neutral-200 dark:border-neutral-700",
           "text-neutral-900 dark:text-white",
