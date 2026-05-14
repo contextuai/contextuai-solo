@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown, CheckCircle2, AlertCircle, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { api } from "@/lib/transport";
+import { fetchOpenAICompat } from "@/lib/transport";
 import { listCloudProviders } from "@/lib/api/cloud-providers-client";
 import type { CloudProvider } from "@/lib/api/cloud-providers-client";
 
@@ -101,7 +101,7 @@ export function ModelPicker({ value, onChange, className, size = "md" }: ModelPi
   useEffect(() => {
     let cancelled = false;
     Promise.all([
-      api.get<OpenAIModelList>("/v1/models").then((r) => r.data.data ?? []).catch(() => [] as OpenAIModel[]),
+      fetchOpenAICompat<OpenAIModelList>("/v1/models").then((r) => r.data ?? []).catch(() => [] as OpenAIModel[]),
       listCloudProviders().catch(() => [] as CloudProvider[]),
     ]).then(([m, p]) => {
       if (cancelled) return;

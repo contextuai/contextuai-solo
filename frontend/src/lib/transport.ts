@@ -214,3 +214,24 @@ export async function getApiBaseUrl(): Promise<string> {
   }
   return DEV_API_URL;
 }
+
+/**
+ * Backend root (no /api/v1 suffix) — for OpenAI-compatible endpoints that
+ * the backend mounts at the root: /v1/models, /v1/chat/completions,
+ * /v1/completions. Mirrors the routing in routers/openai_compat.py.
+ */
+export async function getBackendRootUrl(): Promise<string> {
+  if (isTauri) {
+    const port = await getSidecarPort();
+    return `http://127.0.0.1:${port}`;
+  }
+  return DEV_API_URL.replace("/api/v1", "");
+}
+
+/** GET helper for the OpenAI-compat endpoints mounted at the backend root. */
+export async function fetchOpenAICompat<T = unknown>(path: string): Promise<T> {
+  const baseUrl = await getBackendRootUrl();
+  const resp = await fetch(`${baseUrl}${path}`);
+  if (!resp.ok) throw new ApiError(resp.status, await resp.json().catch(() => ({})));
+  return (await resp.json()) as T;
+}

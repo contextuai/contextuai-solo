@@ -220,8 +220,8 @@ test("DC-NEWPROJ-02: same-model toggle propagates to all roles", async ({ page }
 // ---------------------------------------------------------------------------
 
 test("DC-NEWPROJ-03: no-models empty state card shows navigation buttons", async ({ page }) => {
-  // Mock GET /api/v1/v1/models to return empty and /cloud-providers to return empty
-  await page.route(`${API}/v1/models`, (route) => {
+  // Mock GET /v1/models (backend root, NOT under /api/v1) and /cloud-providers
+  await page.route(`${BACKEND_ROOT}/v1/models`, (route) => {
     route.fulfill({
       status: 200,
       contentType: "application/json",

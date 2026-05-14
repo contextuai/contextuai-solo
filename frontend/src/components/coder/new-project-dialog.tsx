@@ -34,7 +34,7 @@ import type {
   WorkflowMode,
 } from "@/lib/api/coder-workflow-client";
 import { ModelPicker } from "@/components/coder/model-picker";
-import { api } from "@/lib/transport";
+import { fetchOpenAICompat } from "@/lib/transport";
 import { listCloudProviders } from "@/lib/api/cloud-providers-client";
 
 // ---------------------------------------------------------------------------
@@ -168,7 +168,7 @@ export function NewProjectDialog({
     }).catch(() => {/* soft-fail */});
 
     Promise.all([
-      api.get<{ data: unknown[] }>("/v1/models").then((r) => (r.data.data ?? []).length > 0).catch(() => false),
+      fetchOpenAICompat<{ data: unknown[] }>("/v1/models").then((r) => (r.data ?? []).length > 0).catch(() => false),
       listCloudProviders().then((p) => p.length > 0).catch(() => false),
     ]).then(([hasLocal, hasCloud]) => {
       if (!cancelled) setHasModels(hasLocal || hasCloud);
