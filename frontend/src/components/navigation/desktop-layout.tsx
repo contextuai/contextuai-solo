@@ -9,13 +9,12 @@ export function DesktopLayout() {
   const { mode } = useMode();
 
   return (
-    <div className="min-h-screen bg-neutral-50 dark:bg-[#242523]">
-      {/* Top bar with centred mode toggle — sticky so it stays visible when
-          inner pages (e.g. Coder project detail, terminal output) grow past
-          the viewport. */}
+    <div className="h-screen flex flex-col overflow-hidden bg-neutral-50 dark:bg-[#242523]">
+      {/* Top bar with the mode toggle. Lives outside the scroll container so
+          inner pages never push it out of view. */}
       <div
         className={cn(
-          "sticky top-0 z-30 flex items-center justify-center h-12 px-4",
+          "flex-shrink-0 flex items-center justify-center h-12 px-4",
           "bg-white dark:bg-neutral-900",
           "border-b border-neutral-200 dark:border-neutral-800"
         )}
@@ -23,7 +22,7 @@ export function DesktopLayout() {
         <ModeToggle />
       </div>
 
-      <div className="flex">
+      <div className="flex flex-1 min-h-0">
         {/* Cross-fade between sidebars on mode change */}
         <div className="relative">
           <div
@@ -46,7 +45,7 @@ export function DesktopLayout() {
           </div>
         </div>
 
-        <main className="flex-1 transition-all duration-300">
+        <main className="flex-1 overflow-y-auto transition-all duration-300">
           <Outlet />
         </main>
       </div>

@@ -73,7 +73,7 @@ export default function DesktopSidebar() {
   return (
     <aside
       className={cn(
-        "relative flex flex-col h-screen border-r transition-all duration-300 ease-in-out",
+        "relative flex flex-col h-full border-r transition-all duration-300 ease-in-out",
         "bg-white dark:bg-neutral-900 border-neutral-200 dark:border-neutral-800",
         collapsed ? "w-[68px]" : "w-[240px]"
       )}

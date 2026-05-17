@@ -994,7 +994,7 @@ export default function SettingsPage() {
   }, [searchParams]);
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-full">
       {/* Header */}
       <div className="sticky top-0 z-10 bg-neutral-50/80 dark:bg-[#242523]/80 backdrop-blur-xl border-b border-neutral-200 dark:border-neutral-800">
         <div className="max-w-4xl mx-auto px-6 pt-6 pb-4">
