@@ -350,7 +350,7 @@ export default function CrewsPage() {
             </div>
             <div>
               <h1 className="text-xl font-semibold text-neutral-900 dark:text-white">
-                Crews
+                Workspace
               </h1>
               <p className="text-sm text-neutral-500 dark:text-neutral-400">
                 {kindCounts.crew} crew{kindCounts.crew !== 1 ? "s" : ""} &middot;{" "}
@@ -563,6 +563,7 @@ export default function CrewsPage() {
         open={builderOpen}
         onClose={() => setBuilderOpen(false)}
         onCreated={handleRefresh}
+        kind={isProjectsTab ? "project" : "crew"}
       />
     </div>
   );
