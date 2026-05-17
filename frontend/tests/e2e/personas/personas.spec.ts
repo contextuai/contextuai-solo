@@ -23,7 +23,7 @@ test.beforeEach(async ({ page }) => {
 test.describe("CRUD via UI", () => {
   test("DC-PERSONA-01: view all personas", async ({ page }) => {
     const cardCount = await personas.personaCards.count();
-    const emptyVisible = await page.locator("text=No personas yet").isVisible().catch(() => false);
+    const emptyVisible = await page.locator("text=No connectors yet").isVisible().catch(() => false);
     expect(cardCount > 0 || emptyVisible).toBeTruthy();
   });
 
@@ -111,7 +111,7 @@ test.describe("Wizard Flow", () => {
     await personas.createButton.click();
     await expect(personas.typeSearchInput).toBeVisible({ timeout: 5_000 });
 
-    await expect(page.locator("text=Select Persona Type")).toBeVisible();
+    await expect(page.locator("text=Select Connector Type")).toBeVisible();
 
     const typeCards = page.locator(".fixed.inset-0 .grid button");
     const count = await typeCards.count();

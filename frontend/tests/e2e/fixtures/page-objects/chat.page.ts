@@ -77,9 +77,9 @@ export class ChatPage {
     return this.page.locator("button:has(svg.lucide-cpu)").first();
   }
 
-  /** Persona selector dropdown trigger. */
+  /** Connector selector dropdown trigger. */
   get personaSelector(): Locator {
-    // Persona selector — identified by the Sparkles icon from lucide-react
+    // Connector selector — identified by the Sparkles icon from lucide-react
     return this.page.locator("button:has(svg.lucide-sparkles)").first();
   }
 

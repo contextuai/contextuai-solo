@@ -23,7 +23,7 @@ test.beforeEach(async ({ page }) => {
 test.describe("CRUD via UI", () => {
   // DC-CREW-01: View crews list
   test("DC-CREW-01: view crews list", async ({ page }) => {
-    await expect(page.locator("h1", { hasText: "Crews" })).toBeVisible();
+    await expect(page.locator("h1", { hasText: "Workspace" })).toBeVisible();
 
     const crewCount = await crews.getCrewCount();
     const emptyVisible = await crews.emptyCrewsState.isVisible().catch(() => false);
@@ -69,7 +69,7 @@ test.describe("CRUD via UI", () => {
     await expect(crews.searchInput).toBeVisible();
 
     await crews.searchCrews("test");
-    await expect(page.locator("h1", { hasText: "Crews" })).toBeVisible();
+    await expect(page.locator("h1", { hasText: "Workspace" })).toBeVisible();
   });
 
   // DC-CREW-05: Filter crews by status and mode
@@ -83,7 +83,7 @@ test.describe("CRUD via UI", () => {
     await crews.modeFilter.selectOption("sequential");
     await page.waitForTimeout(300);
 
-    await expect(page.locator("h1", { hasText: "Crews" })).toBeVisible();
+    await expect(page.locator("h1", { hasText: "Workspace" })).toBeVisible();
 
     // Reset filters
     await crews.statusFilter.selectOption("all");
@@ -292,7 +292,7 @@ test.describe("Positive Workflows", () => {
     await crews.refreshButton.click();
     await page.waitForTimeout(1000);
 
-    await expect(page.locator("h1", { hasText: "Crews" })).toBeVisible();
+    await expect(page.locator("h1", { hasText: "Workspace" })).toBeVisible();
   });
 });
 
@@ -307,7 +307,7 @@ test.describe("Negative Workflows", () => {
 
     const crewCount = await crews.getCrewCount();
     if (crewCount === 0) {
-      await expect(page.locator("h1", { hasText: "Crews" })).toBeVisible();
+      await expect(page.locator("h1", { hasText: "Workspace" })).toBeVisible();
     }
   });
 

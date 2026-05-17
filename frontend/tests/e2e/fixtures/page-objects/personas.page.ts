@@ -18,11 +18,11 @@ export class PersonasPage {
   // ── Locators ────────────────────────────────────────────────────
 
   get createButton(): Locator {
-    return this.page.getByRole("button", { name: /create persona/i }).first();
+    return this.page.getByRole("button", { name: /create connector/i }).first();
   }
 
   get searchInput(): Locator {
-    return this.page.locator('input[placeholder="Search personas..."]');
+    return this.page.locator('input[placeholder="Search connectors..."]');
   }
 
   get categoryFilters(): Locator {
@@ -47,7 +47,7 @@ export class PersonasPage {
 
   /** Type search input on Step 1. */
   get typeSearchInput(): Locator {
-    return this.page.locator('input[placeholder="Search persona types..."]');
+    return this.page.locator('input[placeholder="Search connector types..."]');
   }
 
   /** Name input in Step 2. */
@@ -107,7 +107,7 @@ export class PersonasPage {
 
   /** Delete confirmation dialog. */
   get deleteDialog(): Locator {
-    return this.page.locator(".fixed").filter({ hasText: "Delete persona?" });
+    return this.page.locator(".fixed").filter({ hasText: "Delete connector?" });
   }
 
   get confirmDeleteButton(): Locator {
