@@ -209,7 +209,7 @@ test.describe("Positive Workflows", () => {
     expect(count).toBeGreaterThanOrEqual(6);
   });
 
-  test("DC-PERSONA-09: created persona appears in chat persona selector", async ({ page }) => {
+  test("DC-PERSONA-09: created persona appears in chat connector selector", async ({ page }) => {
     const name = `ChatVisible ${Date.now()}`;
     await personas.createPersona({ name });
     await page.waitForTimeout(1000);
@@ -217,8 +217,8 @@ test.describe("Positive Workflows", () => {
     await page.goto("/");
     await page.waitForLoadState("networkidle");
 
-    const personaSelector = page.locator("button").filter({ hasText: /persona/i }).first();
-    await personaSelector.click();
+    const connectorSelector = page.locator("button").filter({ hasText: /connector/i }).first();
+    await connectorSelector.click();
     await page.waitForTimeout(500);
 
     const dropdown = page.locator(".absolute.bottom-full");
