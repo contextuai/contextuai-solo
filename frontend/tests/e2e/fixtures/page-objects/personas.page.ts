@@ -79,7 +79,7 @@ export class PersonasPage {
   /** System prompt textarea in Step 2. */
   get formSystemPrompt(): Locator {
     return this.page.locator(
-      'textarea[placeholder*="Optional instructions that define how this persona behaves"]'
+      'textarea[placeholder*="Optional instructions that define how this connector behaves"]'
     );
   }
 
