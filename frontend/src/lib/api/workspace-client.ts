@@ -1,5 +1,9 @@
 import { api } from "@/lib/transport";
 
+export type AgentKind = "prompt" | "database" | "web" | "mcp" | "api" | "file";
+
+export const AGENT_KINDS: AgentKind[] = ["prompt", "database", "web", "mcp", "api", "file"];
+
 export interface WorkspaceAgent {
   id: string;
   agent_id?: string;
@@ -13,6 +17,7 @@ export interface WorkspaceAgent {
   icon?: string;
   category?: string;
   category_label?: string;
+  kind?: AgentKind;
   is_public: boolean;
   is_system?: boolean;
   source?: string;
@@ -54,6 +59,13 @@ const CATEGORY_ROLE_MAP: Record<string, string> = {
 };
 
 function normalizeAgent(raw: Record<string, unknown>): WorkspaceAgent {
+  const rawKind = raw.kind as string | undefined;
+  const kind: AgentKind | undefined =
+    rawKind && (AGENT_KINDS as string[]).includes(rawKind)
+      ? (rawKind as AgentKind)
+      : rawKind === undefined
+        ? "prompt"
+        : undefined;
   return {
     id: (raw.id ?? raw.agent_id ?? "") as string,
     agent_id: (raw.agent_id ?? raw.id ?? "") as string,
@@ -67,6 +79,7 @@ function normalizeAgent(raw: Record<string, unknown>): WorkspaceAgent {
     icon: raw.icon as string | undefined,
     category: (raw.category_label ?? CATEGORY_LABEL_MAP[raw.category as string] ?? raw.category ?? "") as string,
     category_label: raw.category_label as string | undefined,
+    kind,
     is_public: (raw.is_public ?? true) as boolean,
     is_system: raw.is_system as boolean | undefined,
     source: raw.source as string | undefined,
@@ -75,15 +88,32 @@ function normalizeAgent(raw: Record<string, unknown>): WorkspaceAgent {
   };
 }
 
+export interface ListAgentsOptions {
+  kind?: AgentKind;
+  page?: number;
+  pageSize?: number;
+}
+
 export const workspaceApi = {
-  async listAgents(): Promise<WorkspaceAgent[]> {
+  async listAgents(options?: ListAgentsOptions): Promise<WorkspaceAgent[]> {
+    const params = new URLSearchParams();
+    params.set("page_size", String(options?.pageSize ?? 100));
+    if (options?.page) params.set("page", String(options.page));
+    if (options?.kind) params.set("kind", options.kind);
     const { data } = await api.get<{ agents: Record<string, unknown>[] } | Record<string, unknown>[]>(
-      "/workspace/agents?page_size=100"
+      `/workspace/agents?${params.toString()}`
     );
     const raw = Array.isArray(data)
       ? data
       : (data as { agents: Record<string, unknown>[] }).agents ?? [];
     return raw.map(normalizeAgent);
+  },
+
+  async getAgentKindCounts(): Promise<Record<string, number>> {
+    const { data } = await api.get<{ counts: Record<string, number> }>(
+      "/workspace/agents/kinds/counts"
+    );
+    return data?.counts ?? {};
   },
 
   async getAgent(id: string): Promise<WorkspaceAgent> {

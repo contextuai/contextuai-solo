@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import {
   crewsApi,
@@ -8,6 +8,11 @@ import {
   type ConnectionBinding,
   type CrewTrigger,
 } from "@/lib/api/crews-client";
+import {
+  listCoderProjects,
+  type CoderProject,
+} from "@/lib/api/coder-client";
+import { AgentLibraryTabs } from "@/components/agents/agent-library-tabs";
 import {
   connectionsApi,
   type ConnectionSummary,
@@ -36,8 +41,6 @@ import {
   ArrowRight,
   ArrowLeft,
   BookOpen,
-  Search,
-  ChevronDown,
   Check,
   Eye,
   Cable,
@@ -48,6 +51,7 @@ import {
   Calendar,
   ArrowDownToLine,
   ArrowUpFromLine,
+  Wrench,
 } from "lucide-react";
 
 type ExecutionMode = "sequential" | "parallel" | "pipeline" | "autonomous";
@@ -116,10 +120,24 @@ interface AgentForm {
   name: string;
   role: string;
   instructions: string;
+  // Phase 4 PR 9: when set, this step runs a Coder project headlessly
+  // instead of invoking an LLM agent.
+  coder_project_id?: string | null;
+  coder_run_timeout_seconds?: number;
 }
 
 function emptyAgent(): AgentForm {
   return { name: "", role: "custom", instructions: "" };
+}
+
+function emptyCoderStep(project: CoderProject): AgentForm {
+  return {
+    name: `Coder: ${project.name}`,
+    role: "coder",
+    instructions: "",
+    coder_project_id: project.project_id,
+    coder_run_timeout_seconds: 60,
+  };
 }
 
 const EXECUTION_MODES: {
@@ -165,26 +183,6 @@ const ROLE_OPTIONS = [
 ];
 
 // ---------------------------------------------------------------------------
-// Category colors for badges
-// ---------------------------------------------------------------------------
-const CATEGORY_COLORS: Record<string, string> = {
-  marketing: "bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-400",
-  sales: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400",
-  finance: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
-  engineering: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
-  operations: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400",
-  hr: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400",
-  legal: "bg-slate-100 text-slate-700 dark:bg-slate-900/30 dark:text-slate-400",
-  support: "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400",
-  product: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400",
-  data: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
-};
-
-function categoryBadgeClass(category: string) {
-  return CATEGORY_COLORS[category] ?? "bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400";
-}
-
-// ---------------------------------------------------------------------------
 // Library Panel (overlay inside crew builder)
 // ---------------------------------------------------------------------------
 function LibraryPanel({
@@ -196,86 +194,6 @@ function LibraryPanel({
   onClose: () => void;
   onSelect: (agent: LibraryAgent) => void;
 }) {
-  const [agents, setAgents] = useState<LibraryAgent[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [search, setSearch] = useState("");
-  const [category, setCategory] = useState("");
-  const [categories, setCategories] = useState<string[]>([]);
-  const [page, setPage] = useState(1);
-  const [totalCount, setTotalCount] = useState(0);
-  const pageSize = 20;
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>(null);
-
-  const fetchAgents = useCallback(
-    async (p: number, searchTerm: string, cat: string) => {
-      setLoading(true);
-      try {
-        const res = await crewsApi.listLibraryAgents({
-          page: p,
-          page_size: pageSize,
-          search: searchTerm || undefined,
-          category: cat || undefined,
-        });
-        setAgents(res.agents);
-        setTotalCount(res.total_count);
-        if (!cat && !searchTerm && p === 1 && res.agents.length > 0) {
-          setCategories((prev) => {
-            const cats = new Set(prev);
-            res.agents.forEach((a) => cats.add(a.category));
-            return Array.from(cats).sort();
-          });
-        }
-      } catch {
-        // silent
-      } finally {
-        setLoading(false);
-      }
-    },
-    []
-  );
-
-  useEffect(() => {
-    if (open) {
-      setPage(1);
-      fetchAgents(1, search, category);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
-
-  useEffect(() => {
-    if (open && categories.length === 0) {
-      crewsApi
-        .listLibraryAgents({ page: 1, page_size: 100 })
-        .then((res) => {
-          const cats = Array.from(new Set(res.agents.map((a) => a.category))).sort();
-          setCategories(cats);
-        })
-        .catch(() => {});
-    }
-  }, [open, categories.length]);
-
-  const handleSearch = (value: string) => {
-    setSearch(value);
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      setPage(1);
-      fetchAgents(1, value, category);
-    }, 300);
-  };
-
-  const handleCategory = (cat: string) => {
-    setCategory(cat);
-    setPage(1);
-    fetchAgents(1, search, cat);
-  };
-
-  const handlePage = (p: number) => {
-    setPage(p);
-    fetchAgents(p, search, category);
-  };
-
-  const totalPages = Math.ceil(totalCount / pageSize);
-
   if (!open) return null;
 
   return (
@@ -286,7 +204,6 @@ function LibraryPanel({
           <h3 className="text-sm font-semibold text-neutral-900 dark:text-white">
             Agent Library
           </h3>
-          <span className="text-xs text-neutral-400">({totalCount} agents)</span>
         </div>
         <button
           onClick={onClose}
@@ -296,95 +213,23 @@ function LibraryPanel({
         </button>
       </div>
 
-      <div className="flex items-center gap-2 px-5 py-3 border-b border-neutral-100 dark:border-neutral-800">
-        <div className="relative flex-1">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-neutral-400" />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => handleSearch(e.target.value)}
-            placeholder="Search agents..."
-            className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-sm focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 outline-none transition-colors"
-          />
-        </div>
-        <div className="relative">
-          <select
-            value={category}
-            onChange={(e) => handleCategory(e.target.value)}
-            className="appearance-none pl-3 pr-7 py-1.5 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-sm focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 outline-none transition-colors"
-          >
-            <option value="">All categories</option>
-            {categories.map((c) => (
-              <option key={c} value={c}>
-                {c.charAt(0).toUpperCase() + c.slice(1)}
-              </option>
-            ))}
-          </select>
-          <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-neutral-400 pointer-events-none" />
-        </div>
+      <div className="flex-1 overflow-y-auto">
+        <AgentLibraryTabs
+          variant="compact"
+          onSelect={(agent) =>
+            onSelect({
+              agent_id: agent.agent_id ?? agent.id,
+              name: agent.name,
+              description: agent.description,
+              category: agent.category ?? "",
+              capabilities: agent.capabilities ?? agent.tools ?? [],
+              suggested_role: agent.role ?? "specialist",
+              icon: agent.icon ?? "",
+            })
+          }
+          storageKey="solo.crews.builder.tab"
+        />
       </div>
-
-      <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
-        {loading && agents.length === 0 ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="w-5 h-5 animate-spin text-neutral-400" />
-          </div>
-        ) : agents.length === 0 ? (
-          <div className="text-center py-12 text-sm text-neutral-400">
-            No agents found
-          </div>
-        ) : (
-          agents.map((agent) => (
-            <button
-              key={agent.agent_id}
-              type="button"
-              onClick={() => onSelect(agent)}
-              className="w-full text-left px-4 py-3 rounded-xl border border-transparent hover:border-primary-200 dark:hover:border-primary-800 hover:bg-primary-50/50 dark:hover:bg-primary-500/5 transition-all group"
-            >
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-sm font-medium text-neutral-900 dark:text-white group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors">
-                  {agent.name}
-                </span>
-                <span
-                  className={cn(
-                    "px-2 py-0.5 rounded-full text-[10px] font-medium uppercase tracking-wide",
-                    categoryBadgeClass(agent.category)
-                  )}
-                >
-                  {agent.category}
-                </span>
-              </div>
-              <p className="text-xs text-neutral-500 dark:text-neutral-400 line-clamp-2">
-                {agent.description}
-              </p>
-            </button>
-          ))
-        )}
-      </div>
-
-      {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-2 px-5 py-3 border-t border-neutral-200 dark:border-neutral-800">
-          <button
-            type="button"
-            disabled={page <= 1}
-            onClick={() => handlePage(page - 1)}
-            className="px-3 py-1 rounded-lg text-xs font-medium text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 disabled:opacity-30 transition-colors"
-          >
-            Previous
-          </button>
-          <span className="text-xs text-neutral-500">
-            Page {page} of {totalPages}
-          </span>
-          <button
-            type="button"
-            disabled={page >= totalPages}
-            onClick={() => handlePage(page + 1)}
-            className="px-3 py-1 rounded-lg text-xs font-medium text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 disabled:opacity-30 transition-colors"
-          >
-            Next
-          </button>
-        </div>
-      )}
     </div>
   );
 }
@@ -479,6 +324,8 @@ export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderP
       name: a.name,
       role: a.role,
       instructions: a.instructions ?? "",
+      coder_project_id: a.coder_project_id ?? null,
+      coder_run_timeout_seconds: a.coder_run_timeout_seconds,
     })) ?? [emptyAgent()]
   );
   const [maxInvocations, setMaxInvocations] = useState(
@@ -536,6 +383,9 @@ export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderP
   const [blueprintSelectorOpen, setBlueprintSelectorOpen] = useState(false);
   const [selectedBlueprint, setSelectedBlueprint] = useState<BlueprintSelection | null>(null);
   const [models, setModels] = useState<ModelConfig[]>([]);
+  // Phase 4 PR 9: Coder project picker
+  const [coderProjects, setCoderProjects] = useState<CoderProject[]>([]);
+  const [coderPickerOpen, setCoderPickerOpen] = useState(false);
   const [selectedModelId, setSelectedModelId] = useState<string | null>(
     editCrew?.agents?.[0]?.model_id ?? null
   );
@@ -553,6 +403,15 @@ export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderP
           setModels(list.filter((m) => m.enabled));
         })
         .catch(() => setModels([]));
+    }
+  }, [open]);
+
+  // Phase 4 PR 9: Fetch Coder projects (used for "Add Coder project step").
+  useEffect(() => {
+    if (open) {
+      listCoderProjects()
+        .then(setCoderProjects)
+        .catch(() => setCoderProjects([]));
     }
   }, [open]);
 
@@ -605,16 +464,23 @@ export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderP
 
   const isAutonomous = executionMode === "autonomous";
 
+  // A step is valid if it has a name AND (instructions OR coder_project_id).
+  const isAgentValid = (a: AgentForm): boolean => {
+    if (!a.name.trim()) return false;
+    if (a.coder_project_id) return true;
+    return !!a.instructions.trim();
+  };
+
   const canSubmit = isAutonomous
     ? !!name.trim()
-    : name.trim() && agents.every((a) => a.name.trim() && a.instructions.trim());
+    : name.trim() && agents.every(isAgentValid);
 
   // Step validation
   const canProceed = (s: WizardStep): boolean => {
     switch (s) {
       case 1: return !!name.trim();
       case 2: return true; // always valid, mode has a default
-      case 3: return isAutonomous || agents.every((a) => a.name.trim() && a.instructions.trim());
+      case 3: return isAutonomous || agents.every(isAgentValid);
       case 4: return true; // connections are optional — manual-only is supported
       case 5: {
         // Reactive: each draft needs ≥1 keyword/hashtag/mention.
@@ -779,6 +645,11 @@ export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderP
 
   const addAgent = () => setAgents((prev) => [...prev, emptyAgent()]);
 
+  const addCoderStep = (project: CoderProject) => {
+    setAgents((prev) => [...prev, emptyCoderStep(project)]);
+    setCoderPickerOpen(false);
+  };
+
   const removeAgent = (index: number) => {
     if (agents.length <= 1) return;
     setAgents((prev) => prev.filter((_, i) => i !== index));
@@ -816,14 +687,22 @@ export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderP
       if (isAutonomous) {
         payload.agents = [];
       } else {
-        payload.agents = agents.map((a, i) => ({
-          agent_id: `agent-${i}`,
-          role: a.role || "custom",
-          name: a.name.trim(),
-          instructions: a.instructions.trim(),
-          order: i,
-          ...(selectedModelId && { model_id: selectedModelId }),
-        }));
+        payload.agents = agents.map((a, i) => {
+          const isCoder = !!a.coder_project_id;
+          return {
+            agent_id: `agent-${i}`,
+            role: a.role || "custom",
+            name: a.name.trim(),
+            instructions: a.instructions.trim(),
+            order: i,
+            // Coder steps don't use the LLM model — skip model_id.
+            ...(!isCoder && selectedModelId && { model_id: selectedModelId }),
+            ...(isCoder && {
+              coder_project_id: a.coder_project_id,
+              coder_run_timeout_seconds: a.coder_run_timeout_seconds ?? 60,
+            }),
+          };
+        });
       }
 
       if (channelBindings.length > 0) {
@@ -906,6 +785,14 @@ export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderP
           open={libraryOpen}
           onClose={() => setLibraryOpen(false)}
           onSelect={handleLibrarySelect}
+        />
+
+        {/* Coder Project Picker */}
+        <CoderProjectPicker
+          open={coderPickerOpen}
+          projects={coderProjects}
+          onClose={() => setCoderPickerOpen(false)}
+          onSelect={addCoderStep}
         />
 
         {/* Blueprint Selector */}
@@ -1185,6 +1072,14 @@ export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderP
                     <Plus className="w-3.5 h-3.5" />
                     Add Agent
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => setCoderPickerOpen(true)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-500/10 border border-blue-200 dark:border-blue-800 transition-colors"
+                  >
+                    <Wrench className="w-3.5 h-3.5" />
+                    Add Coder project
+                  </button>
                 </div>
               </div>
 
@@ -1210,17 +1105,35 @@ export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderP
               </div>
 
               {/* Agent cards */}
-              {agents.map((agent, index) => (
+              {agents.map((agent, index) => {
+                const isCoder = !!agent.coder_project_id;
+                const coderProject = isCoder
+                  ? coderProjects.find((p) => p.project_id === agent.coder_project_id)
+                  : undefined;
+                return (
                 <div
                   key={index}
-                  className="bg-neutral-50 dark:bg-neutral-800/50 rounded-xl border border-neutral-200 dark:border-neutral-700 p-5 space-y-4"
+                  className={cn(
+                    "rounded-xl border p-5 space-y-4",
+                    isCoder
+                      ? "bg-blue-50/50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800"
+                      : "bg-neutral-50 dark:bg-neutral-800/50 border-neutral-200 dark:border-neutral-700"
+                  )}
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <GripVertical className="w-4 h-4 text-neutral-300 dark:text-neutral-600" />
+                      {isCoder ? (
+                        <Wrench className="w-4 h-4 text-blue-500" />
+                      ) : null}
                       <span className="text-sm font-medium text-neutral-500 dark:text-neutral-400">
-                        Agent {index + 1}
+                        {isCoder ? "Coder Step" : "Agent"} {index + 1}
                       </span>
+                      {isCoder && (
+                        <span className="text-xs text-blue-600 dark:text-blue-400 truncate">
+                          Coder project: {coderProject?.name ?? agent.coder_project_id}
+                        </span>
+                      )}
                       <div className="flex gap-1">
                         <button
                           type="button"
@@ -1256,49 +1169,81 @@ export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderP
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
-                        Agent Name <span className="text-red-500">*</span>
+                        {isCoder ? "Step Name" : "Agent Name"} <span className="text-red-500">*</span>
                       </label>
                       <input
                         type="text"
                         value={agent.name}
                         onChange={(e) => updateAgent(index, "name", e.target.value)}
-                        placeholder="e.g., Researcher"
+                        placeholder={isCoder ? "e.g., Coder: my-app" : "e.g., Researcher"}
                         maxLength={100}
                         className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white text-sm focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 outline-none transition-colors"
                       />
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
-                        Role
-                      </label>
-                      <select
-                        value={agent.role}
-                        onChange={(e) => updateAgent(index, "role", e.target.value)}
-                        className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white text-sm focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 outline-none transition-colors"
-                      >
-                        {ROLE_OPTIONS.map((r) => (
-                          <option key={r} value={r}>
-                            {r.charAt(0).toUpperCase() + r.slice(1)}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+                    {isCoder ? (
+                      <div>
+                        <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
+                          Run Timeout (seconds)
+                        </label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={3600}
+                          value={agent.coder_run_timeout_seconds ?? 60}
+                          onChange={(e) => {
+                            const v = Math.max(1, Math.min(3600, parseInt(e.target.value) || 60));
+                            setAgents((prev) =>
+                              prev.map((a, i) =>
+                                i === index ? { ...a, coder_run_timeout_seconds: v } : a
+                              )
+                            );
+                          }}
+                          className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white text-sm focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 outline-none transition-colors"
+                        />
+                      </div>
+                    ) : (
+                      <div>
+                        <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
+                          Role
+                        </label>
+                        <select
+                          value={agent.role}
+                          onChange={(e) => updateAgent(index, "role", e.target.value)}
+                          className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white text-sm focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 outline-none transition-colors"
+                        >
+                          {ROLE_OPTIONS.map((r) => (
+                            <option key={r} value={r}>
+                              {r.charAt(0).toUpperCase() + r.slice(1)}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
                   </div>
 
-                  <div>
-                    <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
-                      Instructions <span className="text-red-500">*</span>
-                    </label>
-                    <textarea
-                      value={agent.instructions}
-                      onChange={(e) => updateAgent(index, "instructions", e.target.value)}
-                      placeholder="What should this agent do? Provide clear instructions..."
-                      rows={3}
-                      className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white text-sm focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 outline-none transition-colors resize-none"
-                    />
-                  </div>
+                  {isCoder ? (
+                    <p className="text-xs text-blue-700 dark:text-blue-300 bg-blue-100/60 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg px-3 py-2">
+                      This step runs the Coder project headlessly. The crew model
+                      and instructions don't apply — manage the project's run command
+                      from the <a href="/coder/projects" className="underline">Coder workspace</a>.
+                    </p>
+                  ) : (
+                    <div>
+                      <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
+                        Instructions <span className="text-red-500">*</span>
+                      </label>
+                      <textarea
+                        value={agent.instructions}
+                        onChange={(e) => updateAgent(index, "instructions", e.target.value)}
+                        placeholder="What should this agent do? Provide clear instructions..."
+                        rows={3}
+                        className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white text-sm focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 outline-none transition-colors resize-none"
+                      />
+                    </div>
+                  )}
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
 
@@ -1828,21 +1773,38 @@ export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderP
                     ))}
                   </div>
                   <div className="space-y-2">
-                    {agents.map((agent, i) => (
-                      <div
-                        key={i}
-                        className="flex items-start gap-3 p-3 rounded-lg bg-white dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700"
-                      >
-                        <span className="text-xs font-bold text-primary-500 mt-0.5">{i + 1}</span>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-medium text-neutral-900 dark:text-white">{agent.name}</span>
-                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-neutral-700 text-neutral-500 dark:text-neutral-400 capitalize">{agent.role}</span>
+                    {agents.map((agent, i) => {
+                      const isCoder = !!agent.coder_project_id;
+                      const coderProject = isCoder
+                        ? coderProjects.find((p) => p.project_id === agent.coder_project_id)
+                        : undefined;
+                      return (
+                        <div
+                          key={i}
+                          className="flex items-start gap-3 p-3 rounded-lg bg-white dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700"
+                        >
+                          <span className="text-xs font-bold text-primary-500 mt-0.5">{i + 1}</span>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              {isCoder && <Wrench className="w-3.5 h-3.5 text-blue-500" />}
+                              <span className="text-sm font-medium text-neutral-900 dark:text-white">{agent.name}</span>
+                              {isCoder ? (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-300">
+                                  Coder
+                                </span>
+                              ) : (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-neutral-700 text-neutral-500 dark:text-neutral-400 capitalize">{agent.role}</span>
+                              )}
+                            </div>
+                            <p className="text-xs text-neutral-500 dark:text-neutral-400 line-clamp-1 mt-0.5">
+                              {isCoder
+                                ? `Runs project "${coderProject?.name ?? agent.coder_project_id}" headlessly (timeout ${agent.coder_run_timeout_seconds ?? 60}s)`
+                                : agent.instructions}
+                            </p>
                           </div>
-                          <p className="text-xs text-neutral-500 dark:text-neutral-400 line-clamp-1 mt-0.5">{agent.instructions}</p>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -2023,6 +1985,95 @@ function DirectionChip({
       <Icon className="w-3 h-3" />
       {label}
     </button>
+  );
+}
+
+// Phase 4 PR 9 — Coder project picker dialog. Trusted projects only.
+function CoderProjectPicker({
+  open,
+  projects,
+  onClose,
+  onSelect,
+}: {
+  open: boolean;
+  projects: CoderProject[];
+  onClose: () => void;
+  onSelect: (project: CoderProject) => void;
+}) {
+  if (!open) return null;
+  const trusted = projects.filter((p) => p.trusted);
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md max-h-[70vh] bg-white dark:bg-neutral-900 rounded-2xl shadow-2xl border border-neutral-200 dark:border-neutral-700 flex flex-col overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-5 py-3 border-b border-neutral-200 dark:border-neutral-800">
+          <div className="flex items-center gap-2">
+            <Wrench className="w-4 h-4 text-blue-500" />
+            <h3 className="text-sm font-semibold text-neutral-900 dark:text-white">
+              Add Coder project step
+            </h3>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+          >
+            <X className="w-4 h-4 text-neutral-500" />
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4">
+          {trusted.length === 0 ? (
+            <div className="flex flex-col items-center justify-center text-center py-8 px-4 gap-2">
+              <Wrench className="w-8 h-8 text-neutral-300 dark:text-neutral-600" />
+              <p className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
+                No trusted Coder projects
+              </p>
+              <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                Coder steps run a project headlessly. Create one and mark it trusted to use it here.
+              </p>
+              <a
+                href="/coder/projects"
+                className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-blue-500 text-white hover:bg-blue-600"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Open Coder workspace
+              </a>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <p className="text-xs text-neutral-500 dark:text-neutral-400 px-1">
+                Select a trusted Coder project. The crew will run it headlessly as one step.
+              </p>
+              {trusted.map((p) => (
+                <button
+                  key={p.project_id}
+                  type="button"
+                  onClick={() => onSelect(p)}
+                  className="w-full text-left px-3 py-2.5 rounded-lg border border-neutral-200 dark:border-neutral-700 hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-500/10 transition-colors"
+                >
+                  <div className="flex items-center gap-2">
+                    <Wrench className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />
+                    <span className="text-sm font-medium text-neutral-900 dark:text-white truncate">
+                      {p.name}
+                    </span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-neutral-700 text-neutral-500 dark:text-neutral-400 capitalize">
+                      {p.runtime}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-neutral-500 dark:text-neutral-400 truncate mt-0.5 ml-5">
+                    {p.folder_path}
+                  </p>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 

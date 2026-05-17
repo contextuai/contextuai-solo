@@ -70,9 +70,9 @@ Don't just ask one agent — assemble a team. A crew of 3–5 agents can researc
 
 You define the crew once. Run it whenever you need it.
 
-### Bring your own documents — chat with your PDFs
+### Bring your own documents — chat with your PDFs and your folders
 
-Solo's **Knowledge Base** lets you upload PDFs, DOCX, TXT, or Markdown files and chat with them directly. Documents are chunked, embedded with a bundled local model (all-MiniLM-L6-v2), and stored in your local SQLite database — nothing ever leaves your machine. Pick a knowledge base from the chat input dropdown and the model answers with `[1]`, `[2]` citations pointing back to the source. Works with both local GGUF models and cloud providers.
+Solo's **Knowledge Base** lets you upload PDFs, DOCX, TXT, or Markdown files and chat with them directly. Or **map a whole folder on your PC** (Documents, Notes, a project directory, an Obsidian vault) and Solo auto-indexes it on a schedule — adds new files, updates changed ones, drops removed ones. Documents are chunked, embedded with a bundled local model (all-MiniLM-L6-v2), and stored in your local SQLite database — nothing ever leaves your machine. Pick a knowledge base from the chat input dropdown and the model answers with `[1]`, `[2]` citations pointing back to the source. Crews and workspace agents can also bind to KBs so they cite from your docs on every turn. Works with both local GGUF models and cloud providers.
 
 ### Distribute to your channels — and listen for replies
 
@@ -170,8 +170,8 @@ Solo exposes an **OpenAI-compatible API endpoint** (`/v1/chat/completions`) on y
 - **10 Blueprint Templates** — Pre-built workflow templates across strategy, content, marketing, product, and research
 - **Workshop Mode** — Run multi-agent brainstorming sessions with structured outputs
 - **10 Persona Types** — Nexus Agent, Web Researcher, database connectors (PostgreSQL, MySQL, MSSQL, Snowflake, MongoDB), MCP Server, API Connector, File Operations
-- **10 Distribution Channels** — Telegram, Discord, Reddit, LinkedIn, Twitter/X, Instagram, Facebook, Blog, Email, and Slack — with inbound auto-reply and approval gates. See the [Connections Guide](CONNECTIONS-GUIDE.md) for setup
-- **Knowledge Base (Local RAG)** — Upload PDFs / DOCX / TXT / MD, chunk + embed locally with a bundled MiniLM model, and chat with citations. Pre-built starter packs live under `knowledge-base-packs/`
+- **10 Distribution Channels** — Telegram, Discord, Reddit, LinkedIn, Twitter/X, Instagram, Facebook, Blog, Email, and Slack — with inbound auto-reply and approval gates. See the [Distributions Guide](CONNECTIONS-GUIDE.md) for setup
+- **Knowledge Base (Local RAG)** — Upload PDFs / DOCX / TXT / MD or map a whole folder on disk, chunk + embed locally with a bundled MiniLM model, and chat with citations. Folder mappings auto-sync on a `1h` / `6h` / `24h` schedule with friction guardrails for large directories. Crews and workspace agents can bind to specific KBs. Pre-built starter packs live under `knowledge-base-packs/`
 - **Brand Voice** — Define your business identity so every response sounds like you
 - **Dark/Light Theme** — Easy on the eyes, day or night
 
@@ -416,7 +416,7 @@ The built app will be in `frontend/src-tauri/target/release/`.
 ```powershell
 .\run-tests.ps1                              # Run all tests (auto-starts servers)
 .\run-tests.ps1 -Backend                     # Backend pytest only (607+ tests)
-.\run-tests.ps1 -Frontend                    # Frontend Playwright E2E only (174 tests)
+.\run-tests.ps1 -Frontend                    # Frontend Playwright E2E only (184 tests)
 .\run-tests.ps1 -Backend -Filter "sqlite"    # Filter by test name
 .\run-tests.ps1 -Frontend -Filter "chat"     # Filter Playwright tests
 ```

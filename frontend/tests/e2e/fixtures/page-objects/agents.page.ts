@@ -22,23 +22,26 @@ export class AgentsPage {
 
   /** Search input for filtering agents. */
   get searchInput(): Locator {
-    return this.page.locator(
-      'input[placeholder*="Search agents"]'
-    );
+    return this.page.getByPlaceholder(/Search\s+\w+\s+agents/i);
   }
 
-  /** All role filter pill buttons. */
+  /** All role filter pill buttons (kind tabs). */
   get roleFilters(): Locator {
-    return this.page.locator(
-      'button[class*="rounded-full"]'
-    );
+    return this.page.getByRole("button", { name: /prompt|analyst|researcher|writer|visual|strategic|developer|technical/ });
   }
 
   /** All agent cards in the grid. */
   get agentCards(): Locator {
-    return this.page.locator(
-      '[class*="cursor-pointer"][class*="rounded-xl"]'
-    ).filter({ has: this.page.locator("h3") });
+    return this.page.locator('button.rounded-xl').filter({ has: this.page.locator("h3") });
+  }
+
+  /** Wait for agent cards to load before tests probe them. */
+  async waitForCards(): Promise<void> {
+    await this.page.waitForFunction(
+      () => document.querySelectorAll('button.rounded-xl h3').length > 0,
+      null,
+      { timeout: 15000 }
+    ).catch(() => {});
   }
 
   /** The "Create Agent" button (header — always visible). */
@@ -60,12 +63,12 @@ export class AgentsPage {
 
   /** Agent count text in the header. */
   get agentCountText(): Locator {
-    return this.page.locator("span").filter({ hasText: /\d+ agents?/ }).first();
+    return this.page.getByText(/\d+ agents?\s+across/);
   }
 
   /** Empty state when no agents match. */
   get emptyState(): Locator {
-    return this.page.locator("h3").filter({ hasText: /no agents/i });
+    return this.page.getByRole("heading", { name: /no matches/i });
   }
 
   // ── Actions ─────────────────────────────────────────────────────
@@ -74,6 +77,7 @@ export class AgentsPage {
   async goto(): Promise<void> {
     await this.page.goto("/agents");
     await this.page.waitForLoadState("networkidle");
+    await this.waitForCards();
   }
 
   /** Type a search query to filter agents. */

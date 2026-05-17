@@ -57,6 +57,7 @@ class AgentLibraryService:
         "hr-people": "hr_people",
         "social-engagement": "social_engagement",
         "specialized": "specialized",
+        "coder-companion": "coder_companion",
     }
 
     # Reverse map: enum value -> folder name (built once)
@@ -77,6 +78,7 @@ class AgentLibraryService:
         "hr_people": "HR & People",
         "social_engagement": "Social Engagement",
         "specialized": "Specialized",
+        "coder_companion": "Coder Companion",
     }
 
     # =========================================================================

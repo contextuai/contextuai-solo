@@ -1,6 +1,6 @@
-# Connections Setup Guide
+# Distributions Setup Guide
 
-Step-by-step instructions for connecting ContextuAI Solo to external platforms. All connections start from **Connections** page within the app.
+Step-by-step instructions for connecting ContextuAI Solo to external platforms. All channels are configured from the **Distributions** page within the app (sidebar entry; the underlying URL is still `/connections`).
 
 ---
 
@@ -10,7 +10,7 @@ Step-by-step instructions for connecting ContextuAI Solo to external platforms. 
 
 ### Setup Steps
 
-1. In Solo, go to **Connections** → click **Telegram Bot**
+1. In Solo, go to **Distributions** → click **Telegram Bot**
 2. You'll see a field for **Bot Token** — to get one:
    - Open Telegram and search for **@BotFather**
    - Send `/newbot`
@@ -55,7 +55,7 @@ curl "https://api.telegram.org/botYOUR_BOT_TOKEN/deleteWebhook"
 
 ### Setup Steps
 
-1. In Solo, go to **Connections** → click **Discord Bot**
+1. In Solo, go to **Distributions** → click **Discord Bot**
 2. You'll see fields for **Bot Token**, **Public Key**, and **Application ID** — to get these:
    - Go to the [Discord Developer Portal](https://discord.com/developers/applications)
    - Click **"New Application"** → give it a name → **Create**
@@ -85,7 +85,7 @@ curl "https://api.telegram.org/botYOUR_BOT_TOKEN/deleteWebhook"
    - **Redirect URI:** `http://localhost:18741` (not used, but required)
 4. Click **Create app**
 5. Copy your **Client ID** (under the app name, ~14 chars) and **Secret**
-6. In Solo, go to **Connections** → click **Reddit**
+6. In Solo, go to **Distributions** → click **Reddit**
 7. Fill in:
    - **Client ID** and **Client Secret** from step 5
    - **Reddit Username** and **Reddit Password** (your account credentials)
@@ -111,7 +111,7 @@ curl "https://api.telegram.org/botYOUR_BOT_TOKEN/deleteWebhook"
 
 ### Setup Steps
 
-1. In Solo, go to **Connections** → click **LinkedIn**
+1. In Solo, go to **Distributions** → click **LinkedIn**
 2. You'll see fields for **Client ID** and **Client Secret**, plus the redirect URL you'll need — to get the credentials:
    - Go to [LinkedIn Developers](https://www.linkedin.com/developers/apps) → **Create App**
    - Fill in: App name, LinkedIn Page (select or create one), and logo (optional)
@@ -137,7 +137,7 @@ curl "https://api.telegram.org/botYOUR_BOT_TOKEN/deleteWebhook"
 
 ### Setup Steps
 
-1. In Solo, go to **Connections** → click **Twitter / X**
+1. In Solo, go to **Distributions** → click **Twitter / X**
 2. You'll see fields for **API Key**, **API Secret**, **Access Token**, and **Access Token Secret** — to get these:
    - Go to the [X Developer Portal](https://developer.x.com/en/portal/dashboard)
    - Sign up for a developer account (Free tier works)
@@ -170,7 +170,7 @@ curl "https://api.telegram.org/botYOUR_BOT_TOKEN/deleteWebhook"
 
 ### Setup Steps
 
-1. In Solo, go to **Connections** → click **Instagram**
+1. In Solo, go to **Distributions** → click **Instagram**
 2. You'll see fields for **App ID** and **App Secret**, plus the redirect URL — to get the credentials:
    - Go to [Meta for Developers](https://developers.facebook.com/apps/) → **Create App**
    - Select **Business** as the app type
@@ -201,7 +201,7 @@ curl "https://api.telegram.org/botYOUR_BOT_TOKEN/deleteWebhook"
 
 ### Setup Steps
 
-1. In Solo, go to **Connections** → click **Facebook**
+1. In Solo, go to **Distributions** → click **Facebook**
 2. You'll see fields for **App ID** and **App Secret**, plus the redirect URL — to get the credentials:
    - Go to [Meta for Developers](https://developers.facebook.com/apps/) → **Create App**
    - Select **Business** as the app type
@@ -222,7 +222,7 @@ curl "https://api.telegram.org/botYOUR_BOT_TOKEN/deleteWebhook"
 
 ---
 
-## Recommended AI Models for Connections
+## Recommended AI Models for Distributions
 
 The quality of auto-replies and generated content depends heavily on which model you're running. For best results with social media and messaging:
 
@@ -241,7 +241,7 @@ Once a connection is set up, you can enable **Auto-Reply** to have Solo's AI aut
 
 ### How it works
 
-1. Go to **Connections** → find your connected platform
+1. Go to **Distributions** → find your connected platform
 2. Toggle **Auto-Reply** ON
 3. Optionally check **Require Approval** for human-in-the-loop review
 4. Inbound messages are processed by your default AI model

@@ -18,6 +18,7 @@ Execution flow:
 
 import os
 import re
+import time
 import logging
 import asyncio
 from datetime import datetime
@@ -209,7 +210,11 @@ class CrewOrchestrator:
         input_data: Optional[Dict[str, Any]],
         memory_context: Optional[str],
     ) -> Dict[str, Any]:
-        """Execute agents one by one, passing output from each to the next."""
+        """Execute steps one by one, passing output from each to the next.
+
+        A "step" is either an LLM agent invocation (default) or a headless
+        Coder project run when ``coder_project_id`` is set on the step.
+        """
         total_tokens = 0
         total_cost = 0.0
         agent_summaries = []
@@ -220,7 +225,7 @@ class CrewOrchestrator:
 
         for i, agent_cfg in enumerate(sorted_agents):
             agent_id = agent_cfg.get("agent_id", f"agent-{i}")
-            agent_name = agent_cfg.get("name", f"Agent {i}")
+            is_coder_step = bool(agent_cfg.get("coder_project_id"))
 
             # Mark agent as running
             await self.run_repo.update_agent_state(run_id, agent_id, {
@@ -229,6 +234,59 @@ class CrewOrchestrator:
             })
 
             try:
+                if is_coder_step:
+                    # ----- Coder step branch -----
+                    coder_result = await self._run_coder_step(agent_cfg)
+                    agent_name = coder_result["agent_name"]
+                    agent_output = coder_result["output"]
+                    step_status = coder_result["status"]
+                    step_error = coder_result.get("error")
+                    duration_ms = coder_result.get("duration_ms", 0)
+
+                    accumulated_context.append({
+                        "agent_name": agent_name,
+                        "role": "coder",
+                        "output": agent_output,
+                    })
+                    agent_summaries.append({
+                        "agent_id": agent_id,
+                        "agent_name": agent_name,
+                        "summary": agent_output[:500] if agent_output else "",
+                    })
+
+                    state_update: Dict[str, Any] = {
+                        "completed_at": datetime.utcnow().isoformat(),
+                        "output": agent_output,
+                        "tokens_used": 0,
+                        "cost_usd": 0.0,
+                        "duration_ms": duration_ms,
+                    }
+                    if step_status == "completed":
+                        state_update["status"] = CrewRunStatus.COMPLETED.value
+                        await self.run_repo.update_agent_state(
+                            run_id, agent_id, state_update
+                        )
+                        logger.info(
+                            f"Coder step '{agent_name}' completed "
+                            f"(duration_ms={duration_ms})"
+                        )
+                    else:
+                        state_update["status"] = CrewRunStatus.FAILED.value
+                        state_update["error"] = step_error or "Coder step failed"
+                        await self.run_repo.update_agent_state(
+                            run_id, agent_id, state_update
+                        )
+                        logger.error(
+                            f"Coder step '{agent_name}' failed: {step_error}"
+                        )
+                        raise RuntimeError(
+                            f"Coder step '{agent_name}' failed: {step_error}"
+                        )
+                    continue
+
+                # ----- Agent step branch -----
+                agent_name = agent_cfg.get("name", f"Agent {i}")
+
                 # Build prompt for this agent
                 prompt = self._build_agent_prompt(
                     agent_cfg=agent_cfg,
@@ -272,6 +330,10 @@ class CrewOrchestrator:
                 logger.info(f"Agent '{agent_name}' completed (tokens={agent_tokens})")
 
             except Exception as e:
+                if is_coder_step:
+                    # Already updated state inside the coder branch.
+                    raise
+                agent_name = agent_cfg.get("name", f"Agent {i}")
                 error_msg = str(e)
                 await self.run_repo.update_agent_state(run_id, agent_id, {
                     "status": CrewRunStatus.FAILED.value,
@@ -382,6 +444,154 @@ class CrewOrchestrator:
             "total_tokens": total_tokens,
             "total_cost_usd": total_cost,
             "agent_summaries": agent_summaries,
+        }
+
+    async def _run_coder_step(
+        self,
+        step: Dict[str, Any],
+        db: Any = None,
+    ) -> Dict[str, Any]:
+        """Run a single Coder-project step headlessly.
+
+        Looks up the project by ``coder_project_id``, fails fast if the
+        project is missing or untrusted, otherwise calls
+        ``coder_run_service.run_headless`` and maps the result onto the
+        standard step shape.
+
+        Returns a dict with::
+
+            {
+              "status": "completed" | "failed",
+              "output": str,                # joined stdout/stderr (capped 4000)
+              "error": Optional[str],
+              "duration_ms": int,
+              "exit_code": Optional[int],
+              "timed_out": bool,
+              "agent_name": str,            # "Coder: <project name>"
+              "project_id": Optional[str],
+            }
+
+        ``db`` is optional; if not supplied we resolve via
+        ``database.get_database`` so the helper is unit-testable in
+        isolation. Test code can override ``database.get_database`` (or
+        mock ``run_headless``) without instantiating a full crew run.
+        """
+        from repositories.coder_project_repository import CoderProjectRepository
+
+        project_id = (step.get("coder_project_id") or "").strip()
+        timeout_seconds = int(step.get("coder_run_timeout_seconds") or 60)
+        step_name = step.get("name") or "Coder Step"
+
+        if not project_id:
+            return {
+                "status": "failed",
+                "output": "",
+                "error": "coder_project_id is required for a Coder step",
+                "duration_ms": 0,
+                "exit_code": None,
+                "timed_out": False,
+                "agent_name": f"Coder: {step_name}",
+                "project_id": None,
+            }
+
+        # Resolve the database handle.
+        if db is None:
+            try:
+                from database import get_database
+                db = await get_database()
+            except Exception as e:
+                logger.exception("Failed to resolve database for Coder step")
+                return {
+                    "status": "failed",
+                    "output": "",
+                    "error": f"Database unavailable: {e}",
+                    "duration_ms": 0,
+                    "exit_code": None,
+                    "timed_out": False,
+                    "agent_name": f"Coder: {step_name}",
+                    "project_id": project_id,
+                }
+
+        repo = CoderProjectRepository(db)
+        project = await repo.get_by_id(project_id)
+        if not project:
+            return {
+                "status": "failed",
+                "output": "",
+                "error": f"Coder project '{project_id}' not found",
+                "duration_ms": 0,
+                "exit_code": None,
+                "timed_out": False,
+                "agent_name": f"Coder: {step_name}",
+                "project_id": project_id,
+            }
+
+        agent_name = f"Coder: {project.get('name') or step_name}"
+
+        if not project.get("trusted"):
+            return {
+                "status": "failed",
+                "output": "",
+                "error": "Project is not trusted; cannot run headlessly.",
+                "duration_ms": 0,
+                "exit_code": None,
+                "timed_out": False,
+                "agent_name": agent_name,
+                "project_id": project_id,
+            }
+
+        try:
+            from services.coder_run_service import get_run_service
+
+            run_service = get_run_service()
+            started = time.monotonic()
+            result = await run_service.run_headless(
+                project, timeout_seconds=timeout_seconds
+            )
+            wall_ms = int((time.monotonic() - started) * 1000)
+        except Exception as e:
+            logger.exception("Coder headless run raised for project %s", project_id)
+            return {
+                "status": "failed",
+                "output": "",
+                "error": f"Coder run failed: {e}",
+                "duration_ms": 0,
+                "exit_code": None,
+                "timed_out": False,
+                "agent_name": agent_name,
+                "project_id": project_id,
+            }
+
+        exit_code = result.get("exit_code")
+        timed_out = bool(result.get("timed_out"))
+        duration_seconds = result.get("duration_seconds")
+        if duration_seconds is not None:
+            duration_ms = int(duration_seconds * 1000)
+        else:
+            duration_ms = wall_ms
+
+        output_lines = result.get("output_lines") or []
+        joined = "\n".join(output_lines)
+        # Cap at 4000 chars to keep run history bounded — keep the *tail*
+        # (most recent output) which is usually the most informative.
+        output = joined[-4000:]
+
+        if exit_code == 0 and not timed_out:
+            status = "completed"
+            error = None
+        else:
+            status = "failed"
+            error = f"exit={exit_code}, timed_out={timed_out}"
+
+        return {
+            "status": status,
+            "output": output,
+            "error": error,
+            "duration_ms": duration_ms,
+            "exit_code": exit_code,
+            "timed_out": timed_out,
+            "agent_name": agent_name,
+            "project_id": project_id,
         }
 
     def _is_local_model(self, model_id: str) -> bool:

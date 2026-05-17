@@ -1,10 +1,13 @@
-import { useState, useEffect } from "react";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { useMemo, useState, useEffect } from "react";
+import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 import { DesktopAuthProvider } from "@/lib/desktop-auth";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import { AiModeProvider } from "@/contexts/ai-mode-context";
 import { BackendStatusProvider } from "@/contexts/backend-status-context";
+import { ModeProvider, useMode } from "@/contexts/mode-context";
 import { DesktopLayout } from "@/components/navigation/desktop-layout";
+import { WindowTitle } from "@/components/shell/window-title";
+import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import ChatPage from "@/routes/chat";
 import AgentsPage from "@/routes/agents";
 import CrewsPage from "@/routes/crews";
@@ -18,7 +21,12 @@ import SettingsPage from "@/routes/settings";
 import ApprovalsPage from "@/routes/approvals";
 import BlueprintsPage from "@/routes/blueprints";
 import KnowledgePage from "@/routes/knowledge";
+import AutomationsPage from "@/routes/automations";
 import WizardPage from "@/routes/wizard";
+import CoderProjectsPage from "@/routes/coder/projects";
+import CoderProjectDetailPage from "@/routes/coder/project-detail";
+import CoderRunningPage from "@/routes/coder/running";
+import CoderTemplatesPage from "@/routes/coder/templates";
 import { UpdateNotifier } from "@/components/update-notifier";
 
 function isWizardComplete(): boolean {
@@ -93,6 +101,61 @@ function SidecarGate({ children }: { children: React.ReactNode }) {
   return null; // splash screen in index.html is visible
 }
 
+/**
+ * Keeps `mode` and the URL in sync.
+ *
+ * Two effects, deliberately decoupled:
+ *
+ * 1. URL → mode (URL is the source of truth on deep-link / refresh / back-button).
+ *    Deep-linking to /coder/<anything> flips `mode` to "coder" so the Coder
+ *    sidebar + page render — without this, persisted mode=solo would force
+ *    a redirect away from the Coder URL the user actually wants.
+ *
+ * 2. mode → URL (user toggled the top-bar Solo/Coder control).
+ *    Lands the user on the right home route. Watches `mode` only so we don't
+ *    fight free navigation within /coder/*.
+ */
+function ModeRouter() {
+  const { mode, setMode } = useMode();
+  const location = useLocation();
+
+  // URL → mode: deep-links / refresh on /coder/* flip the mode so the
+  // Coder sidebar renders. Navigation in the *other* direction (toggle
+  // button, keyboard shortcut) calls navigate() explicitly from the
+  // ModeToggle component, so we don't need a mode → URL effect here —
+  // and an effect here would fight StrictMode's double-invoke anyway.
+  useEffect(() => {
+    if (location.pathname.startsWith("/coder/") && mode !== "coder") {
+      setMode("coder");
+    } else if (!location.pathname.startsWith("/coder/") && mode === "coder") {
+      setMode("solo");
+    }
+  }, [location.pathname]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return null;
+}
+
+/** Wires the global Cmd/Ctrl+Shift+M shortcut for toggling app mode. */
+function ModeShortcutHandler() {
+  const { mode, setMode } = useMode();
+  const navigate = useNavigate();
+  const bindings = useMemo(
+    () => [
+      {
+        combo: "mod+shift+m",
+        handler: () => {
+          const next = mode === "solo" ? "coder" : "solo";
+          setMode(next);
+          navigate(next === "coder" ? "/coder/projects" : "/");
+        },
+      },
+    ],
+    [mode, setMode, navigate]
+  );
+  useKeyboardShortcuts(bindings);
+  return null;
+}
+
 export default function App() {
   return (
     <SidecarGate>
@@ -101,7 +164,11 @@ export default function App() {
         <ThemeProvider>
           <AiModeProvider>
           <BackendStatusProvider>
+          <ModeProvider>
           <BrowserRouter>
+            <WindowTitle />
+            <ModeShortcutHandler />
+            <ModeRouter />
             <Routes>
               <Route path="/wizard" element={<WizardPage />} />
               <Route element={<RequireWizard><DesktopLayout /></RequireWizard>}>
@@ -117,12 +184,19 @@ export default function App() {
                 <Route path="/workspace/:id" element={<WorkspacePage />} />
                 <Route path="/connections" element={<ConnectionsPage />} />
                 <Route path="/knowledge" element={<KnowledgePage />} />
+                <Route path="/automations" element={<AutomationsPage />} />
                 <Route path="/approvals" element={<ApprovalsPage />} />
                 <Route path="/analytics" element={<AnalyticsPage />} />
                 <Route path="/settings" element={<SettingsPage />} />
+                {/* Coder mode (Phase 4 PR 6 — Coder MVP). */}
+                <Route path="/coder/projects" element={<CoderProjectsPage />} />
+                <Route path="/coder/projects/:id" element={<CoderProjectDetailPage />} />
+                <Route path="/coder/running" element={<CoderRunningPage />} />
+                <Route path="/coder/templates" element={<CoderTemplatesPage />} />
               </Route>
             </Routes>
           </BrowserRouter>
+          </ModeProvider>
           </BackendStatusProvider>
           </AiModeProvider>
         </ThemeProvider>

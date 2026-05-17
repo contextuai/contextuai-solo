@@ -13,9 +13,11 @@ Welcome to ContextuAI Solo, your private desktop AI assistant with 96 pre-built 
 | 5 | [Crews](05-crews.md) | Build multi-agent teams that work together on tasks |
 | 6 | [Blueprints](06-blueprints.md) | Use workflow templates to jumpstart projects |
 | 7 | [Workspace](07-workspace.md) | Run multi-agent projects and review results |
-| 8 | [Connections](08-connections.md) | Connect to Telegram, Discord, Reddit, LinkedIn, Twitter/X, Instagram, Facebook |
+| 8 | [Distributions](08-connections.md) | Connect to Telegram, Discord, Reddit, LinkedIn, Twitter/X, Instagram, Facebook, Blog, Email, Slack |
 | 9 | Knowledge | Upload PDFs / DOCX / TXT / MD and chat with citations (local RAG) |
 | 10 | [Settings](09-settings.md) | API keys, brand voice, appearance, data export |
+| 11 | [VS Code / IDE](10-openai-endpoint.md) | Use Solo as the model backend for Continue, Cline, Cursor, Aider, Zed, etc. |
+| 12 | [Solo Coder](11-coder.md) | Multi-agent coding environment with per-role models, workflow modes, and live preview |
 
 ## Quick Start
 
@@ -50,6 +52,6 @@ Screenshots referenced in these guides are located in [`docs/screenshots/`](../s
 | ![Blueprints](../screenshots/009-Blueprints.png) | Blueprints |
 | ![Create Blueprint](../screenshots/010-CreateBlueprint.png) | Blueprints |
 | ![Workspace](../screenshots/011-Workspace.png) | Workspace |
-| ![Connections](../screenshots/012-Connections.png) | Connections |
+| ![Distributions](../screenshots/012-Connections.png) | Distributions |
 | ![Crew Approvals](../screenshots/013-CrewApprovals.png) | Crews |
 | ![Settings](../screenshots/014-Settings.png) | Settings |

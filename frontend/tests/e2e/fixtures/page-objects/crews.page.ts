@@ -30,17 +30,17 @@ export class CrewsPage {
 
   /** The "Crews" tab button. */
   get crewsTab(): Locator {
-    return this.page.locator("button").filter({ hasText: /Crews \(/ });
+    return this.page.getByRole("button", { name: /^Crews/ });
   }
 
   /** The "Runs" tab button. */
   get runsTab(): Locator {
-    return this.page.locator("button").filter({ hasText: /Runs \(/ });
+    return this.page.getByRole("button", { name: /^Runs/ });
   }
 
   /** The "Create Crew" button. */
   get createButton(): Locator {
-    return this.page.getByRole("button", { name: /create crew/i }).first();
+    return this.page.getByRole("button", { name: /new crew|new project/i }).first();
   }
 
   /** Search input. */
@@ -146,12 +146,12 @@ export class CrewsPage {
 
   /** Search input inside the library panel. */
   get librarySearchInput(): Locator {
-    return this.libraryPanel.locator('input[placeholder="Search agents..."]');
+    return this.libraryPanel.locator('input').filter({ hasPlaceholder: /Search\s+\w+\s+agents/i });
   }
 
   /** Agent rows (buttons) inside the library panel list. */
   get libraryAgentRows(): Locator {
-    return this.libraryPanel.locator(".overflow-y-auto button.w-full");
+    return this.libraryPanel.locator('button.rounded-xl').filter({ has: this.page.locator('h3') });
   }
 
   /** Close button for the library panel. */

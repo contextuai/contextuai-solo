@@ -40,9 +40,11 @@ export class ChatPage {
 
   /** All assistant message bubbles (left-aligned, neutral background). */
   get assistantMessages(): Locator {
-    return this.page.locator(
-      '.mr-auto .prose'
-    );
+    // Assistant messages are in a left-aligned container with mr-auto.
+    // They contain the rendered message content.
+    return this.page.locator('div.mr-auto').filter({
+      has: this.page.locator('div[class*="rounded"], p, span')
+    });
   }
 
   /** The streaming indicator bubble (typing dots or partial response). */

@@ -1,0 +1,18 @@
+{
+  "preset_id": "custom",
+  "name": "Custom",
+  "description": "A blank canvas with a single Coder role pre-wired to your project's default model. Add, remove, or reorder roles to build the exact pipeline you need.",
+  "workflow_mode": "solo",
+  "roles": [
+    {
+      "role_kind": "coder",
+      "display_name": "Coder",
+      "system_prompt": "You are an expert software engineer who writes clean, well-documented, production-quality code. You follow the project's conventions, handle errors explicitly, and implement exactly what is asked — no more, no less.",
+      "model_id": "__DEFAULT__",
+      "temperature": 0.3,
+      "max_tokens": 4096,
+      "enabled": true,
+      "order": 0
+    }
+  ]
+}

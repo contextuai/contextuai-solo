@@ -1,10 +1,22 @@
 import { useState, useCallback, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/components/providers/theme-provider";
 import { useSettings } from "@/hooks/use-settings";
 import { useAiMode } from "@/contexts/ai-mode-context";
 import { Tabs, Button, Input, Textarea, Select, Badge, Dialog, TagInput } from "@/components/ui";
-import type { AIProviderConfig } from "@/types/settings";
+import { PROVIDER_GUIDES } from "@/data/provider-guides";
+import { ProviderCard } from "@/components/settings/provider-card";
+import {
+  listCloudProviders,
+  saveCloudProvider,
+  deleteCloudProvider,
+  testCloudProvider,
+  testSavedCloudProvider,
+  type CloudProvider,
+  type CloudProviderType,
+  type TestResult,
+} from "@/lib/api/cloud-providers-client";
 import {
   Settings,
   Cpu,
@@ -12,11 +24,7 @@ import {
   MessageSquareText,
   Database,
   Info,
-  Sparkles,
-  Zap,
-  Globe,
   Cloud,
-  Server,
   Check,
   Loader2,
   ExternalLink,
@@ -28,67 +36,10 @@ import {
   Trash2,
   HardDrive,
   RefreshCw,
+  AlertCircle,
 } from "lucide-react";
 
-// ─── Provider definitions ───────────────────────────────────────────────────
-
-const PROVIDER_DEFS = [
-  {
-    id: "local",
-    name: "Local AI (Built-in)",
-    description: "Downloaded GGUF models running on your CPU — free, private, offline",
-    icon: MonitorIcon,
-    color: "from-emerald-500 to-green-600",
-    models: [],
-    needsKey: false,
-    isLocal: true,
-  },
-  {
-    id: "anthropic",
-    name: "Anthropic Claude",
-    description: "Advanced reasoning, analysis, and creative writing",
-    icon: Sparkles,
-    color: "from-amber-500 to-orange-600",
-    models: ["claude-sonnet-4-20250514", "claude-opus-4-20250514", "claude-3-5-haiku-20241022"],
-    needsKey: true,
-  },
-  {
-    id: "openai",
-    name: "OpenAI",
-    description: "GPT models for versatile language generation",
-    icon: Zap,
-    color: "from-emerald-500 to-teal-600",
-    models: ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "o1-preview"],
-    needsKey: true,
-  },
-  {
-    id: "google",
-    name: "Google Gemini",
-    description: "Multimodal understanding and generation",
-    icon: Globe,
-    color: "from-blue-500 to-indigo-600",
-    models: ["gemini-2.0-flash", "gemini-2.0-pro", "gemini-1.5-flash"],
-    needsKey: true,
-  },
-  {
-    id: "bedrock",
-    name: "AWS Bedrock",
-    description: "Managed AI models through AWS infrastructure",
-    icon: Cloud,
-    color: "from-orange-500 to-yellow-600",
-    models: ["anthropic.claude-3-sonnet", "anthropic.claude-3-haiku", "amazon.titan-text-express"],
-    needsKey: true,
-  },
-  {
-    id: "ollama",
-    name: "Ollama (Local)",
-    description: "Run additional local models via Ollama, no API key needed",
-    icon: Server,
-    color: "from-violet-500 to-purple-600",
-    models: [],
-    needsKey: false,
-  },
-];
+// PROVIDER_DEFS removed — replaced by PROVIDER_GUIDES in data/provider-guides.ts
 
 const INDUSTRIES = [
   { value: "technology", label: "Technology" },
@@ -310,322 +261,160 @@ function AiModeCard() {
 // ─── AI Providers Tab ───────────────────────────────────────────────────────
 
 function AIProvidersTab() {
-  const { settings, updateSettings } = useSettings();
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [testing, setTesting] = useState<string | null>(null);
-  const [testResults, setTestResults] = useState<Record<string, "success" | "error">>({});
-  const [apiKeys, setApiKeys] = useState<Record<string, string>>(() => {
-    // Load keys from localStorage
-    const keys: Record<string, string> = {};
-    PROVIDER_DEFS.forEach((p) => {
-      const stored = localStorage.getItem(`contextuai-solo-key-${p.id}`);
-      if (stored) keys[p.id] = stored;
-    });
-    return keys;
-  });
-  const [ollamaUrl, setOllamaUrl] = useState(
-    () => localStorage.getItem("contextuai-solo-ollama-url") || "http://localhost:11434"
+  const [savedProviders, setSavedProviders] = useState<CloudProvider[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    try {
+      const list = await listCloudProviders();
+      setSavedProviders(list);
+      setLoadError(null);
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "Failed to load providers");
+    }
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    setLoading(true);
+    listCloudProviders()
+      .then((list) => {
+        if (mounted) { setSavedProviders(list); setLoadError(null); }
+      })
+      .catch((err) => {
+        if (mounted) setLoadError(err instanceof Error ? err.message : "Failed to load providers");
+      })
+      .finally(() => { if (mounted) setLoading(false); });
+    return () => { mounted = false; };
+  }, []);
+
+  // Index saved rows by provider_type for O(1) lookup
+  const savedByType = savedProviders.reduce<Partial<Record<CloudProviderType, CloudProvider>>>(
+    (acc, p) => ({ ...acc, [p.provider_type]: p }),
+    {},
   );
-  const [ollamaStatus, setOllamaStatus] = useState<"checking" | "running" | "not_found" | null>(null);
-  const [ollamaModels, setOllamaModels] = useState<string[]>([]);
-  const [selectedModels, setSelectedModels] = useState<Record<string, string>>(() => {
-    const models: Record<string, string> = {};
-    settings.ai_providers.forEach((p) => {
-      if (p.default_model) models[p.provider] = p.default_model;
-    });
-    return models;
-  });
 
-  const getProviderConfig = (id: string): AIProviderConfig | undefined => {
-    return settings.ai_providers.find((p) => p.provider === id);
-  };
+  const handleSave = useCallback(
+    async (providerType: string, config: Record<string, string>) => {
+      // Ollama isn't tracked as a CloudProvider in the backend; skip saving.
+      if (providerType === "ollama") return;
+      await saveCloudProvider({ provider_type: providerType as CloudProviderType, config });
+      await refresh();
+    },
+    [refresh],
+  );
 
-  const handleTestConnection = async (providerId: string) => {
-    setTesting(providerId);
-    setTestResults((prev) => {
-      const next = { ...prev };
-      delete next[providerId];
-      return next;
-    });
+  const handleRemove = useCallback(
+    async (providerId: string) => {
+      await deleteCloudProvider(providerId);
+      await refresh();
+    },
+    [refresh],
+  );
 
-    if (providerId === "ollama") {
-      setOllamaStatus("checking");
-      try {
-        const response = await fetch(`${ollamaUrl}/api/tags`, { signal: AbortSignal.timeout(5000) });
-        if (response.ok) {
-          const data = await response.json();
-          const models = (data.models || []).map((m: { name: string }) => m.name);
-          setOllamaModels(models);
-          setOllamaStatus("running");
-          setTestResults((prev) => ({ ...prev, ollama: "success" }));
-          localStorage.setItem("contextuai-solo-ollama-url", ollamaUrl);
-          saveProviderConfig(providerId, { status: "connected", base_url: ollamaUrl });
-        } else {
-          setOllamaStatus("not_found");
-          setTestResults((prev) => ({ ...prev, ollama: "error" }));
-        }
-      } catch {
-        setOllamaStatus("not_found");
-        setTestResults((prev) => ({ ...prev, ollama: "error" }));
+  const handleTest = useCallback(
+    async (
+      providerType: string,
+      config: Record<string, string> | undefined,
+      savedId?: string,
+    ): Promise<TestResult> => {
+      if (config === undefined && savedId) {
+        const result = await testSavedCloudProvider(savedId);
+        await refresh();
+        return result;
       }
-      setTesting(null);
-      return;
-    }
-
-    // Simulate API key validation for cloud providers
-    await new Promise((r) => setTimeout(r, 1500));
-    const key = apiKeys[providerId] || "";
-    if (key.length > 8) {
-      setTestResults((prev) => ({ ...prev, [providerId]: "success" }));
-      localStorage.setItem(`contextuai-solo-key-${providerId}`, key);
-      saveProviderConfig(providerId, { status: "connected", api_key: "***" });
-    } else {
-      setTestResults((prev) => ({ ...prev, [providerId]: "error" }));
-    }
-    setTesting(null);
-  };
-
-  const saveProviderConfig = (providerId: string, partial: Partial<AIProviderConfig>) => {
-    const existing = settings.ai_providers;
-    const idx = existing.findIndex((p) => p.provider === providerId);
-    const base: AIProviderConfig = {
-      provider: providerId,
-      is_active: false,
-      status: "disconnected",
-    };
-    let updated: AIProviderConfig[];
-    if (idx >= 0) {
-      updated = [...existing];
-      updated[idx] = { ...updated[idx], ...partial };
-    } else {
-      updated = [...existing, { ...base, ...partial }];
-    }
-    updateSettings({ ai_providers: updated });
-  };
-
-  const handleSetActive = (providerId: string) => {
-    const updated = settings.ai_providers.map((p) => ({
-      ...p,
-      is_active: p.provider === providerId,
-    }));
-    // Ensure the provider exists
-    if (!updated.find((p) => p.provider === providerId)) {
-      updated.push({
-        provider: providerId,
-        is_active: true,
-        status: "connected",
-        default_model: selectedModels[providerId],
-      });
-    }
-    updateSettings({ ai_providers: updated });
-  };
-
-  const handleModelSelect = (providerId: string, model: string) => {
-    setSelectedModels((prev) => ({ ...prev, [providerId]: model }));
-    saveProviderConfig(providerId, { default_model: model });
-  };
+      // Ollama: test by fetching the local tags endpoint directly
+      if (providerType === "ollama") {
+        const baseUrl = config?.base_url || "http://localhost:11434";
+        try {
+          const res = await fetch(`${baseUrl}/api/tags`, { signal: AbortSignal.timeout(5000) });
+          if (res.ok) return { ok: true, latency_ms: 0 };
+          return { ok: false, latency_ms: 0, error: `Ollama returned ${res.status}` };
+        } catch (err) {
+          return { ok: false, latency_ms: 0, error: "Ollama not reachable" };
+        }
+      }
+      return testCloudProvider({ provider_type: providerType as CloudProviderType, config: config ?? {} });
+    },
+    [refresh],
+  );
 
   return (
     <div className="space-y-4">
       <AiModeCard />
 
-      <div className="mb-6">
+      <div>
         <h3 className="text-lg font-semibold text-neutral-900 dark:text-white">AI Providers</h3>
         <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">
-          Configure your AI model providers. Connect one or more to get started.
+          Set up API keys for cloud providers, or connect Ollama for local inference. Keys are stored locally and never leave your machine.
         </p>
       </div>
 
-      <div className="space-y-3">
-        {PROVIDER_DEFS.map((provider) => {
-          const Icon = provider.icon;
-          const config = getProviderConfig(provider.id);
-          const isExpanded = expandedId === provider.id;
-          const isConnected = config?.status === "connected" || testResults[provider.id] === "success";
-          const isActive = config?.is_active || false;
+      {loadError && (
+        <div className="flex items-center gap-2 p-3 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-800/50 text-xs text-red-600 dark:text-red-400">
+          <AlertCircle className="w-4 h-4 flex-shrink-0" />
+          {loadError}
+        </div>
+      )}
 
-          return (
-            <div
-              key={provider.id}
-              className={cn(
-                "rounded-2xl border transition-all overflow-hidden",
-                isActive
-                  ? "border-primary-500 bg-primary-50/50 dark:bg-primary-500/5"
-                  : "border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900"
-              )}
+      {loading ? (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="w-6 h-6 animate-spin text-primary-500" />
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-4">
+          {/* Local AI Built-in — always at top, accordion only */}
+          <div
+            data-testid="provider-card-local-ai"
+            className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 overflow-hidden"
+          >
+            <button
+              data-testid="steps-toggle-local-ai"
+              onClick={() => {
+                const el = document.getElementById("local-ai-expand");
+                if (el) el.classList.toggle("hidden");
+              }}
+              className="w-full flex items-center gap-4 p-4 text-left"
             >
-              {/* Card Header */}
-              <button
-                onClick={() => setExpandedId(isExpanded ? null : provider.id)}
-                className="w-full flex items-center gap-4 p-4 text-left"
-              >
-                <div
-                  className={cn(
-                    "flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br shrink-0",
-                    provider.color
-                  )}
-                >
-                  <Icon className="w-5 h-5 text-white" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-semibold text-neutral-900 dark:text-white">
-                      {provider.name}
-                    </span>
-                    {isActive && (
-                      <Badge variant="success" dot>Default</Badge>
-                    )}
-                  </div>
-                  <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
-                    {provider.description}
-                  </p>
-                </div>
-                <Badge
-                  variant={isConnected ? "success" : "default"}
-                  dot
-                >
-                  {isConnected ? "Connected" : "Not configured"}
-                </Badge>
-              </button>
-
-              {/* Expanded Config */}
-              {isExpanded && (
-                <div className="px-4 pb-4 pt-1 border-t border-neutral-100 dark:border-neutral-800 space-y-4">
-                  {(provider as typeof PROVIDER_DEFS[0]).isLocal ? (
-                    /* Local AI (Built-in) config */
-                    <LocalAIConfig />
-                  ) : provider.needsKey ? (
-                    <>
-                      <div className="flex gap-3 items-end">
-                        <div className="flex-1">
-                          <Input
-                            label="API Key"
-                            type="password"
-                            value={apiKeys[provider.id] || ""}
-                            onChange={(e) =>
-                              setApiKeys((prev) => ({ ...prev, [provider.id]: e.target.value }))
-                            }
-                            placeholder={`Enter your ${provider.name} API key`}
-                          />
-                        </div>
-                        <Button
-                          variant="secondary"
-                          onClick={() => handleTestConnection(provider.id)}
-                          disabled={!apiKeys[provider.id] || testing === provider.id}
-                        >
-                          {testing === provider.id ? (
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                          ) : (
-                            "Test Connection"
-                          )}
-                        </Button>
-                      </div>
-
-                      {testResults[provider.id] === "success" && (
-                        <p className="text-sm text-success flex items-center gap-1.5">
-                          <Check className="w-4 h-4" /> Connection successful
-                        </p>
-                      )}
-                      {testResults[provider.id] === "error" && (
-                        <p className="text-sm text-error">
-                          Connection failed. Please check your API key and try again.
-                        </p>
-                      )}
-
-                      {isConnected && (
-                        <Select
-                          label="Default Model"
-                          value={selectedModels[provider.id] || ""}
-                          onChange={(e) => handleModelSelect(provider.id, e.target.value)}
-                          placeholder="Select a model"
-                          options={provider.models.map((m) => ({ value: m, label: m }))}
-                        />
-                      )}
-                    </>
-                  ) : (
-                    /* Ollama config */
-                    <>
-                      <div className="flex gap-3 items-end">
-                        <div className="flex-1">
-                          <Input
-                            label="Ollama URL"
-                            value={ollamaUrl}
-                            onChange={(e) => setOllamaUrl(e.target.value)}
-                            placeholder="http://localhost:11434"
-                            helperText="Default: http://localhost:11434"
-                          />
-                        </div>
-                        <Button
-                          variant="secondary"
-                          onClick={() => handleTestConnection("ollama")}
-                          disabled={testing === "ollama"}
-                        >
-                          {testing === "ollama" ? (
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                          ) : (
-                            "Detect Ollama"
-                          )}
-                        </Button>
-                      </div>
-
-                      {ollamaStatus === "running" && (
-                        <div className="space-y-3">
-                          <p className="text-sm text-success flex items-center gap-1.5">
-                            <Check className="w-4 h-4" /> Ollama is running
-                            {ollamaModels.length > 0 && (
-                              <span className="text-neutral-500 dark:text-neutral-400 ml-1">
-                                ({ollamaModels.length} model{ollamaModels.length !== 1 ? "s" : ""} available)
-                              </span>
-                            )}
-                          </p>
-                          {ollamaModels.length > 0 && (
-                            <Select
-                              label="Default Model"
-                              value={selectedModels["ollama"] || ""}
-                              onChange={(e) => handleModelSelect("ollama", e.target.value)}
-                              placeholder="Select a local model"
-                              options={ollamaModels.map((m) => ({ value: m, label: m }))}
-                            />
-                          )}
-                        </div>
-                      )}
-
-                      {ollamaStatus === "not_found" && (
-                        <div className="p-4 rounded-xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20">
-                          <p className="text-sm text-amber-700 dark:text-amber-400 font-medium mb-1">
-                            Ollama not detected
-                          </p>
-                          <p className="text-xs text-amber-600 dark:text-amber-400/80 mb-3">
-                            Make sure Ollama is installed and running on your machine.
-                          </p>
-                          <a
-                            href="https://ollama.com/download"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-400 hover:underline"
-                          >
-                            Download Ollama <ExternalLink className="w-3 h-3" />
-                          </a>
-                        </div>
-                      )}
-                    </>
-                  )}
-
-                  {isConnected && !isActive && (
-                    <Button
-                      variant="primary"
-                      size="sm"
-                      onClick={() => handleSetActive(provider.id)}
-                    >
-                      Set as Default Provider
-                    </Button>
-                  )}
-                </div>
-              )}
+              <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-green-600 shrink-0">
+                <MonitorIcon className="w-5 h-5 text-white" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <span className="text-sm font-semibold text-neutral-900 dark:text-white">
+                  Local AI (Built-in)
+                </span>
+                <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
+                  Downloaded GGUF models running on your CPU — free, private, offline
+                </p>
+              </div>
+              <Badge variant="success" dot>Always available</Badge>
+            </button>
+            <div id="local-ai-expand" className="hidden px-4 pb-4 pt-1 border-t border-neutral-100 dark:border-neutral-800">
+              <LocalAIConfig />
             </div>
-          );
-        })}
-      </div>
+          </div>
+
+          {/* Cloud + Ollama provider cards */}
+          {PROVIDER_GUIDES.map((guide) => {
+            const saved = guide.id === "ollama"
+              ? undefined  // Ollama not tracked as CloudProvider in backend
+              : savedByType[guide.id as CloudProviderType];
+            return (
+              <ProviderCard
+                key={guide.id}
+                guide={guide}
+                saved={saved}
+                onSave={handleSave}
+                onTest={(type, config) => handleTest(type, config, saved?.provider_id)}
+                onRemove={async () => {
+                  if (saved) await handleRemove(saved.provider_id);
+                }}
+              />
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -1174,10 +963,35 @@ function AboutTab() {
   );
 }
 
+// ─── Deep-link tab mapping ───────────────────────────────────────────────────
+// Maps ?tab=<slug> query param → internal tab id
+const TAB_SLUG_MAP: Record<string, string> = {
+  "ai-providers": "providers",
+  "brand-voice": "brand",
+  "appearance": "appearance",
+  "data": "data",
+  "about": "about",
+};
+
 // ─── Main Settings Page ─────────────────────────────────────────────────────
 
 export default function SettingsPage() {
-  const [activeTab, setActiveTab] = useState("providers");
+  const [searchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState(() => {
+    const slug = searchParams.get("tab");
+    return (slug && TAB_SLUG_MAP[slug]) || "providers";
+  });
+
+  // Honor deep-link changes if the URL param changes after mount
+  useEffect(() => {
+    const slug = searchParams.get("tab");
+    const tabId = (slug && TAB_SLUG_MAP[slug]) || null;
+    if (tabId && tabId !== activeTab) {
+      setActiveTab(tabId);
+    }
+    // Only react to searchParams changes; activeTab changes are intentional
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   return (
     <div className="min-h-screen">

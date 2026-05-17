@@ -354,7 +354,7 @@ test.describe("Library Agent Browser", () => {
     await crews.openLibraryPanel();
 
     // Wait for agents to load
-    await crews.page.waitForTimeout(1000);
+    await crews.libraryAgentRows.first().waitFor({ state: 'visible', timeout: 15000 }).catch(() => {});
 
     const agentCount = await crews.libraryAgentRows.count();
     expect(agentCount).toBeGreaterThanOrEqual(1);
@@ -367,7 +367,7 @@ test.describe("Library Agent Browser", () => {
     await crews.openLibraryPanel();
 
     // Wait for initial load
-    await page.waitForTimeout(1000);
+    await crews.libraryAgentRows.first().waitFor({ state: 'visible', timeout: 15000 }).catch(() => {});
     const initialCount = await crews.libraryAgentRows.count();
 
     // Search for something unlikely to match all agents
@@ -380,10 +380,10 @@ test.describe("Library Agent Browser", () => {
       expect(filteredCount).toBeLessThan(initialCount);
     }
 
-    // Verify the "No agents found" message appears when there are no results
+    // Verify the "No matches" heading appears when there are no results
     if (filteredCount === 0) {
       await expect(
-        crews.libraryPanel.getByText(/no agents found/i)
+        crews.libraryPanel.getByRole("heading", { name: /no matches/i })
       ).toBeVisible();
     }
   });
@@ -407,10 +407,11 @@ test.describe("Library Agent Browser", () => {
       return;
     }
 
-    // Capture the name of the first library agent before clicking
+    // Capture the name of the first library agent before clicking.
+    // Agent cards render the name as an <h3>, not a span.
     const firstAgentName = await crews.libraryAgentRows
       .first()
-      .locator("span.text-sm.font-medium")
+      .locator("h3")
       .first()
       .textContent();
 

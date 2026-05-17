@@ -1,0 +1,10 @@
+{
+  "id": "static-site",
+  "name": "Static Site",
+  "description": "Single-page HTML/CSS scaffold served via python -m http.server on port 8080.",
+  "runtime": "static",
+  "init_commands": [],
+  "run_command": "python -m http.server 8080",
+  "preview_port": 8080,
+  "starter_prompt": "Add a /about page and a small navigation bar."
+}

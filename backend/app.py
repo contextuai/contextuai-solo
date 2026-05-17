@@ -48,6 +48,11 @@ from routers.scheduled_jobs import router as scheduled_jobs_router
 from routers.connections import router as connections_router
 from routers.knowledge_base import router as knowledge_base_router
 from routers.personal_docs import router as personal_docs_router
+from routers.automations import router as automations_router
+from routers.cloud_providers import router as cloud_providers_router
+from routers.coder_projects import router as coder_projects_router
+from routers.coder_roles import router as coder_roles_router
+from routers.coder_workflow import router as coder_workflow_router
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -102,6 +107,11 @@ app.include_router(scheduled_jobs_router)
 app.include_router(connections_router)
 app.include_router(knowledge_base_router)
 app.include_router(personal_docs_router)
+app.include_router(automations_router)
+app.include_router(cloud_providers_router)
+app.include_router(coder_projects_router)
+app.include_router(coder_roles_router)
+app.include_router(coder_workflow_router)
 
 
 # ---------------------------------------------------------------------------
@@ -269,6 +279,7 @@ _CATEGORY_ICONS = {
     "social_engagement": "message-circle",
     "specialized": "star",
     "startup_venture": "rocket",
+    "coder_companion": "code",
 }
 
 
@@ -283,6 +294,22 @@ async def _seed_agent_library(db):
     """
     try:
         collection = db["workspace_agents"]
+
+        # Clean up phase-4 PR 6 stale data: PR 6 added the coder-companion
+        # agent folder before its category was registered in CATEGORY_MAP, so
+        # early seeds stored the literal "coder-companion" string. That value
+        # fails AgentBlueprint enum validation on read.  Purge those rows so
+        # the corrected seed below recreates them with the canonical
+        # "coder_companion" category.
+        try:
+            purged = await collection.delete_many({"category": "coder-companion"})
+            if getattr(purged, "deleted_count", 0):
+                logger.info(
+                    "Purged %s stale coder-companion agent rows",
+                    purged.deleted_count,
+                )
+        except Exception:
+            logger.exception("Failed to purge stale coder-companion rows")
 
         from services.workspace.agent_library_service import AgentLibraryService
         library = AgentLibraryService()
@@ -351,6 +378,11 @@ async def _seed_agent_library(db):
                         "source": "library",
                         "created_by": "system",
                         "created_at": datetime.utcnow().isoformat() + "Z",
+                        # PR 2 (phase 4): library agents are all prompt-only.
+                        # Database / web / mcp / api / file kinds come from
+                        # promoted personas (see personas_to_agent_types
+                        # migration).
+                        "kind": "prompt",
                     }
 
                     await collection.insert_one(doc)
@@ -399,6 +431,17 @@ async def _seed_local_models(db):
             logger.info("Seeded %d local model config(s)", synced)
     except Exception:
         logger.exception("Failed to seed local model configs")
+
+
+async def _seed_cloud_models(db):
+    """Register cloud-provider model entries for any connected providers."""
+    try:
+        from services.cloud_model_seeder import sync_cloud_models_to_db
+        synced = await sync_cloud_models_to_db(db)
+        if synced:
+            logger.info("Seeded %d cloud model entry/entries", synced)
+    except Exception:
+        logger.exception("Failed to seed cloud model entries")
 
 
 async def _seed_crew_templates(db):
@@ -476,6 +519,9 @@ async def startup_event():
         # Seed model configs for any already-downloaded local GGUF models
         await _seed_local_models(proxy)
 
+        # Seed cloud model entries for any connected cloud providers
+        await _seed_cloud_models(proxy)
+
         # Phase 3 PR 1: backfill crew.connection_bindings / triggers / approval_required
         try:
             from services.migrations.unify_connections_migration import (
@@ -484,6 +530,34 @@ async def startup_event():
             await run_unify_connections_migration(proxy)
         except Exception:
             logger.exception("unify_connections migration failed; continuing startup")
+
+        # Phase 4 PR 2: fold personas into workspace_agents with `kind`
+        try:
+            from services.migrations.personas_to_agent_types_migration import (
+                run_personas_to_agent_types_migration,
+            )
+            await run_personas_to_agent_types_migration(proxy)
+        except Exception:
+            logger.exception("personas_to_agent_types migration failed; continuing startup")
+
+        # Phase 4 PR 3: collapse workspace_projects → crews(kind=project)
+        # and workspace_executions → crew_runs.
+        try:
+            from services.migrations.workspace_to_crew_runs_migration import (
+                run_workspace_to_crew_runs_migration,
+            )
+            await run_workspace_to_crew_runs_migration(proxy)
+        except Exception:
+            logger.exception("workspace_to_crew_runs migration failed; continuing startup")
+
+        # PR 14: backfill workflow_mode on coder_projects rows.
+        try:
+            from services.migrations.coder_workflow_mode_migration import (
+                run_coder_workflow_mode_migration,
+            )
+            await run_coder_workflow_mode_migration(proxy)
+        except Exception:
+            logger.exception("coder_workflow_mode migration failed; continuing startup")
 
         # Start Reddit poller (runs only when a Reddit account is configured)
         from services.reddit_poller import get_poller

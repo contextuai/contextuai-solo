@@ -102,6 +102,27 @@ export default function ChatPage() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
+  // Cross-mode handoff: pre-fill the chat input from `?prefill=...` and then
+  // strip the param so a refresh doesn't repopulate it.
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const prefill = params.get("prefill");
+      if (prefill) {
+        setInput(prefill);
+        params.delete("prefill");
+        const newSearch = params.toString();
+        const newUrl =
+          window.location.pathname +
+          (newSearch ? `?${newSearch}` : "") +
+          window.location.hash;
+        window.history.replaceState({}, "", newUrl);
+      }
+    } catch {
+      // ignore — best-effort prefill
+    }
+  }, []);
+
   async function loadModels() {
     try {
       const data = await getModels(aiMode);
