@@ -16,6 +16,8 @@ import {
   Cpu,
   Library,
   Zap,
+  Plug,
+  Bot,
 } from "lucide-react";
 import { useAiMode } from "@/contexts/ai-mode-context";
 import logoImg from "@/assets/logo.png";
@@ -26,15 +28,18 @@ interface NavItem {
   icon: React.ElementType;
 }
 
-// Phase 4 PR 4: sidebar trimmed from 12 → 8.
-// Personas folded into Agents (PR 2); Workspace folded into Crews (PR 3).
-// Agents and Blueprints remain routable but moved out of the daily-nav sidebar
-// — they're surfaced inside the Crews builder and via direct URL.
+// Phase 6: sidebar restored to 10 daily-use surfaces.
+// Connectors brings the legacy /personas page back (renamed). Agents is
+// the prompt-agent library; the database/api/mcp/web/file kinds live under
+// Connectors. "Crews" page renamed to "Workspace" (same /crews route),
+// with internal Crews | Projects | Runs tabs.
 const navItems: NavItem[] = [
   { label: "Chat", path: "/", icon: MessageSquare },
   { label: "Knowledge", path: "/knowledge", icon: Library },
+  { label: "Connectors", path: "/personas", icon: Plug },
+  { label: "Agents", path: "/agents", icon: Bot },
   { label: "Automations", path: "/automations", icon: Zap },
-  { label: "Crews", path: "/crews", icon: Users },
+  { label: "Workspace", path: "/crews", icon: Users },
   { label: "Approvals", path: "/approvals", icon: ClipboardCheck },
   { label: "Distributions", path: "/connections", icon: Cable },
   { label: "Models", path: "/models", icon: Cpu },
