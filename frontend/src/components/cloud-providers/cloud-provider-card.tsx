@@ -8,6 +8,8 @@ import {
   EyeOff,
   AlertCircle,
   Trash2,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import type {
   CloudProvider,
@@ -90,6 +92,10 @@ export function CloudProviderCard({
   onTest,
 }: CloudProviderCardProps) {
   const isConnected = !!saved && saved.connected;
+
+  // Collapsed by default once connected; expanded when first setting up.
+  // Mirrors the Distributions card pattern in routes/connections.tsx.
+  const [isExpanded, setIsExpanded] = useState(!isConnected);
 
   // Local form state — initialised empty; saved secrets show "(saved)" placeholder
   const [formData, setFormData] = useState<Record<string, string>>({});
@@ -238,7 +244,11 @@ export function CloudProviderCard({
       )}
     >
       {/* Header */}
-      <div className="px-5 pt-5 pb-3">
+      <button
+        type="button"
+        onClick={() => setIsExpanded((v) => !v)}
+        className="px-5 pt-5 pb-3 text-left w-full hover:bg-neutral-50/50 dark:hover:bg-neutral-800/40 transition-colors rounded-t-2xl"
+      >
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-2.5">
             <span
@@ -254,12 +264,44 @@ export function CloudProviderCard({
               </span>
             )}
           </div>
+          <span className="flex items-center gap-1 text-[11px] font-medium text-neutral-500 dark:text-neutral-400 shrink-0">
+            {isConnected ? (isExpanded ? "Hide" : "Update") : (isExpanded ? "Hide" : "Configure")}
+            {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+          </span>
         </div>
         <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1.5">
           {provider.tagline}
         </p>
-      </div>
+      </button>
 
+      {/* Collapsed summary — last-tested line when connected and panel is hidden */}
+      {!isExpanded && isConnected && savedTestStatus && (
+        <div className="px-5 pb-4">
+          <p
+            className={cn(
+              "text-[11px] flex items-center gap-1",
+              savedTestStatus === "ok"
+                ? "text-neutral-500 dark:text-neutral-400"
+                : "text-red-600 dark:text-red-400",
+            )}
+          >
+            {savedTestStatus === "ok" ? (
+              <>
+                <Check className="w-3 h-3 text-green-500" /> Last tested {lastTestedRel}
+              </>
+            ) : (
+              <>
+                <AlertCircle className="w-3 h-3" />
+                Last test failed {lastTestedRel}
+              </>
+            )}
+          </p>
+        </div>
+      )}
+
+      {/* Expanded body */}
+      {isExpanded && (
+      <>
       {/* Get-key link + steps */}
       <div className="px-5 pb-3">
         <a
@@ -450,6 +492,8 @@ export function CloudProviderCard({
           </button>
         )}
       </div>
+      </>
+      )}
     </div>
   );
 }
