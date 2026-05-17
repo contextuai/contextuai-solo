@@ -399,15 +399,24 @@ class TelegramBot:
         )
 
     async def send_message(self, chat_id: str, text: str) -> Dict[str, Any]:
-        """Send a text message via Telegram Bot API."""
+        """Send a text message via Telegram Bot API.
+
+        Crew/automation output is CommonMark; Telegram renders a restricted
+        HTML subset via parse_mode=HTML. Conversion happens here so callers
+        can stay format-agnostic.
+        """
+        from services.markdown_formatter import telegram_send_kwargs
+
         url = f"{self.BASE_URL}/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+        kwargs = telegram_send_kwargs(text)
 
-        # Telegram max message length is 4096 chars
-        if len(text) > 4096:
-            text = text[:4093] + "..."
+        # Telegram max message length is 4096 chars (after HTML conversion).
+        if len(kwargs["text"]) > 4096:
+            kwargs["text"] = kwargs["text"][:4093] + "..."
 
+        payload = {"chat_id": chat_id, **kwargs}
         async with httpx.AsyncClient() as client:
-            r = await client.post(url, json={"chat_id": chat_id, "text": text})
+            r = await client.post(url, json=payload)
             return {"status": r.status_code, "data": r.json() if r.status_code < 400 else r.text}
 
 

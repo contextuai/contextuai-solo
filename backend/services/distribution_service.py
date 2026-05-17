@@ -28,6 +28,8 @@ from enum import Enum
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
+from services.markdown_formatter import format_for_channel
+
 logger = logging.getLogger(__name__)
 
 
@@ -312,6 +314,11 @@ class DistributionService:
     ) -> Dict[str, Any]:
         """Route publish to the correct channel handler."""
         ct = DistributionChannelType(channel_type)
+
+        # Convert Markdown to whatever this platform actually renders.
+        # Crew/automation output is CommonMark by default; passing that
+        # raw to Twitter/LinkedIn surfaces `**` and `#` as text.
+        content = format_for_channel(content, channel_type)
 
         if ct == DistributionChannelType.LINKEDIN:
             return await self._publish_linkedin(config, content, title)
