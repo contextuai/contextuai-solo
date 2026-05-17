@@ -113,17 +113,17 @@ test("DC-NEWPROJ-01: dialog step 3 blocks Create until models picked", async ({ 
   await expect(step3Header).toBeVisible({ timeout: 5_000 });
 
   const createBtn = page.locator('[data-testid="create-project-btn"]');
-  await expect(createBtn).toBeVisible({ timeout: 5_000 });
 
   if (!hasModels) {
-    // No-models empty state — Create is not shown; navigation buttons shown instead
+    // No-models empty state — StepTeam short-circuits to NoModelsEmptyState,
+    // so the Create button is not rendered. Only the nav buttons are shown.
     const modelHubBtn = page.locator('[data-testid="go-to-model-hub"]');
     await expect(modelHubBtn).toBeVisible({ timeout: 5_000 });
-    // Create button should not be clickable / is disabled
-    const isDisabled = await createBtn.isDisabled().catch(() => true);
-    expect(isDisabled).toBe(true);
+    await expect(createBtn).toHaveCount(0);
     return;
   }
+
+  await expect(createBtn).toBeVisible({ timeout: 5_000 });
 
   // Apply a preset via the dropdown
   const presetDropdown = page.getByRole("button", { name: /pick a preset/i });
@@ -380,6 +380,14 @@ test("DC-NEWPROJ-04: full create flow — pick model, create, navigate to projec
 // ---------------------------------------------------------------------------
 
 test("DC-NEWPROJ-05: step 3 shows workflow mode segmented control", async ({ page }) => {
+  const hasModels = await modelsAvailable(page);
+  if (!hasModels) {
+    // StepTeam short-circuits to NoModelsEmptyState when there are no models,
+    // hiding the workflow segmented control. Empty state is covered by DC-NEWPROJ-03.
+    test.skip();
+    return;
+  }
+
   await openNewProjectDialog(page);
   await stepThroughToStep3(page);
 
