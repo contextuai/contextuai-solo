@@ -56,8 +56,8 @@ const TABS: TabMeta[] = [
     icon: Database,
     emptyTitle: "No database agents yet",
     emptyBody:
-      "Add a Postgres / MySQL / MSSQL / Snowflake / MongoDB connection in Personas — it becomes a database agent here.",
-    emptyCtaLabel: "Open Personas",
+      "Add a Postgres / MySQL / MSSQL / Snowflake / MongoDB connector — it becomes a database agent here.",
+    emptyCtaLabel: "Open Connectors",
     emptyCtaHref: "/personas",
   },
   {
@@ -66,8 +66,8 @@ const TABS: TabMeta[] = [
     icon: Globe,
     emptyTitle: "No web agents yet",
     emptyBody:
-      "Add a Web Researcher persona to enable web search and fetch capabilities.",
-    emptyCtaLabel: "Open Personas",
+      "Add a Web Researcher connector to enable web search and fetch capabilities.",
+    emptyCtaLabel: "Open Connectors",
     emptyCtaHref: "/personas",
   },
   {
@@ -76,8 +76,8 @@ const TABS: TabMeta[] = [
     icon: Server,
     emptyTitle: "No MCP agents yet",
     emptyBody:
-      "Wire up an MCP server persona to expose model-context-protocol tools as an agent.",
-    emptyCtaLabel: "Open Personas",
+      "Wire up an MCP server connector to expose model-context-protocol tools as an agent.",
+    emptyCtaLabel: "Open Connectors",
     emptyCtaHref: "/personas",
   },
   {
@@ -86,8 +86,8 @@ const TABS: TabMeta[] = [
     icon: PlugZap,
     emptyTitle: "No API agents yet",
     emptyBody:
-      "Configure an API Connector persona to call external HTTP services from an agent.",
-    emptyCtaLabel: "Open Personas",
+      "Configure an API connector to call external HTTP services from an agent.",
+    emptyCtaLabel: "Open Connectors",
     emptyCtaHref: "/personas",
   },
   {
@@ -96,8 +96,8 @@ const TABS: TabMeta[] = [
     icon: FileText,
     emptyTitle: "No file agents yet",
     emptyBody:
-      "Add a File Operations persona to read and write local files from an agent.",
-    emptyCtaLabel: "Open Personas",
+      "Add a File Operations connector to read and write local files from an agent.",
+    emptyCtaLabel: "Open Connectors",
     emptyCtaHref: "/personas",
   },
 ];

@@ -205,7 +205,7 @@ export default function ChatInput({
   return (
     <div className="border-t border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-4 py-3">
       <div className="max-w-3xl mx-auto">
-        {/* Model & Persona selectors */}
+        {/* Model & Connector selectors */}
         <div className="flex items-center gap-2 mb-2">
           <span
             className={cn(
@@ -229,7 +229,7 @@ export default function ChatInput({
             items={personas}
             selectedId={selectedPersonaId}
             onSelect={onSelectPersona}
-            label="Persona"
+            label="Connector"
             icon={Sparkles}
             allowClear
           />

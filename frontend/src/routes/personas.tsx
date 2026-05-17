@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback } from "react";
-import { Link } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import {
   Sparkles,
@@ -120,14 +119,6 @@ export default function PersonasPage() {
   const [personas, setPersonas] = useState<Persona[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [movedBannerDismissed, setMovedBannerDismissed] = useState(() => {
-    return localStorage.getItem("solo.personas.movedBannerDismissed") === "true";
-  });
-
-  function dismissMovedBanner() {
-    localStorage.setItem("solo.personas.movedBannerDismissed", "true");
-    setMovedBannerDismissed(true);
-  }
   const [activeCategory, setActiveCategory] = useState("All");
   const [wizardOpen, setWizardOpen] = useState(false);
   const [wizardStep, setWizardStep] = useState<1 | 2>(1);
@@ -236,37 +227,6 @@ export default function PersonasPage() {
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
-      {/* Moved-to-Agents banner */}
-      {!movedBannerDismissed && (
-        <div className="mb-6 flex items-start gap-4 rounded-xl border border-amber-200 dark:border-amber-700/40 bg-amber-50 dark:bg-amber-500/10 px-4 py-3">
-          <div className="flex-1">
-            <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
-              Personas have moved.
-            </p>
-            <p className="text-xs text-amber-800/90 dark:text-amber-200/80 mt-0.5">
-              They live alongside your other agents now, organised by kind (Prompt, Database, Web, MCP, API, File). This page stays available for one release while you migrate.
-            </p>
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <Link
-              to="/agents"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary-500 hover:bg-primary-600 text-white text-xs font-medium transition-colors"
-            >
-              Open Agents
-              <ArrowRight className="w-3.5 h-3.5" />
-            </Link>
-            <button
-              type="button"
-              onClick={dismissMovedBanner}
-              className="p-1.5 rounded-md text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-500/20 transition-colors"
-              aria-label="Dismiss"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
@@ -275,10 +235,10 @@ export default function PersonasPage() {
           </div>
           <div>
             <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">
-              Personas
+              Connectors
             </h1>
             <p className="text-sm text-neutral-500 dark:text-neutral-400">
-              {personas.length} persona{personas.length !== 1 ? "s" : ""} &middot; Custom AI behaviors and system prompts
+              {personas.length} connector{personas.length !== 1 ? "s" : ""} &middot; External data sources & custom AI behaviors
             </p>
           </div>
         </div>
@@ -295,7 +255,7 @@ export default function PersonasPage() {
             className="flex items-center gap-2 px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white rounded-lg text-sm font-medium transition-colors"
           >
             <Plus className="w-4 h-4" />
-            Create Persona
+            Create Connector
           </button>
         </div>
       </div>
@@ -308,7 +268,7 @@ export default function PersonasPage() {
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search personas..."
+            placeholder="Search connectors..."
             className="w-full pl-10 pr-4 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-sm text-neutral-900 dark:text-neutral-100 placeholder-neutral-400 focus:outline-none focus:ring-2 focus:ring-primary-500/50"
           />
         </div>
@@ -344,11 +304,11 @@ export default function PersonasPage() {
         <div className="text-center py-16">
           <Sparkles className="w-12 h-12 text-neutral-300 dark:text-neutral-600 mx-auto mb-4" />
           <h3 className="text-lg font-semibold text-neutral-700 dark:text-neutral-300 mb-1">
-            {personas.length === 0 ? "No personas yet" : "No matches"}
+            {personas.length === 0 ? "No connectors yet" : "No matches"}
           </h3>
           <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-4">
             {personas.length === 0
-              ? "Create your first persona to customize AI behavior."
+              ? "Create your first connector to plug in external data sources."
               : "Try a different search or category."}
           </p>
           {personas.length === 0 && (
@@ -357,7 +317,7 @@ export default function PersonasPage() {
               className="inline-flex items-center gap-2 px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white rounded-lg text-sm font-medium transition-colors"
             >
               <Plus className="w-4 h-4" />
-              Create Persona
+              Create Connector
             </button>
           )}
         </div>
@@ -418,7 +378,7 @@ export default function PersonasPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="bg-white dark:bg-neutral-800 rounded-xl p-6 max-w-sm mx-4 shadow-xl">
             <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-2">
-              Delete persona?
+              Delete connector?
             </h3>
             <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-4">
               This action cannot be undone.
@@ -505,10 +465,10 @@ export default function PersonasPage() {
                 </div>
                 <div>
                   <h2 className="text-lg font-semibold text-neutral-900 dark:text-white">
-                    {isEdit ? "Edit Persona" : "Add New Persona"}
+                    {isEdit ? "Edit Connector" : "Add New Connector"}
                   </h2>
                   <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                    {wizardStep === 1 ? "Choose the type of persona you want to create" : `Configure your ${selectedType?.name ?? "persona"}`}
+                    {wizardStep === 1 ? "Choose the type of connector you want to create" : `Configure your ${selectedType?.name ?? "connector"}`}
                   </p>
                 </div>
               </div>
@@ -533,15 +493,15 @@ export default function PersonasPage() {
 
             {/* Body */}
             <div className="flex-1 overflow-y-auto">
-              {/* ─── Step 1: Select Persona Type ─── */}
+              {/* ─── Step 1: Select Connector Type ─── */}
               {wizardStep === 1 && (
                 <div className="p-6 space-y-4">
                   <div>
                     <h3 className="text-lg font-semibold text-neutral-900 dark:text-white mb-1">
-                      Select Persona Type
+                      Select Connector Type
                     </h3>
                     <p className="text-sm text-neutral-500 dark:text-neutral-400">
-                      Choose the type of persona you want to create
+                      Choose the type of connector you want to create
                     </p>
                   </div>
 
@@ -552,7 +512,7 @@ export default function PersonasPage() {
                       type="text"
                       value={typeSearch}
                       onChange={(e) => setTypeSearch(e.target.value)}
-                      placeholder="Search persona types..."
+                      placeholder="Search connector types..."
                       className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-sm text-neutral-900 dark:text-neutral-100 placeholder-neutral-400 focus:outline-none focus:ring-2 focus:ring-primary-500/50"
                     />
                   </div>
@@ -591,7 +551,7 @@ export default function PersonasPage() {
                   </div>
 
                   {filteredTypes.length === 0 && (
-                    <div className="text-center py-8 text-sm text-neutral-400">No persona types match your search</div>
+                    <div className="text-center py-8 text-sm text-neutral-400">No connector types match your search</div>
                   )}
                 </div>
               )}
@@ -632,7 +592,7 @@ export default function PersonasPage() {
                   {/* Description */}
                   <div>
                     <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">Description</label>
-                    <input type="text" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="A short description of what this persona does" className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-sm text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-primary-500/50" />
+                    <input type="text" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="A short description of what this connector does" className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-sm text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-primary-500/50" />
                   </div>
 
                   {/* Type-specific credential fields */}
@@ -687,7 +647,7 @@ export default function PersonasPage() {
                   {/* System prompt */}
                   <div>
                     <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">System Prompt</label>
-                    <textarea value={form.system_prompt} onChange={(e) => setForm({ ...form, system_prompt: e.target.value })} rows={4} placeholder="Optional instructions that define how this persona behaves..." className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-sm text-neutral-900 dark:text-neutral-100 font-mono focus:outline-none focus:ring-2 focus:ring-primary-500/50 resize-none" />
+                    <textarea value={form.system_prompt} onChange={(e) => setForm({ ...form, system_prompt: e.target.value })} rows={4} placeholder="Optional instructions that define how this connector behaves..." className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-sm text-neutral-900 dark:text-neutral-100 font-mono focus:outline-none focus:ring-2 focus:ring-primary-500/50 resize-none" />
                   </div>
                 </div>
               )}
