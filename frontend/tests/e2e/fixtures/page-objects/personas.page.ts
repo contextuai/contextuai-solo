@@ -58,7 +58,7 @@ export class PersonasPage {
   /** Description input in Step 2. */
   get formDescription(): Locator {
     return this.page.locator(
-      'input[placeholder="A short description of what this persona does"]'
+      'input[placeholder="A short description of what this connector does"]'
     );
   }
 
