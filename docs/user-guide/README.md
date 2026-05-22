@@ -6,16 +6,16 @@ Welcome to ContextuAI Solo, your private desktop AI assistant with 96 pre-built 
 
 | # | Module | What it does |
 |---|--------|-------------|
-| 1 | [Chat](01-chat.md) | Have conversations with AI models, manage sessions, pick personas |
+| 1 | [Chat](01-chat.md) | Have conversations with AI models, manage sessions, pick agents |
 | 2 | [Model Hub](02-model-hub.md) | Configure cloud AI providers and download local models |
-| 3 | [Personas](03-personas.md) | Create specialized AI personalities with custom instructions |
-| 4 | [Agents](04-agents.md) | Browse 96 business agents and create your own |
-| 5 | [Crews](05-crews.md) | Build multi-agent teams that work together on tasks |
+| 3 | [Agents](04-agents.md) | Browse 96 business agents, organised by kind (Prompt · Database · Web · MCP · API · File) — Personas were folded in here in v1.0.0-11. The legacy [Personas](03-personas.md) page still works for one release |
+| 4 | Automations | Natural-language `@agent`-mention workflows with PDF / PPTX / channel outputs |
+| 5 | [Crews](05-crews.md) | Build multi-agent teams that work together on tasks — now includes a Coder-project step |
 | 6 | [Blueprints](06-blueprints.md) | Use workflow templates to jumpstart projects |
-| 7 | [Workspace](07-workspace.md) | Run multi-agent projects and review results |
+| 7 | [Workspace](07-workspace.md) | Legacy — workspace projects now live as `kind="project"` rows under [Crews](05-crews.md) |
 | 8 | [Distributions](08-connections.md) | Connect to Telegram, Discord, Reddit, LinkedIn, Twitter/X, Instagram, Facebook, Blog, Email, Slack |
-| 9 | Knowledge | Upload PDFs / DOCX / TXT / MD and chat with citations (local RAG) |
-| 10 | [Settings](09-settings.md) | API keys, brand voice, appearance, data export |
+| 9 | Knowledge | Upload PDFs / DOCX / TXT / MD or map a folder on disk; chat with citations (local RAG) |
+| 10 | [Settings](09-settings.md) | API keys (Distributions-style provider cards), brand voice, appearance, data export |
 | 11 | [VS Code / IDE](10-openai-endpoint.md) | Use Solo as the model backend for Continue, Cline, Cursor, Aider, Zed, etc. |
 | 12 | [Solo Coder](11-coder.md) | Multi-agent coding environment with per-role models, workflow modes, and live preview |
 

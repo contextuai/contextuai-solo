@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-ContextuAI Solo is a single-user desktop AI assistant with 96 pre-built business agents (108 in repo, engineering category excluded from desktop). It's a Tauri v2 desktop app with a React 19 frontend and a FastAPI Python backend running as a sidecar process. Data is stored locally in SQLite. Supports both cloud AI providers (Anthropic, AWS Bedrock) and local GGUF models via llama-cpp-python.
+ContextuAI Solo is a single-user desktop AI assistant with 96 pre-built business agents (108 in repo, engineering and coder-companion categories excluded from desktop's main library). It's a Tauri v2 desktop app with a React 19 frontend and a FastAPI Python backend running as a sidecar process. Data is stored locally in SQLite. Supports cloud providers (Anthropic, OpenAI, Google Gemini, AWS Bedrock, Ollama) and local GGUF models via llama-cpp-python. The shell has two top-level modes — **Solo** (business assistant) and **Coder** (local coding workspace) — toggled from a top-center pill in the title bar (`Cmd/Ctrl+Shift+M`).
 
 ## Commands
 
@@ -77,19 +77,31 @@ GGUF models downloaded from HuggingFace, stored in `~/.contextuai-solo/models/`.
 - Models appear in chat dropdown after sync
 
 ### Agent Library (`agent-library/`)
-108 business agents as markdown files across 13 categories (c-suite, marketing-sales, finance-operations, etc.). Engineering category (12 agents) is excluded from desktop mode, so users see 96 across 12 categories. Each markdown file contains a system prompt, recommended model, and tool configs. Auto-seeded into `workspace_agents` collection on first startup. Re-seed via `POST /api/v1/desktop/reseed`.
+113 markdown agents across 14 categories. The 12 `engineering` agents and the 5 `coder-companion` agents (`code-reviewer`, `bug-analyzer`, `test-writer`, `doc-generator`, `refactor-advisor`) are excluded from the Solo agent library — coder-companion agents only surface in Coder mode (`kind="coder"`). Solo users see **96 agents** across 12 business categories. Each markdown file contains a system prompt, recommended model, and tool configs. Auto-seeded into `workspace_agents` collection on first startup with a `kind` field (see Agents-by-Kind below). Re-seed via `POST /api/v1/desktop/reseed`.
+
+### Agents-by-Kind (Phase 4 PR 2 — Personas folded in)
+Personas no longer exist as a separate concept. Each persona row is now a `workspace_agents` row with a `kind` field:
+- `prompt` — the 96 business agents from the markdown library (system prompt only)
+- `database` — PostgreSQL / MySQL / MSSQL / Snowflake / MongoDB connectors
+- `web` — Web Researcher
+- `mcp` — MCP Server
+- `api` — API Connector
+- `file` — File Operations
+- `coder` — Coder mode companion agents (hidden from Solo)
+
+`backend/migrations/personas_to_agent_types_migration.py` promotes each legacy persona row into `workspace_agents` preserving its `persona_id` so existing crews still resolve. The library picker (`components/agents/agent-library-tabs.tsx`) is **tabbed by kind** with per-kind counts; the Crew builder uses the same picker in compact mode. `GET /api/v1/workspace/agents?kind=<x>` and `GET /api/v1/workspace/agents/kinds/counts` drive the UI. `/personas` still routes for one release with a "Personas have moved" banner pointing to `/agents`.
 
 ### Crew System
 Multi-agent teams with persistent memory. Crew builder (`components/crews/crew-builder.tsx`) is a 7-step wizard:
 1. **Details** — name, description, blueprint, AI model selection
 2. **Execution Mode** — sequential, parallel, pipeline, autonomous
-3. **Agent Team** — add agents from the 96-agent library or manually (skipped for autonomous)
+3. **Agent Team** — add agents from the 96-agent library (tabbed by `kind`) or manually. Step types include the new `coder_project` step (Phase 4 PR 9) that runs a Coder project headlessly inside the crew flow.
 4. **Connections & Directions** — bind crew to channels with per-connection direction chip (`Inbound` / `Outbound` / `Both`)
 5. **Trigger** — reactive (keywords/hashtags/mentions) and/or scheduled (cron or one-shot date); manual is always implicit
 6. **Approval** — toggle `approval_required` to hold outbound in the Approvals queue before sending
 7. **Review & Create** — configuration summary before create
 
-Connection bindings stored as `connection_bindings[]` on the crew document (`ConnectionBinding` model: `connection_id`, `platform`, `direction`). `triggers[]` holds reactive and scheduled trigger configs. Crew-level model selection applies to all agents in the crew.
+Connection bindings stored as `connection_bindings[]` on the crew document (`ConnectionBinding` model: `connection_id`, `platform`, `direction`). `triggers[]` holds reactive and scheduled trigger configs. Crew-level model selection applies to all agents in the crew. Crew rows now carry `kind: "crew" | "project"` (Phase 4 PR 3 — Workspace folded in); `backend/migrations/workspace_to_crew_runs_migration.py` migrates legacy `workspace_projects` → `crews` rows with `kind="project"` and legacy `workspace_jobs` → `crew_runs`. The Crews page exposes tabs `Crews | Projects | Runs`.
 
 ### Blueprint Library (`blueprints/`)
 10 pre-built workflow templates across 5 categories (strategy, content, marketing, product, research). Markdown files auto-seeded into `blueprints` collection on startup. Integrated into crew builder and workspace project dialog via `BlueprintSelector` component. API: `GET /api/v1/blueprints/`, `GET /api/v1/blueprints/{id}`.
@@ -109,8 +121,44 @@ Inbound polling via praw (Reddit API wrapper). `RedditPoller` runs a 60s backgro
 ### Authentication
 Desktop mode uses a static admin user — no login required. Auth is bypassed via dependency overrides in `app.py`. The `auth_service.py` has Cognito JWT support for the enterprise edition.
 
-### Persona Types
-Desktop mode seeds 10 persona types: Nexus Agent, Web Researcher, PostgreSQL, MySQL, MSSQL, Snowflake, MongoDB, MCP Server, API Connector, File Operations. Social platforms (Slack, Twitter/X) are NOT persona types — they belong in Distributions (the page formerly labelled Connections; URL and code identifiers still use `connections`). Persona creation uses a 2-step wizard: Step 1 = type selection card grid with search, Step 2 = configure details (name, credentials, system prompt).
+### Automations (`routers/automations.py`, `services/automation_engine.py`)
+Natural-language `@agent`-mention workflows — the low-friction alternative to the 7-step crew wizard. Lives at `/automations` (sidebar entry). User writes a prompt with `@agent-handle` mentions, the parser (`automation_parser.py`) resolves agents and infers execution mode (sequential / parallel), and the engine runs the dispatch. Output actions: chat-only, PDF (reportlab), PPTX (python-pptx), Markdown, or any of the existing Distribution adapters (LinkedIn / Twitter / IG / FB / Slack / Email / Blog). SSE progress at `POST /api/v1/automations/{id}/run` → `GET /api/v1/automations/executions/{id}/stream`. "Promote to Crew" converts an Automation into a scheduled crew. Frontend: `components/automations/automation-builder.tsx` + `output-action-picker.tsx`.
+
+### Coder Mode (`routers/coder_projects.py`, `routers/coder_workflow.py`, `services/coder_*`)
+Local, free coding workspace — Phase 4 PR 6 MVP, Phase 5 multi-agent. Switched via the top-center mode pill (see Shell Mode Toggle below). Routes live under `/coder/*` and have their own 5-item sidebar (Projects, Running, Templates, Models, Settings — see `components/navigation/desktop-sidebar-coder.tsx`).
+- **Projects** (`coder_project_service.py`): scaffold from one of 4 templates (`coder-templates/web-app`, `telegram-bot`, `cli-tool`, `static-site`), trust state per project, allowlisted shell exec, scoped FS via Tauri capabilities.
+- **Runs** (`coder_run_service.py`): SSE stdout stream, kill, list-running. `run_headless()` is exposed for crew-step + automation handoffs.
+- **Roles & presets** (`coder_role_preset_service.py`, `coder_agent_role_repository.py`): per-project agent roles (planner / coder / reviewer / etc.) with presets for the multi-agent workflow.
+- **Workflow** (`coder_workflow_service.py`): solo / sequential / parallel / custom execution modes across roles. `routers/coder_workflow.py` exposes config + run-preview + start endpoints. Mode migration: `backend/migrations/coder_workflow_mode_migration.py`.
+- **Model picking**: `model-picker.tsx` (project-creation dialog) pulls from `/v1/models` via the universal dispatcher (`backend/services/model_dispatcher.py`). No silent fallbacks — picks fail fast if the chosen provider key is missing.
+- **Coder-companion agents** (`agent-library/coder-companion/`): 5 agents (code-reviewer, bug-analyzer, test-writer, doc-generator, refactor-advisor) with `kind="coder"` so they only appear in Coder mode. Right-click a file → "Review with code-reviewer" / "Add tests with test-writer".
+
+### Cross-Mode Handoffs (Phase 4 PR 7, Phase 5 PR 9)
+- `OutputActionType.RUN_CODER_PROJECT` — Automation output action that invokes a Coder project headlessly.
+- New crew step type `coder_project` — Crews can include a Coder run as a step (see `backend/tests/test_crew_coder_step.py`).
+- Coder project menu → "Index as KB" reuses the Personal Docs folder-mapping pipeline.
+- Coder error → "Diagnose with @bug-analyzer" deep-links into Solo chat.
+
+### Shell Mode Toggle (`contexts/mode-context.tsx`, `components/shell/mode-toggle.tsx`)
+Top-center segmented pill switches between `solo` and `coder`. State persists in localStorage (`solo.app.mode`); Tauri window title updates via `window-title.tsx`. The `ModeRouter` in `App.tsx` keeps URL and mode in sync (deep-linking to `/coder/*` flips mode on refresh; toggling mode navigates to the right home route). `Cmd/Ctrl+Shift+M` toggles. `DesktopLayout` swaps between `desktop-sidebar.tsx` (Solo) and `desktop-sidebar-coder.tsx` (Coder). Coder can be disabled from Settings → AI Providers (kill switch hides the toggle).
+
+### Cloud Providers (`routers/cloud_providers.py`, `services/cloud_provider_service.py`)
+Saved cloud API keys actually drive inference (Phase 4 PR 8). Settings → **AI Providers** tab shows a Distributions-style onboarding card per provider (Anthropic, OpenAI, Google, Bedrock, Ollama) with paste-key + test-connection flow (`components/cloud-providers/cloud-provider-card.tsx`, `provider-card.tsx`, `data/provider-guides.ts`). Keys live in the `cloud_provider_keys` collection. `services/cloud_model_seeder.py` registers each provider's models into `models` collection on key-save. The unified `services/model_dispatcher.py` routes `anthropic:` / `openai:` / `google:` / `bedrock:` / `ollama:` / bare local model IDs to the correct direct service.
+
+### OpenAI-Compatible API (`routers/openai_compat.py`)
+`GET /v1/models` and `POST /v1/chat/completions` expose **all** installed models — local GGUF, plus every cloud provider with a saved key — through the same OpenAI-shaped surface. Point Aider, Continue.dev, Cursor, or any OpenAI-compat client at `http://localhost:18741/v1`. Supports streaming SSE + non-streaming. Strips `<think>` tags by default; `?include_thinking=true` passes them through.
+
+### Persona Types (legacy — kept for migration)
+The `/personas` route still exists for one release with a "Personas have moved" banner pointing to `/agents`. The 10 legacy persona types (Nexus Agent, Web Researcher, PostgreSQL, MySQL, MSSQL, Snowflake, MongoDB, MCP Server, API Connector, File Operations) live as seed data in `app.py` and continue to feed the create-from-/personas wizard, but new work should add agents through the Agents-by-Kind picker instead. Social platforms are NOT persona types — they belong in Distributions.
+
+### Sidebar / Routes
+Solo sidebar (8 daily-use items, `components/navigation/desktop-sidebar.tsx`):
+**Chat · Knowledge · Automations · Crews · Approvals · Distributions · Models · Settings**
+
+Coder sidebar (5 items, `components/navigation/desktop-sidebar-coder.tsx`):
+**Projects · Running · Templates · Models · Settings**
+
+Routes still mounted in `App.tsx` but not in the daily-nav sidebar: `/agents`, `/blueprints`, `/personas` (banner), `/workspace`, `/analytics`. These are reached via direct URL, via the tabbed library picker inside the Crew builder, or via the Agents-by-Kind picker.
 
 ### Key Configuration
 - `backend/settings.py` — Centralized env-var config with defaults (port 18741)
