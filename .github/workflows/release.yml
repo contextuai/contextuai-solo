@@ -1,40 +1,147 @@
 name: Release
 
+# Single-workflow release. Three trigger paths, one pipeline:
+#
+#   1. workflow_dispatch — manually fire from the Actions UI with a version
+#      input. Useful for re-running a release or ad-hoc tagging.
+#
+#   2. push to a tag matching v* — someone (or this workflow's own `tag` job)
+#      pushed a tag. Skip the tag step, jump straight to build + publish.
+#
+#   3. push to main with a commit subject matching
+#      `chore: release vX.Y.Z(-N)( (#NNN))?` — the squash-merge of a
+#      release-bump PR. Verify the three version files agree, then tag and
+#      release. This replaces the previous two-workflow split where
+#      `auto-release.yml` dispatched `release.yml` via a PAT — by doing
+#      everything in a single workflow run, GitHub's anti-recursion
+#      restriction (which blocks GITHUB_TOKEN from triggering other
+#      workflows) is no longer in our way.
+
 on:
   push:
+    branches: [main]
     tags:
       - "v*"
   workflow_dispatch:
     inputs:
       version:
-        description: "Release version (e.g. v0.2.0-beta)"
+        description: "Release version (e.g. v1.0.0-12)"
         required: true
         type: string
 
 permissions:
   contents: write
 
-env:
-  RELEASE_TAG: ${{ github.event.inputs.version || github.ref_name }}
-
 jobs:
+  # ── Compute: decide whether to release and resolve the tag ───────────────
+  compute:
+    name: Determine release
+    runs-on: ubuntu-latest
+    # Fast-path: skip the workflow entirely for unrelated pushes to main.
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'chore: release v'))
+    outputs:
+      release_tag: ${{ steps.tag.outputs.release_tag }}
+      should_release: ${{ steps.tag.outputs.should_release }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve tag and verify (when applicable)
+        id: tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EVENT_NAME: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          DISPATCH_VERSION: ${{ github.event.inputs.version }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          should_release=false
+          release_tag=""
+
+          case "$EVENT_NAME" in
+            workflow_dispatch)
+              release_tag="$DISPATCH_VERSION"
+              should_release=true
+              ;;
+            push)
+              if [[ "$REF" == refs/tags/v* ]]; then
+                release_tag="${REF#refs/tags/}"
+                should_release=true
+              elif [[ "$REF" == refs/heads/main ]]; then
+                # Strict parse: only accept "chore: release vX.Y.Z" or
+                # "chore: release vX.Y.Z-N", with the optional " (#NNN)"
+                # GitHub appends on squash merges. Non-numeric prereleases
+                # like "-beta.3" are rejected — they break Windows MSI.
+                SUBJECT=$(printf '%s' "$COMMIT_MSG" | head -n1)
+                pattern='^chore: release (v[0-9]+\.[0-9]+\.[0-9]+(-[0-9]+)?)( \(#[0-9]+\))?$'
+                if [[ ! "$SUBJECT" =~ $pattern ]]; then
+                  echo "::notice::Subject '$SUBJECT' does not match strict release pattern. Skipping."
+                else
+                  release_tag="${BASH_REMATCH[1]}"
+                  VERSION="${release_tag#v}"
+
+                  # Cross-check the three version files against the subject —
+                  # catches typos or a forgotten file bump before we tag.
+                  PKG=$(jq -r .version frontend/package.json)
+                  TAURI=$(jq -r .version frontend/src-tauri/tauri.conf.json)
+                  CARGO=$(grep -E '^version\s*=' frontend/src-tauri/Cargo.toml | head -n1 | sed -E 's/version[[:space:]]*=[[:space:]]*"([^"]+)"/\1/')
+                  echo "Expected: $VERSION"
+                  echo "  frontend/package.json:              $PKG"
+                  echo "  frontend/src-tauri/tauri.conf.json: $TAURI"
+                  echo "  frontend/src-tauri/Cargo.toml:      $CARGO"
+
+                  fail=0
+                  [[ "$PKG"   != "$VERSION" ]] && { echo "::error::package.json version ($PKG) != $VERSION"; fail=1; }
+                  [[ "$TAURI" != "$VERSION" ]] && { echo "::error::tauri.conf.json version ($TAURI) != $VERSION"; fail=1; }
+                  [[ "$CARGO" != "$VERSION" ]] && { echo "::error::Cargo.toml version ($CARGO) != $VERSION"; fail=1; }
+                  [[ "$fail" == "1" ]] && exit 1
+
+                  # Idempotent: if the tag already exists (e.g. a previous
+                  # run already tagged this commit), skip the release.
+                  if gh api "repos/${{ github.repository }}/git/ref/tags/$release_tag" >/dev/null 2>&1; then
+                    echo "::warning::Tag $release_tag already exists — skipping release."
+                  else
+                    should_release=true
+                  fi
+                fi
+              fi
+              ;;
+          esac
+
+          echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
+          echo "should_release=$should_release" >> "$GITHUB_OUTPUT"
+          echo "Computed: release_tag='$release_tag' should_release=$should_release"
+
+  # ── Tag: only for dispatch + chore-on-main paths. Tag-push events skip. ──
   tag:
     name: Create Tag
-    if: github.event_name == 'workflow_dispatch'
+    needs: [compute]
+    if: |
+      needs.compute.outputs.should_release == 'true' && (
+        github.event_name == 'workflow_dispatch' ||
+        (github.event_name == 'push' && github.ref == 'refs/heads/main')
+      )
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
       - name: Create and push tag
+        env:
+          RELEASE_TAG: ${{ needs.compute.outputs.release_tag }}
         run: |
-          git tag "${{ github.event.inputs.version }}"
-          git push origin "${{ github.event.inputs.version }}"
+          git tag "$RELEASE_TAG"
+          git push origin "$RELEASE_TAG"
 
   build:
     name: Build (${{ matrix.platform.name }})
-    needs: [tag]
-    if: always() && (needs.tag.result == 'success' || needs.tag.result == 'skipped')
+    needs: [compute, tag]
+    if: |
+      always() && needs.compute.outputs.should_release == 'true' && (
+        needs.tag.result == 'success' || needs.tag.result == 'skipped'
+      )
     strategy:
       fail-fast: false
       matrix:
@@ -54,6 +161,8 @@ jobs:
             tauri-bundles: deb,rpm
 
     runs-on: ${{ matrix.platform.os }}
+    env:
+      RELEASE_TAG: ${{ needs.compute.outputs.release_tag }}
 
     steps:
       - uses: actions/checkout@v4
@@ -185,8 +294,10 @@ jobs:
   # ── Create GitHub Release ────────────────────────────────────────────────
   release:
     name: Publish Release
-    needs: build
+    needs: [compute, build]
     runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ needs.compute.outputs.release_tag }}
     steps:
       - uses: actions/checkout@v4
 
