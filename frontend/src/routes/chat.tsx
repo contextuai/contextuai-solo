@@ -393,7 +393,7 @@ export default function ChatPage() {
   // ── Render ─────────────────────────────────────────────────────
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="flex h-full overflow-hidden">
       <ChatSidebar
         sessions={sessions}
         activeSessionId={activeSessionId}

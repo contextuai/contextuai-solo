@@ -9,13 +9,12 @@ export function DesktopLayout() {
   const { mode } = useMode();
 
   return (
-    <div className="min-h-screen bg-neutral-50 dark:bg-[#242523]">
-      {/* Top bar with centred mode toggle — sticky so it stays visible when
-          inner pages (e.g. Coder project detail, terminal output) grow past
-          the viewport. */}
+    <div className="h-screen flex flex-col overflow-hidden bg-neutral-50 dark:bg-[#242523]">
+      {/* Top bar with the mode toggle. Lives outside the scroll container so
+          inner pages never push it out of view. */}
       <div
         className={cn(
-          "sticky top-0 z-30 flex items-center justify-center h-12 px-4",
+          "flex-shrink-0 flex items-center justify-center h-12 px-4",
           "bg-white dark:bg-neutral-900",
           "border-b border-neutral-200 dark:border-neutral-800"
         )}
@@ -23,12 +22,16 @@ export function DesktopLayout() {
         <ModeToggle />
       </div>
 
-      <div className="flex">
-        {/* Cross-fade between sidebars on mode change */}
-        <div className="relative">
+      <div className="flex flex-1 min-h-0">
+        {/* Cross-fade between sidebars on mode change. Explicit `h-full` on
+            the wrapper chain so the sidebar's `h-full` resolves against the
+            flex row's height — without it the chain breaks at the auto-height
+            inner div and the sidebar collapses to its content height, leaving
+            blank space below it on tall pages like Settings. */}
+        <div className="relative h-full">
           <div
             className={cn(
-              "transition-opacity duration-150",
+              "h-full transition-opacity duration-150",
               mode === "solo" ? "opacity-100" : "opacity-0 pointer-events-none absolute inset-0"
             )}
             aria-hidden={mode !== "solo"}
@@ -37,7 +40,7 @@ export function DesktopLayout() {
           </div>
           <div
             className={cn(
-              "transition-opacity duration-150",
+              "h-full transition-opacity duration-150",
               mode === "coder" ? "opacity-100" : "opacity-0 pointer-events-none absolute inset-0"
             )}
             aria-hidden={mode !== "coder"}
@@ -46,7 +49,7 @@ export function DesktopLayout() {
           </div>
         </div>
 
-        <main className="flex-1 transition-all duration-300">
+        <main className="flex-1 overflow-y-auto transition-all duration-300">
           <Outlet />
         </main>
       </div>

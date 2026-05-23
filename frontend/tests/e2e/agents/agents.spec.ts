@@ -155,7 +155,18 @@ test.describe("Positive Workflows", () => {
   // array can race during initial load, and one stray markdown-parse failure
   // is counted in the badge but excluded from the card array.
   test("DC-AGENT-08: agent count badge matches visible cards", async () => {
-    const activeTabBadge = agents.page.locator('button.border-primary-500 span').last();
+    // The active kind tab uses border-b-2 + border-primary-500. Scoping to
+    // border-b-2 keeps agent cards (which also use border-primary-500 when
+    // selected) from polluting the .last() match.
+    //
+    // /agents is now scoped to kind=prompt only (kindsToShow={["prompt"]}),
+    // and the tab strip is hidden when there's a single kind. If no active
+    // tab badge is on the page, this test has nothing to verify — skip.
+    const activeTabBadge = agents.page.locator('button.border-b-2.border-primary-500 span').last();
+    if ((await activeTabBadge.count()) === 0) {
+      test.skip();
+      return;
+    }
     const badgeText = await activeTabBadge.textContent();
     if (!badgeText) {
       test.skip();

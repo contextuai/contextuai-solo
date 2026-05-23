@@ -167,11 +167,14 @@ Solo exposes an **OpenAI-compatible API endpoint** (`/v1/chat/completions`) on y
 ## Everything else you get
 
 - **Multi-Agent Crews** — Assemble teams via a 7-step wizard with 4 execution modes: sequential, parallel, pipeline, or fully autonomous
+- **Automations** — Natural-language `@agent`-mention workflows for one-off work. Write a prompt, pick output actions (PDF, PPTX, Markdown, or any Distribution channel), run. Promote any Automation into a scheduled Crew with one click
+- **Coder Mode** — Switch to a local coding workspace from the top-center mode pill (`Cmd/Ctrl+Shift+M`). Scaffold from 4 starter templates (Web App, Telegram Bot, CLI Tool, Static Site), run your dev server in a sandboxed shell, preview in an embedded iframe, and pair with 5 coder-companion agents (code-reviewer, bug-analyzer, test-writer, doc-generator, refactor-advisor). Multi-agent workflow modes: solo, sequential, parallel, custom
+- **Agents-by-Kind library** — The agent picker is tabbed by kind (Prompt · Database · Web · MCP · API · File), so a Postgres connector and a system-prompt agent live as peers but render as categorically different things. Personas folded in here in v1.0.0-11
 - **10 Blueprint Templates** — Pre-built workflow templates across strategy, content, marketing, product, and research
-- **Workshop Mode** — Run multi-agent brainstorming sessions with structured outputs
-- **10 Persona Types** — Nexus Agent, Web Researcher, database connectors (PostgreSQL, MySQL, MSSQL, Snowflake, MongoDB), MCP Server, API Connector, File Operations
 - **10 Distribution Channels** — Telegram, Discord, Reddit, LinkedIn, Twitter/X, Instagram, Facebook, Blog, Email, and Slack — with inbound auto-reply and approval gates. See the [Distributions Guide](CONNECTIONS-GUIDE.md) for setup
 - **Knowledge Base (Local RAG)** — Upload PDFs / DOCX / TXT / MD or map a whole folder on disk, chunk + embed locally with a bundled MiniLM model, and chat with citations. Folder mappings auto-sync on a `1h` / `6h` / `24h` schedule with friction guardrails for large directories. Crews and workspace agents can bind to specific KBs. Pre-built starter packs live under `knowledge-base-packs/`
+- **Cross-mode handoffs** — Crews can include a Coder run as a step. Automations can route output to a Coder project. Coder projects can be indexed as a KB. Coder errors deep-link into Solo chat with `@bug-analyzer`
+- **AI Providers onboarding** — Settings → AI Providers shows Distributions-style cards for Anthropic, OpenAI, Google Gemini, AWS Bedrock, and Ollama. Paste a key, test the connection, and every saved provider's models appear in the OpenAI-compatible `/v1/models` list
 - **Brand Voice** — Define your business identity so every response sounds like you
 - **Dark/Light Theme** — Easy on the eyes, day or night
 
@@ -261,7 +264,8 @@ This is an active beta — we'd love your feedback! If you run into any issues:
 | Role-Based Access Control | -- | Yes |
 | SSO / MFA / SCIM 2.0 | -- | Yes |
 | Analytics Dashboard | -- | Yes |
-| Automations & Scheduling | -- | Yes |
+| Automations & Scheduling | Yes | Yes |
+| Coder Mode (local code workspace) | Yes | -- |
 | CodeMorph (Code Gen) | -- | Yes |
 | Control Center (23 integrations) | -- | Yes |
 | Enterprise DB Connectors | -- | Yes |
@@ -313,7 +317,9 @@ contextuai-solo/
 │   ├── routers/        # API route handlers
 │   ├── services/       # Business logic and AI orchestration
 │   └── requirements.txt
-├── agent-library/      # Built-in agent templates (108 agents across 13 categories; engineering excluded from desktop → 96 visible)
+├── agent-library/      # Built-in agent templates (113 agents across 14 categories; engineering + coder-companion excluded from Solo → 96 visible in Solo, 5 coder-companion agents surface in Coder mode)
+├── coder-templates/    # Starter projects scaffolded by Coder mode (web-app, telegram-bot, cli-tool, static-site)
+├── blueprints/         # 10 pre-built crew workflow templates
 ├── docs/user-guide/    # Per-module user guides
 ├── run.sh              # One-command backend launcher (Linux/macOS)
 ├── run-tests.ps1       # One-click test runner (backend + frontend)
@@ -334,7 +340,7 @@ contextuai-solo/
 | **Icons** | [Lucide Icons](https://lucide.dev/) |
 | **Backend** | [FastAPI](https://fastapi.tiangolo.com/) (Python 3.11+) |
 | **Database** | [SQLite](https://sqlite.org/) via async adapter |
-| **AI Providers** | Anthropic Claude, OpenAI GPT, Google Gemini, AWS Bedrock |
+| **AI Providers** | Anthropic Claude, OpenAI GPT, Google Gemini, AWS Bedrock, Ollama (all surfaced via a unified `/v1/*` dispatcher) |
 | **Local AI** | 41 GGUF models via llama-cpp-python (Gemma 4, Qwen 3.5, Qwen 3, DeepSeek R1, Llama 3, Mistral, Phi-4) — 0.5B to 70B |
 | **Agent Framework** | [Strands Agents SDK](https://github.com/strands-agents/sdk-python) |
 

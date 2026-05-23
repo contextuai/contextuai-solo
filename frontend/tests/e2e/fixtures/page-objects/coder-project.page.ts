@@ -6,11 +6,10 @@ const TEST_PROJECT_DIR = `${process.env.USERPROFILE ?? process.env.HOME ?? "~"}/
 /**
  * Page object for the Coder Project Detail route ("/coder/projects/:id").
  *
- * Covers the Team tab introduced in PR 16:
- * - Workflow mode segmented control
- * - Preset apply dialog
- * - Role cards
- * - Add role dialog
+ * The Team configuration now lives behind a "Team" header button that opens
+ * a dialog (no more right-pane tabs). The original `teamTab` / `openTeamTab`
+ * names are kept for backwards-compatible test reads but now point at the
+ * header button and the dialog it opens.
  */
 export class CoderProjectPage {
   readonly page: Page;
@@ -31,14 +30,16 @@ export class CoderProjectPage {
     await this.page.waitForTimeout(2000);
   }
 
-  // ── Tabs ───────────────────────────────────────────────────────────────────
+  // ── Team (header button + dialog) ──────────────────────────────────────────
 
-  get terminalTab(): Locator {
-    return this.page.locator('[data-testid="tab-terminal"]');
+  /** The "Team" button in the project header. */
+  get teamTab(): Locator {
+    return this.page.getByRole("button", { name: /^Team$/ });
   }
 
-  get teamTab(): Locator {
-    return this.page.locator('[data-testid="tab-team"]');
+  /** The Team dialog content area (rendered after clicking teamTab). */
+  get teamDialog(): Locator {
+    return this.page.locator('[role="dialog"], .fixed.inset-0.z-50').first();
   }
 
   async openTeamTab(): Promise<void> {

@@ -1,19 +1,19 @@
 # TODO — ContextuAI Solo Moonshot
 
 > Master task list. Prioritized by phases. Check off as completed.
-> **Created:** 2026-03-19 | **Last synced with code:** 2026-05-04
+> **Created:** 2026-03-19 | **Last synced with code:** 2026-05-17
 
 ---
 
-## CURRENTLY PENDING (audit 2026-05-04)
+## CURRENTLY PENDING (audit 2026-05-17)
 
-Everything in Phase 0, 1, 2, 2.5, and 3 is shipped and verified against the codebase. v1.0.0-10 cut on 2026-05-03 carried Personal Docs / folder-mapped RAG (P2.5-3) and the KB nav promotion. The only meaningful work left:
+Phases 0–4 and Phase 5 (Coder multi-agent) are shipped and verified against the codebase. v1.0.0-11 cut on 2026-05-15 carried the Phase 5 Coder multi-agent stack (workflow execution engine, Team panel, project-creation ModelPicker, AI Providers onboarding cards). The only meaningful work left:
 
-- **P0-1 verification** — test the OpenAI-compat endpoint with Aider + Continue.dev (router is shipped, just unverified externally).
+- **P0-1 verification** — test the OpenAI-compat endpoint with Aider + Continue.dev externally (router shipped, dispatcher now also handles all cloud providers via `services/model_dispatcher.py`).
 - **3 starter RAG packs** — engine is shipped (P2.5-2/3). `knowledge-base-packs/README.md` documents the manifest format. Still need curated content packs (IRS tax, personal finance, cybersecurity-101) for users to download.
 - **CI: bundle the all-MiniLM-L6-v2 ONNX weights** so the KB lifecycle + Personal Docs folder e2e tests can run on GitHub Actions (currently `test.skip(!!process.env.CI)`).
-- **Phase 3 dead-code cleanup** — `frontend/src/routes/distribution.tsx`, `frontend/src/routes/schedule.tsx` are still on disk but no longer routed or sidebared. Delete after one more release cycle.
-- **Backlog (BL-2 / BL-4 / BL-5 / BL-6 / BL-7)** — nice-to-haves, none committed.
+- **Phase 3/4 dead-code cleanup** — `frontend/src/routes/distribution.tsx`, `frontend/src/routes/schedule.tsx`, `frontend/src/routes/personas.tsx` (banner-only, one-release deprecation), `frontend/src/routes/workspace.tsx`. Delete after one more release cycle past v1.0.0-11.
+- **Backlog (BL-4 / BL-5 / BL-6 / BL-7)** — BL-2 (coding agents) absorbed into Phase 4 PR 6 coder-companion category. The rest are nice-to-haves, none committed.
 
 ---
 
@@ -243,10 +243,10 @@ Everything in Phase 0, 1, 2, 2.5, and 3 is shipped and verified against the code
 ## BACKLOG — Post-Launch
 
 ### BL-2: Coding Agents (Agent Library)
-**Status:** [ ] Not Started
+**Status:** [x] COMPLETE (2026-05-08, absorbed into Phase 4 PR 6 — see `agent-library/coder-companion/`)
 **Effort:** 1 day
-- [ ] Code Reviewer, Bug Analyzer, Test Writer, Doc Generator, Refactoring Advisor
-- [ ] Crew template: Code Review Crew (sequential)
+- [x] Code Reviewer, Bug Analyzer, Test Writer, Doc Generator, Refactoring Advisor — all 5 shipped under `kind="coder"` so they only surface in Coder mode
+- [ ] Crew template: Code Review Crew (sequential) — still pending; the `coder_project` crew step (PR 9) lets a crew run a Coder project but a pre-built review template hasn't shipped
 
 ### BL-3: Scheduled Crews + Scheduled Posts (Cron-style)
 **Status:** [x] COMPLETE (2026-04-19)
@@ -297,7 +297,8 @@ Everything in Phase 0, 1, 2, 2.5, and 3 is shipped and verified against the code
 ## QUICK REFERENCE
 
 **Total models in catalog:** 41 (8 families: Qwen 2.5, Qwen 3, Qwen 3.5, Gemma 3, Gemma 4, Llama, Mistral, Phi, DeepSeek)
-**Total agents:** 108 markdown files across 13 categories (engineering 12 excluded from desktop → 96 visible)
+**Total agents:** 113 markdown files across 14 categories (engineering 12 + coder-companion 5 excluded from Solo's main library → 96 visible in Solo; the 5 coder-companion agents surface in Coder mode)
+**Current release tag:** v1.0.0-11 (cut 2026-05-15)
 **Moonshot pick model:** Qwen 3.5 35B-A3B (MoE) — 35B brain, 3B speed, thinking + vision + 256K context
 **Backend port:** 18741
 **Key files for Phase 1:**
@@ -490,15 +491,15 @@ Must be idempotent, dry-run capable (`MIGRATE_DRY_RUN=1` env var), and must writ
 ---
 
 ## PHASE 4: REVISION — CONSOLIDATION + AUTOMATIONS + CODER MODE ⭐ HIGH PRIORITY
-**Status:** [ ] Draft (spec at `docs/superpowers/specs/2026-05-05-solo-revision-design.md`)
+**Status:** [x] COMPLETE (2026-05-12, shipped in v1.0.0-11) — Phase 5 multi-agent Coder followed in v1.0.0-11 itself (PR 38)
 **Added:** 2026-05-05
-**Effort estimate:** ~7 PRs, 6–8 weeks end-to-end
+**Effort estimate:** ~7 PRs, 6–8 weeks end-to-end — actual: ~10 PRs landed across `feat/phase-4-integration` and `feat/phase-5-coder-multi-agent`
 
 > Consolidates the four overlapping nouns (Agents, Personas, Crews, Workspace) into {Crews, Automations}. Adds a natural-language Automations surface ported from the enterprise repo. Introduces Coder as a co-equal product mode via a top-center toggle (Solo / Coder). Sidebar drops 10 → 8 in Solo mode (Models stays as a daily-use surface); Coder mode gets its own 5-item sidebar. Personas and Workspace collapse into **tabbed pickers/pages** rather than filter chips — tabs make categorical distinctions visible (Database vs Prompt agent; Crew vs Project) instead of flattening them into one filterable list.
 
 ### P4-1: Automations MVP ⭐ NEW SURFACE
-**Status:** [ ] Not Started
-**Effort:** 1 week
+**Status:** [x] COMPLETE (2026-05-05, PR 1 on `feat/phase-4-integration`)
+**Effort:** 1 week → done in 1 PR
 **Why:** Crews require a 7-step wizard for one-off work. Automations gives users a natural-language fast path: write `@agent`-mention prompts, pick output actions, run. Lowest-friction authoring path Solo has ever had.
 
 - [ ] Port `services/automation_engine.py`, `automation_executor.py`, `automation_output_service.py` from `C:\Users\nagen\Projects\contextuai\backend` (replace Bedrock-specific bits with Solo's local-model service)
@@ -514,8 +515,8 @@ Must be idempotent, dry-run capable (`MIGRATE_DRY_RUN=1` env var), and must writ
 - [ ] Sidebar entry "Automations" added
 
 ### P4-2: Personas → Agent types (tabbed picker)
-**Status:** [ ] Not Started
-**Effort:** 3 days
+**Status:** [x] COMPLETE (2026-05-05, PR 2 on `feat/phase-4-integration`)
+**Effort:** 3 days → done in 1 PR
 **Why tabs not filters:** a Postgres connection and a system-prompt agent are *categorically* different things. A tab makes the mode-of-operation visible per kind; a filter chip flattens them into "narrow this list."
 - [ ] Migration `backend/migrations/0003_personas_to_agent_types.py` — idempotent, dry-run, version-marked
 - [ ] Add `kind: "prompt" | "database" | "web" | "mcp" | "api" | "file"` to `workspace_agents`
@@ -527,8 +528,8 @@ Must be idempotent, dry-run capable (`MIGRATE_DRY_RUN=1` env var), and must writ
 - [ ] Delete `frontend/src/routes/personas.tsx` after one release
 
 ### P4-3: Workspace → Crews tabbed page
-**Status:** [ ] Not Started
-**Effort:** 3 days
+**Status:** [x] COMPLETE (2026-05-05, PR 3 on `feat/phase-4-integration`)
+**Effort:** 3 days → done in 1 PR
 **Why tabs not filters:** a Crew (recurring, channel-bound, scheduled) and a Project (one-shot, manual) have different mental models, list columns, empty states, and "New" CTAs. Tab signals "different mode of this module"; chip suggests "same thing, narrowed."
 - [ ] Migration `backend/migrations/0004_workspace_to_crew_runs.py` — idempotent, dry-run, version-marked
 - [ ] Add `kind: "crew" | "project"` to `crews` documents (default `"crew"`)
@@ -541,7 +542,7 @@ Must be idempotent, dry-run capable (`MIGRATE_DRY_RUN=1` env var), and must writ
 - [ ] Coming Soon on `/solo/workspace` for one release; redirect to `/solo/crews?tab=projects`; delete after
 
 ### P4-4: Dead-code cleanup (Models stays in sidebar)
-**Status:** [ ] Not Started
+**Status:** [x] PARTIAL (2026-05-05, PR 4 sidebar trim done) — final dead-code deletions still pending (`distribution.tsx`, `schedule.tsx`, `personas.tsx`, `workspace.tsx`)
 **Effort:** 1 day
 **Decision (2026-05-05):** Models is a daily-use surface — keep at `/solo/models`, do not collapse into Settings.
 - [ ] Models stays at `/solo/models`, sidebar entry retained
@@ -551,8 +552,8 @@ Must be idempotent, dry-run capable (`MIGRATE_DRY_RUN=1` env var), and must writ
 - [ ] **Library hub deferred** — tabbed pickers in P4-2 / P4-3 cover discoverability; revisit if usage data shows browsing pain
 
 ### P4-5: App-shell mode toggle ⭐ FOUNDATION
-**Status:** [ ] Not Started
-**Effort:** 1 week
+**Status:** [x] COMPLETE (2026-05-05, PR 5 on `feat/phase-4-integration`)
+**Effort:** 1 week → done in 1 PR
 **Why:** Solo + Solo Coder is the headline story. Toggle is the foundation everything in PRs 6–7 hangs on. Ships *before* Coder content so we can land Solo consolidation cleanly first.
 
 - [ ] `frontend/src/shell/ModeToggle.tsx` — segmented pill, top-center title bar, ~140px wide
@@ -568,8 +569,8 @@ Must be idempotent, dry-run capable (`MIGRATE_DRY_RUN=1` env var), and must writ
 - [ ] E2E test for mode toggle (toggle visible, persists across reload)
 
 ### P4-6: Coder MVP ⭐⭐ FLAGSHIP
-**Status:** [ ] Not Started
-**Effort:** 2–3 weeks
+**Status:** [x] COMPLETE (2026-05-08, PR 6 on `feat/phase-4-integration`); multi-agent extension shipped in Phase 5 (PRs 13–19, v1.0.0-11)
+**Effort:** 2–3 weeks → MVP done in one PR; multi-agent in 7 follow-up PRs
 **Why:** Local, free Codex/Claude Desktop Code equivalent for business users. Sharpest competitive wedge Solo has — every cloud alternative is $20/mo and uploads your code.
 
 **Backend:**
@@ -626,8 +627,8 @@ Must be idempotent, dry-run capable (`MIGRATE_DRY_RUN=1` env var), and must writ
 - [ ] All four templates work end-to-end on Windows + macOS
 
 ### P4-7: Cross-mode handoffs
-**Status:** [ ] Not Started
-**Effort:** 4 days
+**Status:** [x] COMPLETE (2026-05-10, PR 7 on `feat/phase-4-integration`; crew coder step in PR 9; saved cloud keys in PR 8)
+**Effort:** 4 days → done across PRs 7–9
 **Why:** The integration story is the moat — cloud competitors can't compose Coder + Assistant because they're separate products. Solo can.
 **Scope discipline:** ship the high-leverage handoffs only; defer error→Crew bridge to avoid feature overload.
 
@@ -647,6 +648,27 @@ Must be idempotent, dry-run capable (`MIGRATE_DRY_RUN=1` env var), and must writ
 - **Risk: Tauri shell exec security** — per-project trust, allowlist, scoped paths, kill switch, default-block-network toggle.
 - **Risk: Local code-model quality lag** — recommend Qwen 2.5 Coder 32B / DeepSeek R1 14B (already in catalog); cloud opt-in via Anthropic/Bedrock keys; honest UI labels.
 - **Risk: Confusion vs enterprise ContextuAI** — marketing line: Solo Coder = "build your own software locally for free." Enterprise = engineering team platform. Different audiences, different repos.
+
+---
+
+## PHASE 5: CODER MULTI-AGENT ⭐ FLAGSHIP EXTENSION
+**Status:** [x] COMPLETE (2026-05-15, shipped in v1.0.0-11 / PR 38 merge)
+**Added:** 2026-05-08
+**Effort estimate:** 7 PRs across `feat/phase-5-coder-multi-agent`
+
+Took the Coder MVP (PR 6) from a solo-agent loop to a multi-agent workflow with roles, presets, parallel execution, and explicit per-project model picking. Also generalised model dispatch and overhauled provider onboarding.
+
+- [x] **PR 13: Universal `/v1/*` dispatcher** — `services/model_dispatcher.py` routes `anthropic:` / `openai:` / `google:` / `bedrock:` / `ollama:` / bare-name model IDs through one path, used by `routers/openai_compat.py` and the workflow engine. Adds direct services for OpenAI, Anthropic, Google, Ollama; Bedrock keeps `UniversalModelAdapter`.
+- [x] **PR 14: Agent roles, presets, workflow config** — `coder_models.py` adds `CoderAgentRole`, `coder_agent_role_repository.py` + `coder_role_preset_service.py` seed planner / coder / reviewer / etc. presets. `routers/coder_roles.py` exposes CRUD; `coder_workflow_mode_migration.py` adds `workflow_mode` to existing projects.
+- [x] **PR 15: Multi-agent workflow execution engine** — `services/coder_workflow_service.py` implements solo / sequential / parallel / custom modes. Tested via `test_coder_workflow_{sequential,parallel,custom,solo,run_preview,mode,unconfigured}.py` (full coverage).
+- [x] **PR 16: Team panel + multi-agent chat** — `components/coder/team-panel.tsx`, `role-card.tsx`. Chat surface now shows which role authored each turn; supports parallel role outputs.
+- [x] **PR 17: Mode-toggle redirect + presets + fail-fast model checks** — toggling Solo↔Coder lands the user on the right home route; missing-model errors surface up to the UI instead of silently falling back.
+- [x] **PR 18: Pick models at project creation** — `components/coder/model-picker.tsx`, `new-project-dialog.tsx`. No silent fallbacks: project creation refuses to proceed unless every required role has a resolvable model.
+- [x] **PR 19: AI Providers onboarding cards** — Settings → AI Providers tab rebuilt as Distributions-style cards (`provider-card.tsx`, `cloud-provider-card.tsx`, `cloud-providers-tab.tsx`, `data/provider-guides.ts`). Per-provider paste-key + test-connection + setup-guide modal.
+
+**Cleanup carried into v1.0.0-12:**
+- [ ] Delete `frontend/src/routes/distribution.tsx`, `schedule.tsx`, `personas.tsx` (banner-only), `workspace.tsx` — all routes still mounted in `App.tsx` for the one-release deprecation window.
+- [ ] Re-enable KB e2e + Personal Docs folder e2e in CI by bundling the all-MiniLM-L6-v2 ONNX weights into the GitHub Actions runner.
 
 ---
 

@@ -81,26 +81,46 @@ async function _singleApiRequest<T = unknown>(
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+// Tracks whether we've ever seen a successful response from the backend.
+// Used to widen retry behavior during the cold-start window: until the first
+// success we treat 404 on writes as "route not yet mounted" (race with
+// FastAPI's startup) instead of a real not-found.
+let _backendReady = false;
+
+function isConnectionError(err: unknown): boolean {
+  const msg = String(err);
+  return (
+    msg.includes("connection") ||
+    msg.includes("Connection") ||
+    msg.includes("os error") ||
+    msg.includes("Failed to fetch")
+  );
+}
+
+function isColdStart404(err: unknown, method: string): boolean {
+  if (_backendReady) return false;
+  if (!(err instanceof ApiError) || err.status !== 404) return false;
+  // Only retry creation/update verbs — GET 404 on a deleted resource is real.
+  return method === "POST" || method === "PUT" || method === "PATCH";
+}
+
 export async function apiRequest<T = unknown>(
   method: string,
   path: string,
   body?: unknown,
   options?: { stream?: boolean; headers?: Record<string, string> }
 ): Promise<ApiResponse<T>> {
-  // In Tauri mode, the sidecar backend may still be starting.
-  // Retry connection failures a few times with backoff.
-  if (!isTauri) {
-    return _singleApiRequest<T>(method, path, body, options);
-  }
+  // Dev mode: still retry connection errors + cold-start 404s — uvicorn
+  // --reload has the same race window as the Tauri sidecar.
   let lastError: unknown;
   for (let attempt = 0; attempt < 5; attempt++) {
     try {
-      return await _singleApiRequest<T>(method, path, body, options);
+      const result = await _singleApiRequest<T>(method, path, body, options);
+      _backendReady = true;
+      return result;
     } catch (err) {
       lastError = err;
-      // Only retry on connection-level errors (sidecar not ready)
-      const msg = String(err);
-      if (msg.includes("connection") || msg.includes("Connection") || msg.includes("os error") || msg.includes("Failed to fetch")) {
+      if (isConnectionError(err) || isColdStart404(err, method)) {
         await sleep(1500 * (attempt + 1));
         continue;
       }

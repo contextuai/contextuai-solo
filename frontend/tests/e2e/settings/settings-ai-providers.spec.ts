@@ -95,16 +95,49 @@ test("DC-AIPROV-02: expanding Anthropic setup steps shows numbered list", async 
 // ---------------------------------------------------------------------------
 
 test("DC-AIPROV-03: save a dummy key flips status badge to Key saved", async ({ page }) => {
-  // Mock POST cloud-providers to return a connected provider row
+  // Track whether save was called
+  let saveHappened = false;
+
+  // Mock cloud-providers endpoint — handle both GET and POST
   await page.route(`${BACKEND_URL}/cloud-providers`, async (route) => {
-    if (route.request().method() === "GET") {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ success: true, providers: [], total_count: 0 }),
-      });
-    } else if (route.request().method() === "POST") {
-      // Return a saved provider row
+    const method = route.request().method();
+
+    if (method === "GET") {
+      if (saveHappened) {
+        // After save, return the connected row
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            success: true,
+            providers: [
+              {
+                provider_id: "prov-test-1",
+                provider_type: "anthropic",
+                display_name: "Anthropic Claude",
+                connected: true,
+                last_tested_at: null,
+                last_test_status: null,
+                last_test_error: null,
+                config: { api_key: "***" },
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              },
+            ],
+            total_count: 1,
+          }),
+        });
+      } else {
+        // Initially empty list
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ success: true, providers: [], total_count: 0 }),
+        });
+      }
+    } else if (method === "POST") {
+      // Return a saved provider row on POST
+      saveHappened = true;
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -126,37 +159,6 @@ test("DC-AIPROV-03: save a dummy key flips status badge to Key saved", async ({ 
     }
   });
 
-  // After save, a GET is issued to refresh — return the connected row
-  let saveHappened = false;
-  await page.route(`${BACKEND_URL}/cloud-providers`, async (route) => {
-    if (route.request().method() === "GET" && saveHappened) {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          success: true,
-          providers: [
-            {
-              provider_id: "prov-test-1",
-              provider_type: "anthropic",
-              display_name: "Anthropic Claude",
-              connected: true,
-              last_tested_at: null,
-              last_test_status: null,
-              last_test_error: null,
-              config: { api_key: "***" },
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
-            },
-          ],
-          total_count: 1,
-        }),
-      });
-    } else {
-      await route.continue();
-    }
-  });
-
   await page.goto("/settings?tab=ai-providers");
   await page.waitForLoadState("networkidle");
   await expect(page.locator('[data-testid="provider-card-anthropic"]')).toBeVisible({ timeout: 15_000 });
@@ -169,9 +171,11 @@ test("DC-AIPROV-03: save a dummy key flips status badge to Key saved", async ({ 
   const keyField = page.locator('[data-testid="field-anthropic-api_key"]');
   await keyField.fill("sk-ant-test-fake-key-1234567890");
 
-  // Click Save
-  saveHappened = true;
+  // Click Save — this will trigger the POST mock which sets saveHappened = true
   await page.locator('[data-testid="save-btn-anthropic"]').click();
+
+  // Wait for the refresh GET to complete and badge to update
+  await page.waitForLoadState("networkidle");
 
   // Badge should flip to "Key saved"
   await expect(badge).toContainText("Key saved", { timeout: 8_000 });

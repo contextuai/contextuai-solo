@@ -88,8 +88,8 @@ export default function AgentsPage() {
               Agents
             </h1>
             <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
-              Browse, create, and manage AI agents — grouped by what they
-              connect to.
+              Browse, create, and manage prompt agents. For database, web,
+              MCP, API, and file integrations see Connectors.
             </p>
             <p className="mt-2 text-xs text-neutral-500 dark:text-neutral-400 tabular-nums">
               {countsLoading ? (
@@ -98,12 +98,8 @@ export default function AgentsPage() {
                 </span>
               ) : (
                 <>
-                  {totalAgents} agent{totalAgents === 1 ? "" : "s"} across{" "}
-                  {Object.keys(counts).filter((k) => counts[k] > 0).length}{" "}
-                  kind
-                  {Object.keys(counts).filter((k) => counts[k] > 0).length === 1
-                    ? ""
-                    : "s"}
+                  {counts.prompt ?? 0} prompt agent
+                  {(counts.prompt ?? 0) === 1 ? "" : "s"}
                 </>
               )}
             </p>
@@ -147,6 +143,7 @@ export default function AgentsPage() {
             key={refreshKey}
             onSelect={handleSelectAgent}
             variant="page"
+            kindsToShow={["prompt"]}
           />
         )}
       </div>

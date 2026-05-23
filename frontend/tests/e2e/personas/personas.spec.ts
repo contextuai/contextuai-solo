@@ -23,7 +23,7 @@ test.beforeEach(async ({ page }) => {
 test.describe("CRUD via UI", () => {
   test("DC-PERSONA-01: view all personas", async ({ page }) => {
     const cardCount = await personas.personaCards.count();
-    const emptyVisible = await page.locator("text=No personas yet").isVisible().catch(() => false);
+    const emptyVisible = await page.locator("text=No connectors yet").isVisible().catch(() => false);
     expect(cardCount > 0 || emptyVisible).toBeTruthy();
   });
 
@@ -111,7 +111,7 @@ test.describe("Wizard Flow", () => {
     await personas.createButton.click();
     await expect(personas.typeSearchInput).toBeVisible({ timeout: 5_000 });
 
-    await expect(page.locator("text=Select Persona Type")).toBeVisible();
+    await expect(page.locator("text=Select Connector Type")).toBeVisible();
 
     const typeCards = page.locator(".fixed.inset-0 .grid button");
     const count = await typeCards.count();
@@ -209,7 +209,7 @@ test.describe("Positive Workflows", () => {
     expect(count).toBeGreaterThanOrEqual(6);
   });
 
-  test("DC-PERSONA-09: created persona appears in chat persona selector", async ({ page }) => {
+  test("DC-PERSONA-09: created persona appears in chat connector selector", async ({ page }) => {
     const name = `ChatVisible ${Date.now()}`;
     await personas.createPersona({ name });
     await page.waitForTimeout(1000);
@@ -217,8 +217,8 @@ test.describe("Positive Workflows", () => {
     await page.goto("/");
     await page.waitForLoadState("networkidle");
 
-    const personaSelector = page.locator("button").filter({ hasText: /persona/i }).first();
-    await personaSelector.click();
+    const connectorSelector = page.locator("button").filter({ hasText: /connector/i }).first();
+    await connectorSelector.click();
     await page.waitForTimeout(500);
 
     const dropdown = page.locator(".absolute.bottom-full");

@@ -296,6 +296,7 @@ interface CrewBuilderProps {
   open: boolean;
   onClose: () => void;
   onCreated: () => void;
+  kind?: "crew" | "project";
   editCrew?: {
     crew_id: string;
     name: string;
@@ -310,8 +311,9 @@ interface CrewBuilderProps {
   };
 }
 
-export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderProps) {
+export function CrewBuilder({ open, onClose, onCreated, kind = "crew", editCrew }: CrewBuilderProps) {
   const isEdit = !!editCrew;
+  const noun = kind === "project" ? "Project" : "Crew";
 
   const [step, setStep] = useState<WizardStep>(1);
   const [name, setName] = useState(editCrew?.name ?? "");
@@ -814,7 +816,7 @@ export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderP
             </div>
             <div>
               <h2 className="text-lg font-semibold text-neutral-900 dark:text-white">
-                {isEdit ? "Edit Crew" : "Create New Crew"}
+                {isEdit ? `Edit ${noun}` : `Create New ${noun}`}
               </h2>
               <p className="text-xs text-neutral-500 dark:text-neutral-400">
                 {STEP_TITLES[step].subtitle}
@@ -1941,7 +1943,7 @@ export function CrewBuilder({ open, onClose, onCreated, editCrew }: CrewBuilderP
                 ) : (
                   <Check className="w-4 h-4" />
                 )}
-                {isEdit ? "Save Changes" : "Create Crew"}
+                {isEdit ? "Save Changes" : `Create ${noun}`}
               </button>
             )}
           </div>

@@ -54,6 +54,27 @@ const ROLE_KIND_LABELS: Record<RoleKind, string> = {
   custom: "Custom",
 };
 
+const ROLE_KIND_DEFAULT_PROMPTS: Record<RoleKind, string> = {
+  coder:
+    "You are a coding assistant. Read the user's request, propose a concrete implementation plan, and produce clean, idiomatic code. Prefer editing existing files over creating new ones. Explain non-obvious choices briefly.",
+  reviewer:
+    "You are a code reviewer. Inspect the diff for bugs, edge cases, performance issues, and style violations. Cite specific files and lines. Be terse — list only issues that matter.",
+  security:
+    "You are a security auditor. Scan the code for OWASP-style vulnerabilities (injection, auth, secrets in source, unsafe deserialisation, etc.). Cite file:line and the specific risk for each finding.",
+  ui_ux:
+    "You are a UI/UX designer. Review the rendered surface for accessibility, layout, contrast, and copy clarity. Suggest concrete component-level changes — not vague principles.",
+  docs:
+    "You are a docs writer. Produce concise, example-driven documentation for the changes. Match the project's existing tone and structure. No filler.",
+  tester:
+    "You are a test writer. Read the diff and add the minimum set of tests that would catch the failure modes you can see in the changes. Follow the project's existing test conventions.",
+  planner:
+    "You are a planner. Break the user's request into a short ordered list of concrete steps. Each step should name files to change and the exact change to make. Avoid placeholder tasks.",
+  custom:
+    "Describe the role of this agent: what it does, what inputs it expects, and what output it should produce.",
+};
+
+const DEFAULT_PROMPT_SET = new Set(Object.values(ROLE_KIND_DEFAULT_PROMPTS));
+
 const WORKFLOW_MODES: { id: WorkflowMode; label: string }[] = [
   { id: "solo", label: "Solo" },
   { id: "sequential", label: "Sequential" },
@@ -267,9 +288,13 @@ export function NewProjectDialog({
   const unconfiguiredRoles = enabledRoles.filter(
     (r) => !r.model_id || r.model_id === "" || r.model_id === "__DEFAULT__",
   );
+  const rolesWithEmptyPrompt = enabledRoles.filter(
+    (r) => !r.system_prompt || r.system_prompt.trim() === "",
+  );
   const canCreate =
     hasModels === true &&
-    (enabledRoles.length === 0 || unconfiguiredRoles.length === 0);
+    (enabledRoles.length === 0 ||
+      (unconfiguiredRoles.length === 0 && rolesWithEmptyPrompt.length === 0));
 
   // ---------------------------------------------------------------------------
   // Submit — two-phase create
@@ -415,6 +440,7 @@ export function NewProjectDialog({
           onShowAddRole={setShowAddRole}
           onAddRole={handleAddRole}
           unconfiguiredRoles={unconfiguiredRoles}
+          rolesWithEmptyPrompt={rolesWithEmptyPrompt}
           canCreate={canCreate}
           submitting={submitting}
           error={error}
@@ -620,6 +646,7 @@ interface StepTeamProps {
   onShowAddRole: (v: boolean) => void;
   onAddRole: (role: LocalRole) => void;
   unconfiguiredRoles: LocalRole[];
+  rolesWithEmptyPrompt: LocalRole[];
   canCreate: boolean;
   submitting: boolean;
   error: string | null;
@@ -646,6 +673,7 @@ function StepTeam({
   onShowAddRole,
   onAddRole,
   unconfiguiredRoles,
+  rolesWithEmptyPrompt,
   canCreate,
   submitting,
   error,
@@ -864,6 +892,16 @@ function StepTeam({
         </div>
       )}
 
+      {hasModels === true && rolesWithEmptyPrompt.length > 0 && (
+        <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/40 text-xs text-red-600 dark:text-red-400">
+          <AlertCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+          <span>
+            Write a system prompt for:{" "}
+            <strong>{rolesWithEmptyPrompt.map((r) => r.display_name).join(", ")}</strong>
+          </span>
+        </div>
+      )}
+
       {error && (
         <div className="text-xs text-red-500 dark:text-red-400">{error}</div>
       )}
@@ -1056,7 +1094,7 @@ function AddRoleForm({
 }) {
   const [kind, setKind] = useState<RoleKind>("coder");
   const [displayName, setDisplayName] = useState(ROLE_KIND_LABELS["coder"]);
-  const [prompt, setPrompt] = useState("");
+  const [prompt, setPrompt] = useState(ROLE_KIND_DEFAULT_PROMPTS["coder"]);
   const [modelId, setModelId] = useState("");
   const [temperature, setTemperature] = useState(0.7);
   const [maxTokens, setMaxTokens] = useState(4096);
@@ -1065,6 +1103,15 @@ function AddRoleForm({
   function handleKindChange(k: RoleKind) {
     setKind(k);
     setDisplayName(ROLE_KIND_LABELS[k]);
+    // Only replace the prompt if the user hasn't customised it — otherwise we'd
+    // clobber their typing every time they change kind.
+    setPrompt((current) => {
+      const trimmed = current.trim();
+      if (trimmed === "" || DEFAULT_PROMPT_SET.has(current)) {
+        return ROLE_KIND_DEFAULT_PROMPTS[k];
+      }
+      return current;
+    });
   }
 
   function handleAdd() {
@@ -1073,11 +1120,16 @@ function AddRoleForm({
       setFormError("Pick a model for this role.");
       return;
     }
+    const trimmedPrompt = prompt.trim();
+    if (!trimmedPrompt) {
+      setFormError("Write a system prompt — it can't be empty.");
+      return;
+    }
     onAdd({
       _localId: makeLocalId(),
       role_kind: kind,
       display_name: displayName,
-      system_prompt: prompt,
+      system_prompt: trimmedPrompt,
       model_id: modelId,
       temperature,
       max_tokens: maxTokens,

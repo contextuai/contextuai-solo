@@ -261,7 +261,8 @@ function EmptyState() {
       </h2>
       <p className="text-sm text-neutral-500 dark:text-neutral-400 max-w-sm leading-relaxed">
         Ask me anything — coding questions, analysis, creative writing, or just
-        chat. Select a model and persona above to customize my behavior.
+        chat. Pick a model and (optionally) a connector above to plug in
+        your data.
       </p>
     </div>
   );
@@ -276,7 +277,7 @@ export default function MessageList({
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [messages, streamingContent, streamingThinking]);
 
   if (messages.length === 0 && !isStreaming) {

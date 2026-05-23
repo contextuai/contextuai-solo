@@ -29,6 +29,12 @@ interface AgentLibraryTabsProps {
   onSelect?: (agent: AgentRow) => void;
   storageKey?: string;
   variant?: "page" | "compact";
+  /**
+   * Restrict the visible kind tabs. Defaults to all kinds (Crew builder
+   * picker uses this). The /agents page passes ["prompt"] now that the
+   * other kinds live under /personas (Connectors).
+   */
+  kindsToShow?: readonly AgentKind[];
 }
 
 interface TabMeta {
@@ -56,8 +62,8 @@ const TABS: TabMeta[] = [
     icon: Database,
     emptyTitle: "No database agents yet",
     emptyBody:
-      "Add a Postgres / MySQL / MSSQL / Snowflake / MongoDB connection in Personas — it becomes a database agent here.",
-    emptyCtaLabel: "Open Personas",
+      "Add a Postgres / MySQL / MSSQL / Snowflake / MongoDB connector — it becomes a database agent here.",
+    emptyCtaLabel: "Open Connectors",
     emptyCtaHref: "/personas",
   },
   {
@@ -66,8 +72,8 @@ const TABS: TabMeta[] = [
     icon: Globe,
     emptyTitle: "No web agents yet",
     emptyBody:
-      "Add a Web Researcher persona to enable web search and fetch capabilities.",
-    emptyCtaLabel: "Open Personas",
+      "Add a Web Researcher connector to enable web search and fetch capabilities.",
+    emptyCtaLabel: "Open Connectors",
     emptyCtaHref: "/personas",
   },
   {
@@ -76,8 +82,8 @@ const TABS: TabMeta[] = [
     icon: Server,
     emptyTitle: "No MCP agents yet",
     emptyBody:
-      "Wire up an MCP server persona to expose model-context-protocol tools as an agent.",
-    emptyCtaLabel: "Open Personas",
+      "Wire up an MCP server connector to expose model-context-protocol tools as an agent.",
+    emptyCtaLabel: "Open Connectors",
     emptyCtaHref: "/personas",
   },
   {
@@ -86,8 +92,8 @@ const TABS: TabMeta[] = [
     icon: PlugZap,
     emptyTitle: "No API agents yet",
     emptyBody:
-      "Configure an API Connector persona to call external HTTP services from an agent.",
-    emptyCtaLabel: "Open Personas",
+      "Configure an API connector to call external HTTP services from an agent.",
+    emptyCtaLabel: "Open Connectors",
     emptyCtaHref: "/personas",
   },
   {
@@ -96,8 +102,8 @@ const TABS: TabMeta[] = [
     icon: FileText,
     emptyTitle: "No file agents yet",
     emptyBody:
-      "Add a File Operations persona to read and write local files from an agent.",
-    emptyCtaLabel: "Open Personas",
+      "Add a File Operations connector to read and write local files from an agent.",
+    emptyCtaLabel: "Open Connectors",
     emptyCtaHref: "/personas",
   },
 ];
@@ -138,11 +144,20 @@ export function AgentLibraryTabs({
   onSelect,
   storageKey = "solo.agents.tab",
   variant = "page",
+  kindsToShow,
 }: AgentLibraryTabsProps) {
+  const visibleTabs = useMemo(
+    () => (kindsToShow ? TABS.filter((t) => kindsToShow.includes(t.id)) : TABS),
+    [kindsToShow],
+  );
+  const fallbackKind = visibleTabs[0]?.id ?? "prompt";
   const [activeKind, setActiveKind] = useState<AgentKind>(() => {
-    if (typeof window === "undefined") return "prompt";
+    if (typeof window === "undefined") return fallbackKind;
     const stored = window.localStorage.getItem(storageKey);
-    return isAgentKind(stored) ? stored : "prompt";
+    if (isAgentKind(stored) && visibleTabs.some((t) => t.id === stored)) {
+      return stored;
+    }
+    return fallbackKind;
   });
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [agents, setAgents] = useState<AgentRow[]>([]);
@@ -208,20 +223,24 @@ export function AgentLibraryTabs({
     );
   }, [agents, search]);
 
-  const activeTab = TABS.find((t) => t.id === activeKind) ?? TABS[0];
+  const activeTab = visibleTabs.find((t) => t.id === activeKind) ?? visibleTabs[0] ?? TABS[0];
   const isInteractive = !!onSelect;
   const isCompact = variant === "compact";
+  // Hide the tab strip entirely when there's only one kind to show — keeping
+  // it would just be a row with a single useless pill.
+  const showTabStrip = visibleTabs.length > 1;
 
   return (
     <div className="flex flex-col h-full min-h-0">
       {/* Tab bar */}
+      {showTabStrip && (
       <div
         className={cn(
           "flex items-center gap-1 overflow-x-auto border-b border-neutral-200 dark:border-neutral-800",
           isCompact ? "px-1" : "px-1",
         )}
       >
-        {TABS.map((t) => {
+        {visibleTabs.map((t) => {
           const Icon = t.icon;
           const count = counts[t.id] ?? 0;
           const active = t.id === activeKind;
@@ -254,6 +273,7 @@ export function AgentLibraryTabs({
           );
         })}
       </div>
+      )}
 
       {/* Search */}
       <div className={cn("flex-shrink-0", isCompact ? "px-1 pt-3" : "px-1 pt-4")}>
