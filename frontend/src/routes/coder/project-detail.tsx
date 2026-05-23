@@ -555,9 +555,12 @@ function ChatPanel({ projectId }: { projectId: string }) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const historyRef = useRef<{ role: "user" | "assistant"; content: string }[]>([]);
 
-  // Auto-scroll
+  // Auto-scroll. `block: "nearest"` keeps the scroll confined to the
+  // messages container — without it, on mount with an empty list the
+  // browser walks up to the document and scrolls the whole shell, pushing
+  // the top-bar mode toggle off-screen.
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [messages]);
 
   // Debounced preview on draft change

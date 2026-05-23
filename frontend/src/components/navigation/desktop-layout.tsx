@@ -23,11 +23,15 @@ export function DesktopLayout() {
       </div>
 
       <div className="flex flex-1 min-h-0">
-        {/* Cross-fade between sidebars on mode change */}
-        <div className="relative">
+        {/* Cross-fade between sidebars on mode change. Explicit `h-full` on
+            the wrapper chain so the sidebar's `h-full` resolves against the
+            flex row's height — without it the chain breaks at the auto-height
+            inner div and the sidebar collapses to its content height, leaving
+            blank space below it on tall pages like Settings. */}
+        <div className="relative h-full">
           <div
             className={cn(
-              "transition-opacity duration-150",
+              "h-full transition-opacity duration-150",
               mode === "solo" ? "opacity-100" : "opacity-0 pointer-events-none absolute inset-0"
             )}
             aria-hidden={mode !== "solo"}
@@ -36,7 +40,7 @@ export function DesktopLayout() {
           </div>
           <div
             className={cn(
-              "transition-opacity duration-150",
+              "h-full transition-opacity duration-150",
               mode === "coder" ? "opacity-100" : "opacity-0 pointer-events-none absolute inset-0"
             )}
             aria-hidden={mode !== "coder"}
