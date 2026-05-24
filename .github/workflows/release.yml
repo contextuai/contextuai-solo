@@ -308,6 +308,16 @@ jobs:
   release:
     name: Publish Release
     needs: [compute, build]
+    # The `tag` job is intentionally skipped on tag-push events (the tag
+    # already exists). Without an explicit `if:` here, GitHub Actions
+    # cascades that skipped state down the dependency graph and skips this
+    # job too — even though `build` reports success. Override with the
+    # success-of-build check that actually matters. See v1.0.0-12 run
+    # 26340064233 where all builds succeeded but no release was published.
+    if: |
+      always()
+      && needs.compute.outputs.should_release == 'true'
+      && needs.build.result == 'success'
     runs-on: ubuntu-latest
     env:
       RELEASE_TAG: ${{ needs.compute.outputs.release_tag }}
