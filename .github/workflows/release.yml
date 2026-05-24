@@ -115,6 +115,14 @@ jobs:
           echo "Computed: release_tag='$release_tag' should_release=$should_release"
 
   # ── Tag: only for dispatch + chore-on-main paths. Tag-push events skip. ──
+  #
+  # Uses the GitHub REST API (`gh api`) instead of `git push origin <tag>` —
+  # the latter fails on this repo because default_workflow_permissions is set
+  # to "read" at the org/repo level, and the workflow-level
+  # `permissions: contents: write` elevation isn't enough to satisfy the
+  # git smart-HTTP push endpoint (the extraheader is set but the push is
+  # rejected, manifesting as a confusing `could not read Username` error).
+  # `gh api` uses GH_TOKEN directly against the refs API and works fine.
   tag:
     name: Create Tag
     needs: [compute]
@@ -127,13 +135,18 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-      - name: Create and push tag
+      - name: Create tag via REST API
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ needs.compute.outputs.release_tag }}
+          TARGET_SHA: ${{ github.sha }}
         run: |
-          git tag "$RELEASE_TAG"
-          git push origin "$RELEASE_TAG"
+          echo "Creating tag $RELEASE_TAG at $TARGET_SHA"
+          gh api "repos/${{ github.repository }}/git/refs" \
+            -f "ref=refs/tags/$RELEASE_TAG" \
+            -f "sha=$TARGET_SHA" \
+            --silent
+          echo "Tag created."
 
   build:
     name: Build (${{ matrix.platform.name }})
