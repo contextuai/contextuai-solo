@@ -548,7 +548,7 @@ dependencies = [
 
 [[package]]
 name = "contextuai-solo"
-version = "1.0.0-11"
+version = "1.0.0-13"
 dependencies = [
  "env_logger",
  "log",
