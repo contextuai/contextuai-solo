@@ -224,6 +224,17 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
+      # Fetch the bundled embedding model into the backend tree so the
+      # PyInstaller spec's `datas` entry (models/embedding/...) bundles it.
+      # Without this the packaged app has no embedding model and all RAG
+      # ingestion fails ("0 docs of N files").
+      - name: Fetch embedding model
+        working-directory: backend
+        shell: bash
+        env:
+          MODELS_DIR: ${{ github.workspace }}/backend/models
+        run: python scripts/fetch_embedding_model.py
+
       - name: Build sidecar with PyInstaller
         working-directory: backend
         shell: bash

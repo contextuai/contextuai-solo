@@ -6,6 +6,7 @@ friction-modal pause, periodic progress patches).
 """
 import asyncio
 import logging
+import os
 from datetime import datetime
 from typing import Any, Dict, Optional
 
@@ -140,7 +141,15 @@ class PersonalDocsService:
             files_added = 0
             files_updated = 0
             files_removed = 0
+            files_failed = 0
             bytes_done = 0
+            first_error: Optional[str] = None
+
+            def _record_failure(path: str, exc: Exception) -> None:
+                nonlocal files_failed, first_error
+                files_failed += 1
+                if first_error is None:
+                    first_error = f"{os.path.basename(path)}: {exc}"
 
             for c in plan.new:
                 if await self._cancel_check(job_id):
@@ -155,12 +164,14 @@ class PersonalDocsService:
                     )
                     files_added += 1
                     bytes_done += c.size
-                except Exception:
+                except Exception as exc:
                     logger.exception("ingest failed for %s", c.abs_path)
+                    _record_failure(c.abs_path, exc)
                 await self.jobs.patch(job_id, {
                     "files_done": files_added + files_updated,
                     "files_added": files_added,
                     "files_updated": files_updated,
+                    "files_failed": files_failed,
                     "bytes_done": bytes_done,
                 })
 
@@ -179,12 +190,14 @@ class PersonalDocsService:
                     )
                     files_updated += 1
                     bytes_done += c.size
-                except Exception:
+                except Exception as exc:
                     logger.exception("re-ingest failed for %s", c.abs_path)
+                    _record_failure(c.abs_path, exc)
                 await self.jobs.patch(job_id, {
                     "files_done": files_added + files_updated,
                     "files_added": files_added,
                     "files_updated": files_updated,
+                    "files_failed": files_failed,
                     "bytes_done": bytes_done,
                 })
 
@@ -195,8 +208,22 @@ class PersonalDocsService:
                 await self.jobs.patch(job_id, {"files_removed": files_removed})
 
             await self.rag._refresh_kb_counts(source["kb_id"])
-            await self._stamp_source(source, job_id, candidates)
-            await self._finish(job_id, status="done")
+            await self._stamp_source(source, job_id, candidates, error=first_error)
+
+            # If every file we tried to ingest failed, the sync did not do
+            # what the user asked — surface it as an error rather than a
+            # silent "done, 0 docs". A partial failure stays "done" but
+            # still carries the first error so the UI can warn.
+            if files_failed and (files_added + files_updated) == 0:
+                await self._finish(
+                    job_id, status="error", error=first_error,
+                    files_failed=files_failed,
+                )
+            else:
+                await self._finish(
+                    job_id, status="done", error=first_error,
+                    files_failed=files_failed,
+                )
         except asyncio.CancelledError:
             await self._finish(job_id, status="cancelled")
             raise
@@ -236,11 +263,13 @@ class PersonalDocsService:
         update.update(extra)
         await self.jobs.patch(job_id, update)
 
-    async def _stamp_source(self, source, job_id, candidates) -> None:
+    async def _stamp_source(
+        self, source, job_id, candidates, error: Optional[str] = None,
+    ) -> None:
         await self.src.update_source(source["_id"], {
             "last_sync_at": datetime.utcnow().isoformat(),
             "last_sync_job_id": job_id,
             "file_count": len(candidates),
             "byte_count": sum(c.size for c in candidates),
-            "error": None,
+            "error": error,
         })

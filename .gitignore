@@ -70,4 +70,5 @@ frontend/tests/e2e/screenshots/output/
 
 # Misc
 *.log
+*.log.err
 *.bak
