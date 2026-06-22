@@ -180,6 +180,50 @@ async def test_incremental_classifies_new_updated_removed(tmp_path, db_proxy):
     assert final["files_removed"] == 1
 
 
+@pytest.mark.asyncio
+async def test_failed_ingest_surfaces_error_not_silent_done(tmp_path, db_proxy):
+    """If every file fails to ingest (e.g. embedding model missing), the job
+    must end in `error` with a message — not a silent `done` with 0 docs.
+
+    Regression test for the packaged-build bug where the bundled embedding
+    model was absent, so `ingest_from_path` raised FileNotFoundError for every
+    file and the job reported "done, 0 docs of N".
+    """
+    await _seed_kb(db_proxy)
+    src_repo = FolderSourceRepository(db_proxy)
+    job_repo = IndexJobRepository(db_proxy)
+    svc = _make_service(db_proxy, friction_threshold=10_000)
+
+    async def _boom(*args, **kwargs):
+        raise FileNotFoundError("ONNX model not found at /bundle/model.onnx")
+
+    svc.rag.ingest_from_path = _boom  # type: ignore[assignment]
+
+    d = tmp_path / "d"
+    d.mkdir()
+    for i in range(3):
+        (d / f"f{i}.md").write_text("# heading\nbody text", encoding="utf-8")
+    src = await src_repo.create_source(
+        kb_id="kb1", path=str(d), label="d",
+        include_globs=["**/*"], exclude_globs=[],
+        schedule="manual",
+        max_file_bytes=10_000, max_files=100, max_depth=5,
+    )
+
+    job = await svc.start_sync(source=src, kind="full_sync")
+    final = await _wait_for(job_repo, job["_id"],
+                            terminal_states={"done", "error", "cancelled"})
+
+    assert final["status"] == "error", final
+    assert final["files_added"] == 0
+    assert final["files_failed"] == 3
+    assert "ONNX model not found" in (final.get("error") or "")
+
+    # The source row should also carry the error for the UI.
+    refreshed = await src_repo.get_source(src["_id"])
+    assert "ONNX model not found" in (refreshed.get("error") or "")
+
+
 @needs_embeddings
 @pytest.mark.asyncio
 async def test_concurrent_sync_returns_existing_running_job(tmp_path, db_proxy):

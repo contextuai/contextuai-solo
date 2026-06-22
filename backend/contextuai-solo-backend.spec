@@ -27,7 +27,15 @@ a = Analysis(
     ['__main__.py'],
     pathex=['.'],
     binaries=extra_binaries,
-    datas=[('../agent-library', 'agent-library'), ('../blueprints', 'blueprints')],
+    datas=[
+        ('../agent-library', 'agent-library'),
+        ('../blueprints', 'blueprints'),
+        # Bundled embedding model (fetched into backend/models by the build
+        # step before PyInstaller runs). Lands at <_MEIPASS>/models/embedding/
+        # all-MiniLM-L6-v2/, exactly where embedding_service._resolve_model_dir
+        # looks in a frozen bundle.
+        ('models/embedding/all-MiniLM-L6-v2', 'models/embedding/all-MiniLM-L6-v2'),
+    ],
     hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},

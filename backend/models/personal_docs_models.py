@@ -105,6 +105,7 @@ class IndexJob(BaseModel):
     files_updated: int = 0
     files_removed: int = 0
     files_skipped: int = 0
+    files_failed: int = 0
     bytes_total: int = 0
     bytes_done: int = 0
     started_at: Optional[str] = None

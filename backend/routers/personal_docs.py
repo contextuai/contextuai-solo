@@ -254,6 +254,7 @@ async def stream_job(
                 "files_added": j.get("files_added", 0),
                 "files_updated": j.get("files_updated", 0),
                 "files_removed": j.get("files_removed", 0),
+                "files_failed": j.get("files_failed", 0),
                 "bytes_total": j.get("bytes_total", 0),
                 "bytes_done": j.get("bytes_done", 0),
                 "error": j.get("error"),

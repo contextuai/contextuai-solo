@@ -16,6 +16,18 @@ Write-Host "[1/3] Building Python sidecar (PyInstaller)..." -ForegroundColor Yel
 Push-Location $backend
 try {
     $env:PYTHONIOENCODING = "utf-8"
+
+    # Fetch the bundled embedding model into the backend tree so the
+    # PyInstaller spec's `datas` entry (models/embedding/...) can pick it up.
+    Write-Host "  Fetching embedding model..." -ForegroundColor DarkGray
+    $env:MODELS_DIR = "$backend\models"
+    & .venv\Scripts\python.exe scripts\fetch_embedding_model.py
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "  ERROR: embedding-model fetch failed (exit $LASTEXITCODE)" -ForegroundColor Red
+        Pop-Location
+        exit 1
+    }
+
     $output = & .venv\Scripts\pyinstaller.exe contextuai-solo-backend.spec `
         --distpath "$sidecar" `
         --workpath .\build `
