@@ -46,6 +46,45 @@ MODELS_DIR = os.getenv(
 )
 
 
+def _supports_gpu_offload() -> bool:
+    """Whether the installed llama-cpp build can offload to a GPU.
+
+    This is the only reliable cross-vendor signal: it returns True for a
+    wheel compiled with CUDA, Metal (macOS), or Vulkan support, and False
+    for a CPU-only wheel — regardless of which vendor's GPU is present.
+    """
+    if not LLAMA_CPP_AVAILABLE:
+        return False
+    try:
+        import llama_cpp
+
+        fn = getattr(llama_cpp, "llama_supports_gpu_offload", None)
+        if fn is not None:
+            return bool(fn())
+    except Exception:  # pragma: no cover - defensive
+        pass
+    return False
+
+
+def _resolve_gpu_layers() -> int:
+    """Decide ``n_gpu_layers`` from the ``LOCAL_MODEL_GPU_LAYERS`` env var.
+
+    - ``auto`` (default): offload all layers (``-1``) when the llama-cpp build
+      supports GPU offload (CUDA / Metal / Vulkan), otherwise CPU (``0``).
+    - ``0``: force CPU — useful to benchmark CPU vs GPU on the same machine.
+    - ``<int>``: offload exactly that many layers.
+    """
+    raw = os.getenv("LOCAL_MODEL_GPU_LAYERS", "auto").strip().lower()
+    if raw not in ("", "auto"):
+        try:
+            return int(raw)
+        except ValueError:
+            logger.warning(
+                "Invalid LOCAL_MODEL_GPU_LAYERS=%r — falling back to auto", raw
+            )
+    return -1 if _supports_gpu_offload() else 0
+
+
 class LocalModelService:
     """Service for running GGUF models locally via llama-cpp-python."""
 
@@ -53,6 +92,8 @@ class LocalModelService:
         self._model: Optional[Any] = None
         self._loaded_model_path: Optional[str] = None
         self._loaded_model_id: Optional[str] = None
+        self._loaded_n_ctx: Optional[int] = None
+        self._loaded_n_gpu_layers: Optional[int] = None
         self._inference_lock = asyncio.Lock()
         logger.info(
             "LocalModelService initialized – models dir: %s, llama-cpp available: %s",
@@ -168,80 +209,79 @@ class LocalModelService:
 
         n_threads = os.cpu_count() or 4
         n_batch = 1024 if file_size_gb < 10 else 512
+        gpu_layers = _resolve_gpu_layers()
 
-        try:
-            self._model = Llama(
-                model_path=model_path,
-                n_ctx=n_ctx,
-                n_batch=n_batch,
-                n_threads=n_threads,
-                use_mmap=True,
-                verbose=False,
+        if gpu_layers != 0:
+            logger.info(
+                "GPU offload enabled (n_gpu_layers=%d) — set LOCAL_MODEL_GPU_LAYERS=0 to force CPU",
+                gpu_layers,
             )
-        except Exception as e:
-            error_msg = str(e)
-            combined = error_msg
-            logger.error("Failed to load model %s: %s", model_path, error_msg)
 
-            # Check for unsupported architecture (may appear in exception or stderr)
-            if "unknown model architecture" in combined:
-                import re
-                import llama_cpp as _lc
-                version = getattr(_lc, "__version__", "unknown")
-                arch_match = re.search(r"unknown model architecture: '(\w+)'", combined)
-                arch_name = arch_match.group(1) if arch_match else "unknown"
-                raise RuntimeError(
-                    f"This model uses the '{arch_name}' architecture which is not yet "
-                    f"supported by llama-cpp-python v{version}. This usually means the "
-                    f"model is very new. Support will be added in a future update. "
-                    f"Please try a different model for now."
-                ) from e
+        # Try progressively more conservative configs. The first attempt uses
+        # the GPU (when available); subsequent attempts fall back to CPU and
+        # then to a minimal context so a single bad config never hard-fails.
+        attempts = [(n_ctx, n_batch, gpu_layers)]
+        if gpu_layers != 0:
+            attempts.append((n_ctx, n_batch, 0))  # GPU OOM / driver issue → CPU
+        if n_ctx > 512:
+            attempts.append((512, 512, 0))  # last resort: tiny CPU context
 
-            # Check for out-of-memory / allocation failures
+        last_err: Optional[Exception] = None
+        for ctx, batch, layers in attempts:
+            try:
+                self._model = Llama(
+                    model_path=model_path,
+                    n_ctx=ctx,
+                    n_batch=batch,
+                    n_threads=n_threads,
+                    n_gpu_layers=layers,
+                    use_mmap=True,
+                    verbose=False,
+                )
+                self._loaded_n_ctx = ctx
+                self._loaded_n_gpu_layers = layers
+                break
+            except Exception as e:
+                combined = str(e)
+
+                # Unsupported architecture is unrecoverable — no fallback helps.
+                if "unknown model architecture" in combined:
+                    import re
+                    import llama_cpp as _lc
+                    version = getattr(_lc, "__version__", "unknown")
+                    arch_match = re.search(r"unknown model architecture: '(\w+)'", combined)
+                    arch_name = arch_match.group(1) if arch_match else "unknown"
+                    raise RuntimeError(
+                        f"This model uses the '{arch_name}' architecture which is not yet "
+                        f"supported by llama-cpp-python v{version}. This usually means the "
+                        f"model is very new. Support will be added in a future update. "
+                        f"Please try a different model for now."
+                    ) from e
+
+                last_err = e
+                logger.warning(
+                    "Model load attempt failed (n_ctx=%d, n_gpu_layers=%d): %s — trying next config",
+                    ctx, layers, combined,
+                )
+        else:
+            # Every attempt failed — classify the final error for the user.
+            combined = str(last_err)
+            logger.error("Failed to load model %s: %s", model_path, combined)
             if "failed to allocate" in combined.lower() or "out of memory" in combined.lower():
                 raise RuntimeError(
-                    f"Not enough RAM to load this model. "
-                    f"Try closing other applications or using a smaller model."
-                ) from e
-
-            # Retry with minimal context if it failed for other reasons
-            if n_ctx > 512:
-                logger.info("Retrying with n_ctx=512...")
-                try:
-                    self._model = Llama(
-                        model_path=model_path,
-                        n_ctx=512,
-                        n_batch=512,
-                        n_threads=n_threads,
-                        use_mmap=True,
-                        verbose=False,
-                    )
-                except Exception as retry_err:
-                    retry_combined = str(retry_err)
-
-                    # Check architecture on retry too
-                    if "unknown model architecture" in retry_combined:
-                        import re
-                        import llama_cpp as _lc
-                        version = getattr(_lc, "__version__", "unknown")
-                        arch_match = re.search(r"unknown model architecture: '(\w+)'", retry_combined)
-                        arch_name = arch_match.group(1) if arch_match else "unknown"
-                        raise RuntimeError(
-                            f"This model uses the '{arch_name}' architecture which is not yet "
-                            f"supported by llama-cpp-python v{version}. This usually means the "
-                            f"model is very new. Support will be added in a future update. "
-                            f"Please try a different model for now."
-                        ) from retry_err
-
-                    raise RuntimeError(
-                        f"Failed to load this model. It may be corrupted or incompatible. "
-                        f"Try re-downloading or using a different model."
-                    ) from retry_err
-            else:
-                raise
+                    "Not enough memory to load this model. "
+                    "Try closing other applications or using a smaller model."
+                ) from last_err
+            raise RuntimeError(
+                "Failed to load this model. It may be corrupted or incompatible. "
+                "Try re-downloading or using a different model."
+            ) from last_err
 
         self._loaded_model_path = model_path
-        logger.info("Model loaded successfully: %s (%.1f GB, n_ctx=%d)", model_path, file_size_gb, n_ctx)
+        logger.info(
+            "Model loaded successfully: %s (%.1f GB, n_ctx=%d, n_gpu_layers=%d)",
+            model_path, file_size_gb, self._loaded_n_ctx, self._loaded_n_gpu_layers,
+        )
         return self._model
 
     def load_model(self, model_path: str, model_id: str = None) -> None:
@@ -254,16 +294,18 @@ class LocalModelService:
         """Free RAM by releasing the loaded model."""
         if self._model is not None:
             model_path = self._loaded_model_path
+            # Call close() only — letting GC run the finalizer afterwards.
+            # Explicitly invoking __del__ here risks a double free (REL-8).
             try:
                 if hasattr(self._model, "close"):
                     self._model.close()
-                elif hasattr(self._model, "__del__"):
-                    self._model.__del__()
             except Exception as e:
                 logger.warning("Error closing model: %s", e)
             self._model = None
             self._loaded_model_path = None
             self._loaded_model_id = None
+            self._loaded_n_ctx = None
+            self._loaded_n_gpu_layers = None
             gc.collect()
             logger.info("Model unloaded and memory released: %s", model_path)
 
@@ -273,16 +315,22 @@ class LocalModelService:
 
     def get_status(self) -> Dict[str, Any]:
         """Return information about the currently loaded model."""
+        gpu_supported = _supports_gpu_offload()
         if self._model is None:
             return {
                 "loaded": False,
                 "llama_cpp_available": LLAMA_CPP_AVAILABLE,
+                "gpu_offload_supported": gpu_supported,
                 "models_dir": MODELS_DIR,
             }
         return {
             "loaded": True,
             "model_path": self._loaded_model_path,
             "model_id": self._loaded_model_id,
+            "n_ctx": self._loaded_n_ctx,
+            "n_gpu_layers": self._loaded_n_gpu_layers,
+            "gpu_offload_supported": gpu_supported,
+            "gpu_active": bool(self._loaded_n_gpu_layers),
             "llama_cpp_available": LLAMA_CPP_AVAILABLE,
             "models_dir": MODELS_DIR,
         }
