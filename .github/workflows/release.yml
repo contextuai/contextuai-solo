@@ -141,7 +141,23 @@ jobs:
           RELEASE_TAG: ${{ needs.compute.outputs.release_tag }}
           TARGET_SHA: ${{ github.sha }}
         run: |
-          echo "Creating tag $RELEASE_TAG at $TARGET_SHA"
+          echo "Ensuring tag $RELEASE_TAG at $TARGET_SHA"
+
+          # Idempotent: a redundant workflow_dispatch racing the chore-on-main
+          # auto-release (or a re-run) must NOT hard-fail with HTTP 422
+          # "Reference already exists". Only error if the tag exists but points
+          # at a different commit — that's a real conflict worth stopping for.
+          existing_sha=$(gh api "repos/${{ github.repository }}/git/ref/tags/$RELEASE_TAG" \
+            --jq '.object.sha' 2>/dev/null || echo "")
+          if [[ -n "$existing_sha" ]]; then
+            if [[ "$existing_sha" == "$TARGET_SHA" ]]; then
+              echo "Tag $RELEASE_TAG already exists at $TARGET_SHA — nothing to do."
+              exit 0
+            fi
+            echo "::error::Tag $RELEASE_TAG already exists at $existing_sha, not $TARGET_SHA. Refusing to move a published tag."
+            exit 1
+          fi
+
           gh api "repos/${{ github.repository }}/git/refs" \
             -f "ref=refs/tags/$RELEASE_TAG" \
             -f "sha=$TARGET_SHA" \
