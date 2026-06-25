@@ -70,7 +70,7 @@ The backend was ported from MongoDB. A compatibility layer preserves the Motor A
 - **Crew system**: Multi-agent teams with persistent memory (`crew_memory_service.py`)
 
 ### Local AI Models (`backend/routers/local_models.py`)
-GGUF models downloaded from HuggingFace, stored in `~/.contextuai-solo/models/`. Inference via llama-cpp-python on CPU.
+GGUF models downloaded from HuggingFace, stored in `~/.contextuai-solo/models/`. Inference via llama-cpp-python, with automatic GPU offload (Apple Metal / NVIDIA CUDA / Vulkan) when the installed build supports it, falling back to CPU. Offload is gated by `llama_cpp.llama_supports_gpu_offload()` and tunable via the `LOCAL_MODEL_GPU_LAYERS` env var (`auto` (default) / `0` to force CPU / `<N>` layers); the loaded model stays resident in RAM across messages and only reloads on a model swap.
 - 41 curated GGUF models (Gemma 4, Qwen 3/3.5, DeepSeek R1, Llama 3, Mistral, Phi-4, etc.) from 0.5B to 70B
 - Download: `POST /api/v1/local-models/{model_id}/download` (SSE progress)
 - Sync to DB: `POST /api/v1/local-models/sync` (registers downloaded models in the `models` collection)
