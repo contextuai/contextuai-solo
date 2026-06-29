@@ -4,7 +4,12 @@ import { api } from "@/lib/transport";
 // Types
 // ---------------------------------------------------------------------------
 
-export type CloudProviderType = "anthropic" | "openai" | "google" | "bedrock";
+export type CloudProviderType =
+  | "anthropic"
+  | "openai"
+  | "google"
+  | "bedrock"
+  | "ollama";
 
 export interface CloudProvider {
   provider_id: string;

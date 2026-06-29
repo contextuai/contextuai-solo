@@ -70,6 +70,7 @@ export default function CrewDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"overview" | "runs" | "schedule">("overview");
   const [editorOpen, setEditorOpen] = useState(false);
+  const [runDialogOpen, setRunDialogOpen] = useState(false);
   const [activeRunView, setActiveRunView] = useState<{ crewId: string; runId: string } | null>(null);
 
   const loadData = useCallback(async () => {
@@ -99,15 +100,17 @@ export default function CrewDetailPage() {
     loadData();
   };
 
-  const handleStartRun = async () => {
+  // Open the task dialog. Running a crew without a concrete task makes
+  // agents describe their own role instead of producing real output, so we
+  // always collect an objective first.
+  const handleStartRun = () => setRunDialogOpen(true);
+
+  const handleRunSubmit = async (taskInput: string) => {
     if (!id) return;
-    try {
-      const run = await crewsApi.startRun(id);
-      setActiveRunView({ crewId: id, runId: run.run_id });
-      handleRefresh();
-    } catch (err) {
-      console.error("Failed to start run:", err);
-    }
+    const run = await crewsApi.startRun(id, taskInput);
+    setRunDialogOpen(false);
+    setActiveRunView({ crewId: id, runId: run.run_id });
+    handleRefresh();
   };
 
   const handleDelete = async () => {
@@ -315,6 +318,17 @@ export default function CrewDetailPage() {
             agents: crew.agents,
             channel_bindings: crew.channel_bindings,
           }}
+        />
+      )}
+
+      {/* Run Crew task dialog */}
+      {runDialogOpen && (
+        <RunCrewDialog
+          crewName={crew.name}
+          crewDescription={crew.description}
+          isAutonomous={isAutonomous}
+          onClose={() => setRunDialogOpen(false)}
+          onSubmit={handleRunSubmit}
         />
       )}
 
@@ -668,6 +682,127 @@ function ScheduleTab({ crew }: { crew: Crew }) {
               </span>
             </div>
           )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Run Crew task dialog
+// ---------------------------------------------------------------------------
+
+function RunCrewDialog({
+  crewName,
+  crewDescription,
+  isAutonomous,
+  onClose,
+  onSubmit,
+}: {
+  crewName: string;
+  crewDescription?: string | null;
+  isAutonomous: boolean;
+  onClose: () => void;
+  onSubmit: (taskInput: string) => Promise<void>;
+}) {
+  const [task, setTask] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async () => {
+    if (!task.trim()) {
+      setError("Describe the task so the crew has something to work on.");
+      return;
+    }
+    setSubmitting(true);
+    setError(null);
+    try {
+      await onSubmit(task);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to start run");
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="w-full max-w-lg bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-xl">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-200 dark:border-neutral-800">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded-lg bg-primary-50 dark:bg-primary-500/10">
+              <Play className="w-4 h-4 text-primary-500" />
+            </div>
+            <h3 className="font-semibold text-neutral-900 dark:text-white">
+              Run {crewName}
+            </h3>
+          </div>
+          <button
+            onClick={onClose}
+            disabled={submitting}
+            className="p-1.5 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors disabled:opacity-50"
+          >
+            <XCircle className="w-5 h-5 text-neutral-400" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="px-5 py-4 space-y-3">
+          {crewDescription && (
+            <p className="text-xs text-neutral-500 dark:text-neutral-400">
+              {crewDescription}
+            </p>
+          )}
+          <div>
+            <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1.5">
+              Task for this run
+            </label>
+            <textarea
+              autoFocus
+              value={task}
+              onChange={(e) => {
+                setTask(e.target.value);
+                if (error) setError(null);
+              }}
+              rows={5}
+              placeholder={
+                isAutonomous
+                  ? "e.g. Research our top 3 competitors and produce a one-page positioning brief."
+                  : "e.g. Write 3 LinkedIn posts announcing our new AI agent platform for B2B SaaS founders. Professional but punchy."
+              }
+              className="w-full rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-3 py-2 text-sm text-neutral-900 dark:text-white placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-primary-500/40 resize-none"
+            />
+            <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-1.5">
+              Be specific about the deliverable, audience, and any constraints. The
+              crew uses this as the objective for every agent in the pipeline.
+            </p>
+          </div>
+          {error && (
+            <p className="text-xs text-red-500 dark:text-red-400">{error}</p>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-neutral-200 dark:border-neutral-800">
+          <button
+            onClick={onClose}
+            disabled={submitting}
+            className="px-4 py-2 rounded-lg text-sm font-medium text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={submitting}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary-500 text-white hover:bg-primary-600 transition-colors text-sm font-medium disabled:opacity-60"
+          >
+            {submitting ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Play className="w-4 h-4" />
+            )}
+            {submitting ? "Starting…" : "Run Crew"}
+          </button>
         </div>
       </div>
     </div>

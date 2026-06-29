@@ -197,8 +197,15 @@ export const crewsApi = {
     return (raw.runs ?? (raw.data as Record<string, unknown>)?.runs ?? []) as CrewRun[];
   },
 
-  startRun: async (crewId: string, inputData?: Record<string, unknown>): Promise<CrewRun> => {
+  startRun: async (
+    crewId: string,
+    input?: string,
+    inputData?: Record<string, unknown>,
+  ): Promise<CrewRun> => {
+    // `input` is the task/objective for this run. Without it the crew has
+    // nothing concrete to do and agents fall back to describing themselves.
     const { data } = await api.post<{ data: CrewRun }>(`/crews/${crewId}/run`, {
+      input: input && input.trim() ? input.trim() : undefined,
       input_data: inputData ?? {},
     });
     return (data as { data: CrewRun }).data;

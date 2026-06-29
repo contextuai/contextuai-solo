@@ -397,9 +397,9 @@ function AIProvidersTab() {
 
           {/* Cloud + Ollama provider cards */}
           {PROVIDER_GUIDES.map((guide) => {
-            const saved = guide.id === "ollama"
-              ? undefined  // Ollama not tracked as CloudProvider in backend
-              : savedByType[guide.id as CloudProviderType];
+            // Ollama is now a first-class provider row too, so its saved /
+            // connected state is tracked the same way as the cloud providers.
+            const saved = savedByType[guide.id as CloudProviderType];
             return (
               <ProviderCard
                 key={guide.id}

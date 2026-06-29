@@ -210,6 +210,8 @@ class CloudProviderService:
                 ok, error = await _probe_google(cfg)
             elif provider_type == CloudProviderType.BEDROCK.value:
                 ok, error = await _probe_bedrock(cfg)
+            elif provider_type == CloudProviderType.OLLAMA.value:
+                ok, error = await _probe_ollama(cfg)
             else:
                 ok, error = False, f"Unsupported provider type: {provider_type!r}"
         except Exception as exc:  # safety net
@@ -301,6 +303,27 @@ async def _probe_google(cfg: Dict[str, Any]):
         return False, _short_error(exc)
 
 
+async def _probe_ollama(cfg: Dict[str, Any]):
+    """Probe a local Ollama server by listing its pulled models.
+
+    Ollama is key-less; the only config is an optional ``base_url`` (defaults
+    to ``http://localhost:11434``). A 2xx from ``/api/tags`` means the server
+    is reachable.
+    """
+    base_url = (cfg.get("base_url") or "http://localhost:11434").rstrip("/")
+    try:
+        async with httpx.AsyncClient(timeout=PROBE_TIMEOUT_SECONDS) as client:
+            resp = await client.get(f"{base_url}/api/tags")
+        if 200 <= resp.status_code < 300:
+            return True, None
+        return False, _extract_error_message(resp, default=f"HTTP {resp.status_code}")
+    except httpx.HTTPError as exc:
+        return False, (
+            f"Could not reach Ollama at {base_url} — is `ollama serve` running? "
+            f"({_short_error(exc)})"
+        )
+
+
 async def _probe_bedrock(cfg: Dict[str, Any]):
     import asyncio
 
@@ -344,6 +367,7 @@ def _default_display_name(provider_type: str) -> str:
         "openai": "OpenAI",
         "google": "Google AI",
         "bedrock": "AWS Bedrock",
+        "ollama": "Ollama (Local)",
     }.get(provider_type, provider_type.title())
 
 

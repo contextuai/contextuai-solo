@@ -133,6 +133,14 @@ class CrewRepository(BaseRepository):
     async def update_crew(self, crew_id: str, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Update a crew by crew_id."""
         data["updated_at"] = datetime.utcnow().isoformat()
+        # Assign agent_ids to any agents added via update (e.g. a new step
+        # added in the Edit dialog). create_crew does this on insert, but
+        # update must too — otherwise a new agent has agent_id=None, which
+        # breaks run creation (CrewRunResponse requires a string agent_id).
+        if isinstance(data.get("agents"), list):
+            for agent in data["agents"]:
+                if isinstance(agent, dict) and not agent.get("agent_id"):
+                    agent["agent_id"] = str(uuid.uuid4())
         result = await self.collection.find_one_and_update(
             {"crew_id": crew_id, "deleted_at": None},
             {"$set": data},
@@ -308,15 +316,31 @@ class CrewRunRepository(BaseRepository):
     async def update_agent_state(
         self, run_id: str, agent_id: str, state_update: Dict[str, Any]
     ) -> Optional[Dict[str, Any]]:
-        """Update a specific agent's state within a run."""
-        result = await self.collection.find_one_and_update(
-            {"run_id": run_id, "agents.agent_id": agent_id},
-            {"$set": {f"agents.$.{k}": v for k, v in state_update.items()}},
-            return_document=True,
-        )
-        if result:
-            result["id"] = str(result.pop("_id"))
-        return result
+        """Update a specific agent's state within a run.
+
+        Implemented as a read-modify-write over the whole ``agents`` array
+        rather than a positional ``agents.$`` update: the SQLite
+        motor-compat layer does not support MongoDB's positional array
+        operator (nor matching ``agents.agent_id`` against array elements),
+        so a positional update silently no-ops and every run's per-agent
+        state would stay "pending" forever.
+        """
+        run = await self.collection.find_one({"run_id": run_id})
+        if not run:
+            return None
+
+        agents = run.get("agents") or []
+        matched = False
+        for agent in agents:
+            if agent.get("agent_id") == agent_id:
+                agent.update(state_update)
+                matched = True
+                break
+
+        if not matched:
+            return None
+
+        return await self.update_run(run_id, {"agents": agents})
 
     async def append_agent_state(
         self, run_id: str, agent_state: Dict[str, Any]
