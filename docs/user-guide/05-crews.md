@@ -13,6 +13,11 @@ Crews are multi-agent teams that work together to accomplish complex tasks. You 
 3. Configure your crew's details, execution mode, agents, and connections.
 4. Run the crew and monitor its progress in real-time.
 
+> **New here?** Solo ships with a couple of ready-to-run **sample crews**
+> (tagged `sample`) — e.g. *LinkedIn Content Pipeline* — that demonstrate the
+> recommended **writer → reviewer → finalizer** pattern. Open one, click
+> **Run Crew**, enter a task, and inspect how each step feeds the next.
+
 ## Crew List
 
 The main page shows:
@@ -62,6 +67,13 @@ Build your agent team:
 - Click **Browse Library** to pick from the 96 pre-built agents.
 - Reorder agents to control the execution sequence (for Sequential mode).
 - Each agent needs a **name** and **instructions** at minimum.
+
+> **The last step is your deliverable.** In Sequential and Pipeline crews, the
+> crew's result is the **last step's output**. If your crew ends on a reviewer,
+> the result is a *critique* — not a finished piece. The builder detects this
+> and shows an **"Add a finalizer step?"** suggestion: one click adds a
+> **Finalizer** that applies the review and outputs the publish-ready result.
+> The recommended shape for content crews is **writer → reviewer → finalizer**.
 
 #### Browsing the Agent Library
 
