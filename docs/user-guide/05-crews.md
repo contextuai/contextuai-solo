@@ -101,7 +101,8 @@ Review your full configuration:
 ## Running a Crew
 
 1. Click the **Run** button on a crew card, or open the crew detail page and click **Run Crew**.
-2. A progress modal appears showing real-time status.
+2. A task-input dialog appears — titled "Run {crew name}". Enter a description in the **Task for this run** field (required, auto-focused). Be specific about the deliverable, intended audience, and any constraints. Click **Run Crew** to proceed, or **Cancel** to abort. Submitting with an empty task is blocked with inline validation.
+3. A progress modal appears showing real-time status.
 
 ### Run Progress
 
@@ -141,3 +142,4 @@ Each crew card shows:
 - **Enable approval for social channels** until you trust the output quality — you don't want to auto-post something embarrassing.
 - **Keep autonomous crews small** — set a low invocation limit (5–10) and budget ($1–$5) while you're learning how they behave.
 - **Check the Runs tab** regularly to monitor costs and catch failures early.
+- **Run crews at zero cost with Ollama** — if you have an Ollama provider configured under Settings → AI Providers, select any of its models as the crew's AI model. Crew agents run fully offline and free against your local Ollama server.

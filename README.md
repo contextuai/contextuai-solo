@@ -156,7 +156,7 @@ Solo auto-detects your hardware and recommends the right model:
 | 32 GB | Qwen 3 32B, DeepSeek R1 32B, Gemma 3 27B, Qwen 2.5 Coder 32B |
 | 48+ GB | Llama 3.1 70B, DeepSeek R1 70B |
 
-8 model families: **Qwen 3.5** / **Qwen 3** / **Qwen 2.5** / **DeepSeek R1** / **Gemma 3** / **Llama 3** / **Mistral** / **Phi-4** — covering general chat, reasoning, coding, creative writing, multilingual, and vision.
+9 model families: **Qwen 3.5** / **Qwen 3** / **Qwen 2.5** / **DeepSeek R1** / **Gemma 3** / **Gemma 4** / **Llama 3** / **Mistral** / **Phi-4** — covering general chat, reasoning, coding, creative writing, multilingual, and vision.
 
 ### Built-in Coding Server
 

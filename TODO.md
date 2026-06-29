@@ -1,7 +1,7 @@
 # TODO — ContextuAI Solo Moonshot
 
 > Master task list. Prioritized by phases. Check off as completed.
-> **Created:** 2026-03-19 | **Last synced with code:** 2026-05-17
+> **Created:** 2026-03-19 | **Last synced with code:** 2026-06-29
 
 ---
 
@@ -296,7 +296,7 @@ Phases 0–4 and Phase 5 (Coder multi-agent) are shipped and verified against th
 
 ## QUICK REFERENCE
 
-**Total models in catalog:** 41 (8 families: Qwen 2.5, Qwen 3, Qwen 3.5, Gemma 3, Gemma 4, Llama, Mistral, Phi, DeepSeek)
+**Total models in catalog:** 41 (9 families: Qwen 2.5, Qwen 3, Qwen 3.5, Gemma 3, Gemma 4, Llama, Mistral, Phi, DeepSeek)
 **Total agents:** 113 markdown files across 14 categories (engineering 12 + coder-companion 5 excluded from Solo's main library → 96 visible in Solo; the 5 coder-companion agents surface in Coder mode)
 **Current release tag:** v1.0.0-11 (cut 2026-05-15)
 **Moonshot pick model:** Qwen 3.5 35B-A3B (MoE) — 35B brain, 3B speed, thinking + vision + 256K context
