@@ -52,6 +52,7 @@ import {
   ArrowDownToLine,
   ArrowUpFromLine,
   Wrench,
+  Wand2,
 } from "lucide-react";
 
 type ExecutionMode = "sequential" | "parallel" | "pipeline" | "autonomous";
@@ -177,10 +178,62 @@ const ROLE_OPTIONS = [
   "researcher",
   "analyst",
   "writer",
+  "editor",
   "reviewer",
   "coordinator",
   "coder",
 ];
+
+// A finalizer turns a reviewer's critique into the finished, publish-ready
+// deliverable. In sequential/pipeline crews the LAST step's output IS the
+// crew's result, so a crew that ends on a reviewer hands back a critique
+// instead of a usable artifact.
+const FINALIZER_INSTRUCTIONS =
+  "You are the Finalizer for this crew. You receive the previous draft and " +
+  "the reviewer's feedback. Apply the feedback and produce the FINAL, " +
+  "ready-to-use deliverable.\n\n" +
+  "Output ONLY the finished result exactly as it should be delivered — no " +
+  "preamble, scorecard, headings, or commentary. Do not write 'Here is' or " +
+  "'Final version:'. Return just the deliverable itself.";
+
+const REVIEWER_HINTS = [
+  "review",
+  "guardian",
+  "critic",
+  "critique",
+  "qa",
+  "quality",
+  "approv",
+  "audit",
+  "evaluat",
+  "feedback",
+];
+const FINALIZER_HINTS = [
+  "finaliz",
+  "publish",
+  "polish",
+  "assembl",
+  "compile",
+  "final draft",
+  "final version",
+  "deliverable",
+];
+
+function _agentHaystack(a: AgentForm): string {
+  return `${a.role} ${a.name} ${a.instructions}`.toLowerCase();
+}
+
+function looksLikeFinalizer(a: AgentForm): boolean {
+  if (a.role === "editor" || a.name.trim().toLowerCase() === "finalizer") return true;
+  const hay = _agentHaystack(a);
+  return FINALIZER_HINTS.some((h) => hay.includes(h));
+}
+
+function looksLikeReviewer(a: AgentForm): boolean {
+  if (a.role === "reviewer") return true;
+  const hay = _agentHaystack(a);
+  return REVIEWER_HINTS.some((h) => hay.includes(h));
+}
 
 // ---------------------------------------------------------------------------
 // Library Panel (overlay inside crew builder)
@@ -330,6 +383,8 @@ export function CrewBuilder({ open, onClose, onCreated, kind = "crew", editCrew 
       coder_run_timeout_seconds: a.coder_run_timeout_seconds,
     })) ?? [emptyAgent()]
   );
+  // Lets the user dismiss the "add a finalizer" suggestion if intentional.
+  const [finalizerHintDismissed, setFinalizerHintDismissed] = useState(false);
   const [maxInvocations, setMaxInvocations] = useState(
     editCrew?.execution_config?.max_agent_invocations ?? 10
   );
@@ -465,6 +520,20 @@ export function CrewBuilder({ open, onClose, onCreated, kind = "crew", editCrew 
   };
 
   const isAutonomous = executionMode === "autonomous";
+
+  // Nudge: in a sequential/pipeline crew the last step's output is the
+  // deliverable. If the crew ends on a reviewer, the result is a critique, not
+  // a finished artifact — suggest adding a finalizer step.
+  const _lastAgent = agents[agents.length - 1];
+  const showFinalizerHint =
+    !isAutonomous &&
+    (executionMode === "sequential" || executionMode === "pipeline") &&
+    agents.length >= 2 &&
+    !!_lastAgent &&
+    !_lastAgent.coder_project_id &&
+    looksLikeReviewer(_lastAgent) &&
+    !looksLikeFinalizer(_lastAgent) &&
+    !finalizerHintDismissed;
 
   // A step is valid if it has a name AND (instructions OR coder_project_id).
   const isAgentValid = (a: AgentForm): boolean => {
@@ -646,6 +715,14 @@ export function CrewBuilder({ open, onClose, onCreated, kind = "crew", editCrew 
   };
 
   const addAgent = () => setAgents((prev) => [...prev, emptyAgent()]);
+
+  const addFinalizer = () => {
+    setAgents((prev) => [
+      ...prev,
+      { name: "Finalizer", role: "editor", instructions: FINALIZER_INSTRUCTIONS },
+    ]);
+    setFinalizerHintDismissed(true);
+  };
 
   const addCoderStep = (project: CoderProject) => {
     setAgents((prev) => [...prev, emptyCoderStep(project)]);
@@ -1105,6 +1182,42 @@ export function CrewBuilder({ open, onClose, onCreated, kind = "crew", editCrew 
                   </div>
                 ))}
               </div>
+
+              {/* Finalizer nudge — the last step's output is the deliverable */}
+              {showFinalizerHint && (
+                <div className="flex items-start gap-3 rounded-xl border border-amber-200 dark:border-amber-800/60 bg-amber-50 dark:bg-amber-500/10 p-4">
+                  <Sparkles className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
+                      Add a finalizer step?
+                    </p>
+                    <p className="text-xs text-amber-700/90 dark:text-amber-300/80 mt-1">
+                      Your last step <strong>{_lastAgent?.name?.trim() || "the reviewer"}</strong> looks
+                      like a reviewer. In a {executionMode} crew, the{" "}
+                      <strong>last step's output is the deliverable</strong> — so this crew would hand
+                      back a critique, not a finished piece. Add a <strong>Finalizer</strong> that
+                      applies the review and outputs the publish-ready result.
+                    </p>
+                    <div className="flex items-center gap-2 mt-3">
+                      <button
+                        type="button"
+                        onClick={addFinalizer}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-amber-500 text-white hover:bg-amber-600 transition-colors"
+                      >
+                        <Wand2 className="w-3.5 h-3.5" />
+                        Add Finalizer step
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setFinalizerHintDismissed(true)}
+                        className="px-3 py-1.5 rounded-lg text-xs font-medium text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-500/20 transition-colors"
+                      >
+                        Dismiss
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Agent cards */}
               {agents.map((agent, index) => {
