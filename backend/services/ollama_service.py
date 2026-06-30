@@ -14,14 +14,17 @@ from ollama import AsyncClient
 
 logger = logging.getLogger(__name__)
 
-OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://ollama:11434")
+# Desktop runs Ollama on localhost; Docker deployments override via env.
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 
 
 class OllamaService:
     """Service for invoking local models via the Ollama Python SDK."""
 
-    def __init__(self):
-        self.base_url = OLLAMA_BASE_URL
+    def __init__(self, base_url: Optional[str] = None):
+        # Per-instance override (e.g. the URL saved in Settings -> AI Providers)
+        # wins over the env default so the configured connection is honored.
+        self.base_url = base_url or OLLAMA_BASE_URL
         self._client: Optional[AsyncClient] = None
         logger.info(f"OllamaService initialized with base URL: {self.base_url}")
 

@@ -25,14 +25,17 @@ class CloudProviderType(str, Enum):
     OPENAI = "openai"
     GOOGLE = "google"
     BEDROCK = "bedrock"
+    OLLAMA = "ollama"
 
 
 # Sensitive keys per provider type — these are masked in responses.
+# Ollama is local and key-less, so it has no sensitive fields.
 SENSITIVE_KEYS = {
     CloudProviderType.ANTHROPIC.value: {"api_key"},
     CloudProviderType.OPENAI.value: {"api_key"},
     CloudProviderType.GOOGLE.value: {"api_key"},
     CloudProviderType.BEDROCK.value: {"aws_secret_access_key"},
+    CloudProviderType.OLLAMA.value: set(),
 }
 
 MASK = "***"

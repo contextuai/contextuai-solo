@@ -13,6 +13,11 @@ Crews are multi-agent teams that work together to accomplish complex tasks. You 
 3. Configure your crew's details, execution mode, agents, and connections.
 4. Run the crew and monitor its progress in real-time.
 
+> **New here?** Solo ships with a couple of ready-to-run **sample crews**
+> (tagged `sample`) — e.g. *LinkedIn Content Pipeline* — that demonstrate the
+> recommended **writer → reviewer → finalizer** pattern. Open one, click
+> **Run Crew**, enter a task, and inspect how each step feeds the next.
+
 ## Crew List
 
 The main page shows:
@@ -63,6 +68,13 @@ Build your agent team:
 - Reorder agents to control the execution sequence (for Sequential mode).
 - Each agent needs a **name** and **instructions** at minimum.
 
+> **The last step is your deliverable.** In Sequential and Pipeline crews, the
+> crew's result is the **last step's output**. If your crew ends on a reviewer,
+> the result is a *critique* — not a finished piece. The builder detects this
+> and shows an **"Add a finalizer step?"** suggestion: one click adds a
+> **Finalizer** that applies the review and outputs the publish-ready result.
+> The recommended shape for content crews is **writer → reviewer → finalizer**.
+
 #### Browsing the Agent Library
 
 The library browser opens as a panel within the wizard:
@@ -101,7 +113,8 @@ Review your full configuration:
 ## Running a Crew
 
 1. Click the **Run** button on a crew card, or open the crew detail page and click **Run Crew**.
-2. A progress modal appears showing real-time status.
+2. A task-input dialog appears — titled "Run {crew name}". Enter a description in the **Task for this run** field (required, auto-focused). Be specific about the deliverable, intended audience, and any constraints. Click **Run Crew** to proceed, or **Cancel** to abort. Submitting with an empty task is blocked with inline validation.
+3. A progress modal appears showing real-time status.
 
 ### Run Progress
 
@@ -141,3 +154,4 @@ Each crew card shows:
 - **Enable approval for social channels** until you trust the output quality — you don't want to auto-post something embarrassing.
 - **Keep autonomous crews small** — set a low invocation limit (5–10) and budget ($1–$5) while you're learning how they behave.
 - **Check the Runs tab** regularly to monitor costs and catch failures early.
+- **Run crews at zero cost with Ollama** — if you have an Ollama provider configured under Settings → AI Providers, select any of its models as the crew's AI model. Crew agents run fully offline and free against your local Ollama server.

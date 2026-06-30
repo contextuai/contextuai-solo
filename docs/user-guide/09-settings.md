@@ -23,7 +23,7 @@ Configure the AI models available throughout the app. See the [Model Hub guide](
 | OpenAI | Yes | GPT-4o, GPT-4o mini, O1 |
 | Google Gemini | Yes | Gemini 2.0 Flash/Pro |
 | AWS Bedrock | Yes | Claude 3 via AWS |
-| Ollama | No | Local models via Ollama server |
+| Ollama | No | Local models via Ollama server. Expand the card, enter your server URL, and click **Test Connection** — Solo probes the running Ollama server and displays a connected/saved indicator once verified, the same as cloud providers. |
 
 For each cloud provider:
 1. Expand the card.

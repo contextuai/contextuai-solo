@@ -580,6 +580,19 @@ async def ai_chat(request: ChatRequest, http_request: Request = None):
         if model_config and OllamaService.is_ollama_model(model_config):
             logger.info(f"🏠 ROUTING: Ollama model detected ({model_config.get('name')}), using OllamaService")
 
+            # Honor the base_url saved in Settings -> AI Providers (falls back
+            # to the localhost default). Without this the singleton would use
+            # the env default and could fail to reach a custom Ollama host.
+            ollama_svc = ollama_service
+            try:
+                from services.cloud_provider_service import CloudProviderService
+                _creds = await CloudProviderService(db).get_credentials("ollama")
+                _base_url = (_creds or {}).get("base_url")
+                if _base_url:
+                    ollama_svc = OllamaService(base_url=_base_url)
+            except Exception as _e:
+                logger.warning(f"⚠️ Could not resolve saved Ollama base_url: {_e}")
+
             # Store user message
             user_message_id = await store_message(session_id, "user", request.prompt)
 
@@ -607,7 +620,7 @@ async def ai_chat(request: ChatRequest, http_request: Request = None):
                 async def ollama_event_generator() -> AsyncGenerator[str, None]:
                     collected_response = []
                     try:
-                        gen = await ollama_service.call_model(
+                        gen = await ollama_svc.call_model(
                             prompt=effective_prompt,
                             model_id=model_id,
                             persona_context=persona_context,
@@ -649,7 +662,7 @@ async def ai_chat(request: ChatRequest, http_request: Request = None):
 
                 return StreamingResponse(ollama_event_generator(), media_type="text/plain")
             else:
-                result = await ollama_service.call_model(
+                result = await ollama_svc.call_model(
                     prompt=effective_prompt,
                     model_id=model_id,
                     persona_context=persona_context,

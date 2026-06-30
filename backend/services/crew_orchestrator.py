@@ -181,8 +181,22 @@ class CrewOrchestrator:
         """
         agents = crew.get("agents", [])
         run_id = run["run_id"]
-        user_input = run.get("input", "")
+        user_input = (run.get("input") or "").strip()
         input_data = run.get("input_data", {})
+
+        # Defensive: a run with no explicit task (e.g. a manual "Run Crew"
+        # press before the task dialog existed) would otherwise hand each
+        # agent an empty prompt, and a persona-only system prompt makes the
+        # model just describe its own role instead of producing work. Derive
+        # an objective from the crew's purpose and steer toward a deliverable.
+        if not user_input:
+            desc = (crew.get("description") or "").strip()
+            objective = f"{desc}\n\n" if desc else ""
+            user_input = (
+                f"{objective}Produce the actual deliverable for this crew's purpose. "
+                "Output the finished work product itself — do not describe your role, "
+                "skills, or what you would do."
+            )
 
         if mode == ExecutionMode.AUTONOMOUS.value:
             return await self._execute_autonomous(
@@ -624,6 +638,10 @@ class CrewOrchestrator:
             # Local model selected — do NOT fall through to Bedrock on failure
             return await self._invoke_via_local(agent_cfg, prompt, model_id)
 
+        if model_id and model_id.lower().startswith("ollama"):
+            # Ollama model selected — do NOT fall through to Claude/Bedrock.
+            return await self._invoke_via_ollama(agent_cfg, prompt, model_id)
+
         if CLAUDE_SDK_AVAILABLE:
             try:
                 return await self._invoke_via_claude_sdk(agent_cfg, prompt)
@@ -664,6 +682,57 @@ class CrewOrchestrator:
             "tokens_used": tokens_used,
             "cost": 0.0,
         }
+
+    async def _invoke_via_ollama(
+        self, agent_cfg: Dict[str, Any], prompt: str, model_id: str
+    ) -> Dict[str, Any]:
+        """Invoke an agent via a local Ollama server (no API key, no fallback).
+
+        Resolves the server URL from the saved ``ollama`` cloud-provider row
+        (Settings -> AI Providers), defaulting to ``http://localhost:11434``.
+        """
+        from services.ollama_direct_service import OllamaDirectService
+
+        agent_name = agent_cfg.get("name", "Agent")
+        system_prompt = await self._resolve_instructions(agent_cfg)
+
+        # Resolve the configured Ollama base_url (if the provider was saved).
+        base_url = None
+        try:
+            from database import get_database
+            from services.cloud_provider_service import CloudProviderService
+
+            db = await get_database()
+            creds = await CloudProviderService(db).get_credentials("ollama")
+            if creds:
+                base_url = creds.get("base_url")
+        except Exception:
+            logger.debug("Could not resolve saved Ollama base_url; using default")
+
+        messages: List[Dict[str, str]] = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
+
+        logger.info(f"Running crew agent '{agent_name}' via Ollama: {model_id}")
+
+        parts: List[str] = []
+        usage: Dict[str, Any] = {}
+        svc = OllamaDirectService()
+        async for evt in svc.stream_chat(
+            messages, model_id=model_id, base_url=base_url, max_tokens=4096
+        ):
+            if evt.get("type") == "delta":
+                parts.append(evt.get("content", ""))
+            elif evt.get("type") == "done":
+                usage = evt.get("usage", {})
+
+        output = "".join(parts)
+        tokens_used = usage.get("total_tokens", 0)
+        logger.info(
+            f"Crew agent '{agent_name}' completed via Ollama (tokens={tokens_used})"
+        )
+        return {"output": output, "tokens_used": tokens_used, "cost": 0.0}
 
     async def _resolve_instructions(self, agent_cfg: Dict[str, Any]) -> str:
         """Resolve agent instructions, falling back to library agent if instructions are too short."""

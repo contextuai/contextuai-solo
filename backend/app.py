@@ -516,6 +516,15 @@ async def startup_event():
         # Seed crew templates library
         await _seed_crew_templates(proxy)
 
+        # Seed example crews (ready-to-run samples) for the desktop user
+        try:
+            from services.sample_crew_seeder import seed_sample_crews
+            n_samples = await seed_sample_crews(proxy)
+            if n_samples:
+                logger.info("Seeded %d sample crew(s)", n_samples)
+        except Exception:
+            logger.exception("Failed to seed sample crews")
+
         # Seed model configs for any already-downloaded local GGUF models
         await _seed_local_models(proxy)
 

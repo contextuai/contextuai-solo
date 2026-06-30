@@ -51,7 +51,11 @@ class CrewMemoryRepository(BaseRepository):
             "updated_at": now,
         }
         result = await self.collection.insert_one(doc)
-        doc["id"] = str(doc.pop("_id"))
+        # The SQLite compat layer copies the document on insert and does not
+        # write `_id` back into `doc`, so read it from the result instead of
+        # popping a key that isn't there (which raised KeyError: '_id').
+        doc["id"] = str(result.inserted_id)
+        doc.pop("_id", None)
         return doc
 
     # ------------------------------------------------------------------
