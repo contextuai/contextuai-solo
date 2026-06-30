@@ -642,6 +642,15 @@ class CrewOrchestrator:
             # Ollama model selected — do NOT fall through to Claude/Bedrock.
             return await self._invoke_via_ollama(agent_cfg, prompt, model_id)
 
+        # Cloud providers that route through the unified model_dispatcher
+        # (direct provider APIs using saved keys / base_url). Anthropic stays on
+        # the Claude SDK path below (works without a saved cloud key).
+        if model_id and any(
+            model_id.lower().startswith(p)
+            for p in ("openai:", "openai_compat:", "google:")
+        ):
+            return await self._invoke_via_dispatcher(agent_cfg, prompt, model_id)
+
         if CLAUDE_SDK_AVAILABLE:
             try:
                 return await self._invoke_via_claude_sdk(agent_cfg, prompt)
@@ -731,6 +740,43 @@ class CrewOrchestrator:
         tokens_used = usage.get("total_tokens", 0)
         logger.info(
             f"Crew agent '{agent_name}' completed via Ollama (tokens={tokens_used})"
+        )
+        return {"output": output, "tokens_used": tokens_used, "cost": 0.0}
+
+    async def _invoke_via_dispatcher(
+        self, agent_cfg: Dict[str, Any], prompt: str, model_id: str
+    ) -> Dict[str, Any]:
+        """Invoke an agent via the unified model_dispatcher (cloud providers).
+
+        Routes openai / openai_compat / google models through their direct
+        provider APIs using credentials saved in Settings -> AI Providers.
+        """
+        from database import get_database
+        from services.model_dispatcher import stream_chat
+
+        agent_name = agent_cfg.get("name", "Agent")
+        system_prompt = await self._resolve_instructions(agent_cfg)
+
+        messages: List[Dict[str, str]] = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
+
+        logger.info(f"Running crew agent '{agent_name}' via dispatcher: {model_id}")
+
+        db = await get_database()
+        parts: List[str] = []
+        usage: Dict[str, Any] = {}
+        async for evt in stream_chat(model_id, messages, db=db, max_tokens=4096):
+            if evt.get("type") == "delta":
+                parts.append(evt.get("content", ""))
+            elif evt.get("type") == "done":
+                usage = evt.get("usage", {})
+
+        output = "".join(parts)
+        tokens_used = usage.get("total_tokens", 0)
+        logger.info(
+            f"Crew agent '{agent_name}' completed via dispatcher (tokens={tokens_used})"
         )
         return {"output": output, "tokens_used": tokens_used, "cost": 0.0}
 
