@@ -94,8 +94,10 @@ async def approve(
     except ValueError as e:
         raise HTTPException(404, str(e))
     except Exception as e:
+        # Upstream channel/provider failure (e.g. expired token). The approval
+        # stays pending so it can be retried after fixing the connection.
         logger.error("Approval send failed: %s", e)
-        raise HTTPException(500, f"Failed to send: {e}")
+        raise HTTPException(502, f"Failed to send: {e}")
 
 
 @router.post("/{approval_id}/reject")
