@@ -75,6 +75,36 @@ def test_chat_model_filter_keeps_current_chat_models():
         assert _is_current_chat_model(keep), keep
 
 
+def test_token_field_openai_vs_compat():
+    from services.openai_direct_service import _token_limit_field
+    # OpenAI host → newer models need max_completion_tokens
+    assert _token_limit_field(None) == "max_completion_tokens"
+    assert _token_limit_field("https://api.openai.com/v1") == "max_completion_tokens"
+    # Compat servers still use classic max_tokens
+    assert _token_limit_field("http://localhost:11434/v1") == "max_tokens"
+    assert _token_limit_field("http://localhost:8000/v1") == "max_tokens"
+
+
+def test_reasoning_models_detected():
+    from services.openai_direct_service import _is_reasoning_model
+    for m in ("gpt-5.5", "gpt-5", "o1", "o1-pro", "o3-mini", "o4-mini"):
+        assert _is_reasoning_model(m), m
+    for m in ("gpt-4o", "gpt-4.1", "gpt-3.5-turbo"):
+        assert not _is_reasoning_model(m), m
+
+
+def test_sampling_params_omitted_for_openai_reasoning_models():
+    from services.openai_direct_service import _sampling_params
+    # OpenAI reasoning model → no temperature/top_p (API rejects non-defaults)
+    assert _sampling_params(None, "gpt-5.5", 0.7, 1.0) == {}
+    # OpenAI non-reasoning → params kept
+    assert _sampling_params(None, "gpt-4o", 0.7, 1.0) == {"temperature": 0.7, "top_p": 1.0}
+    # Compat server with a gpt-5-ish name → still send params (not OpenAI host)
+    assert _sampling_params("http://localhost:8000/v1", "gpt-5.5", 0.7, 1.0) == {
+        "temperature": 0.7, "top_p": 1.0,
+    }
+
+
 def test_chat_model_filter_drops_noise_and_snapshots():
     from services.cloud_model_seeder import _is_current_chat_model
 

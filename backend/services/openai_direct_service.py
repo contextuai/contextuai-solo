@@ -30,6 +30,43 @@ def _chat_url(base_url: Optional[str]) -> str:
     return f"{(base_url or DEFAULT_BASE_URL).rstrip('/')}/chat/completions"
 
 
+def _is_openai_host(base_url: Optional[str]) -> bool:
+    """True when talking to OpenAI itself (not a custom compatible server)."""
+    return base_url is None or "api.openai.com" in base_url
+
+
+def _token_limit_field(base_url: Optional[str]) -> str:
+    """OpenAI's newer models (gpt-5.x, o-series) reject ``max_tokens`` and
+    require ``max_completion_tokens``; it's accepted by their older models too.
+    OpenAI-compatible servers (Ollama/vLLM/LM Studio/TGI) still expect the
+    classic ``max_tokens``.
+    """
+    return "max_completion_tokens" if _is_openai_host(base_url) else "max_tokens"
+
+
+def _is_reasoning_model(clean_model: str) -> bool:
+    """OpenAI reasoning / gpt-5 models only accept default sampling params."""
+    m = clean_model.lower()
+    return m.startswith(("o1", "o3", "o4", "gpt-5"))
+
+
+def _sampling_params(
+    base_url: Optional[str], clean_model: str, temperature: float, top_p: Optional[float]
+) -> Dict[str, Any]:
+    """Sampling params that the target model accepts.
+
+    OpenAI reasoning/gpt-5 models reject non-default ``temperature``/``top_p``
+    (HTTP 400), so omit them and let the API use its defaults. Everything else
+    (gpt-4o, and all OpenAI-compatible servers) takes them as usual.
+    """
+    if _is_openai_host(base_url) and _is_reasoning_model(clean_model):
+        return {}
+    params: Dict[str, Any] = {"temperature": temperature}
+    if top_p is not None:
+        params["top_p"] = top_p
+    return params
+
+
 def _strip_provider_prefix(model_id: str) -> str:
     for prefix in ("openai_compat:", "openai:"):
         if model_id.startswith(prefix):
@@ -95,8 +132,8 @@ class OpenAIDirectService:
         body: Dict[str, Any] = {
             "model": clean_model,
             "messages": messages,
-            "max_tokens": max_tokens,
-            "temperature": temperature,
+            _token_limit_field(base_url): max_tokens,
+            **_sampling_params(base_url, clean_model, temperature, None),
         }
 
         try:
@@ -177,9 +214,8 @@ class OpenAIDirectService:
         body: Dict[str, Any] = {
             "model": clean_model,
             "messages": openai_messages,
-            "max_tokens": max_tokens,
-            "temperature": temperature,
-            "top_p": top_p,
+            _token_limit_field(base_url): max_tokens,
+            **_sampling_params(base_url, clean_model, temperature, top_p),
             "stream": True,
             "stream_options": {"include_usage": True},
         }
