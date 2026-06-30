@@ -62,3 +62,32 @@ def test_openai_compat_api_key_optional():
 
 def test_openai_compat_api_key_is_sensitive():
     assert "api_key" in SENSITIVE_KEYS[CloudProviderType.OPENAI_COMPAT.value]
+
+
+# ---------------------------------------------------------------------------
+# OpenAI dynamic-discovery chat-model filter
+# ---------------------------------------------------------------------------
+
+def test_chat_model_filter_keeps_current_chat_models():
+    from services.cloud_model_seeder import _is_current_chat_model
+
+    for keep in ("gpt-4o", "gpt-4o-mini", "gpt-4.1", "o1", "o3-mini", "gpt-5.1", "chatgpt-4o-latest"):
+        assert _is_current_chat_model(keep), keep
+
+
+def test_chat_model_filter_drops_noise_and_snapshots():
+    from services.cloud_model_seeder import _is_current_chat_model
+
+    for drop in (
+        "gpt-4o-mini-tts",
+        "gpt-4o-mini-transcribe",
+        "gpt-3.5-turbo-instruct",
+        "gpt-4o-mini-search-preview",
+        "text-embedding-3-large",
+        "chatgpt-image-latest",
+        "gpt-4o-2024-05-13",   # dated snapshot collapses to gpt-4o
+        "gpt-3.5-turbo-0125",  # dated snapshot
+        "whisper-1",
+        "dall-e-3",
+    ):
+        assert not _is_current_chat_model(drop), drop

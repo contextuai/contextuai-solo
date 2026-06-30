@@ -18,6 +18,7 @@ so saved keys produce model entries immediately.
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
@@ -25,6 +26,31 @@ import httpx
 logger = logging.getLogger(__name__)
 
 _DISCOVERY_TIMEOUT_SECONDS = 10.0
+
+OPENAI_BASE_URL = "https://api.openai.com/v1"
+
+# Curated chat-model filter for OpenAI's /v1/models (it returns 100+ ids incl.
+# tts / transcribe / audio / image / embedding / moderation / instruct /
+# search variants and dated snapshots). Keep current general-purpose chat
+# models; collapse dated snapshots to their base alias (gpt-4o, not
+# gpt-4o-2024-05-13).
+_CHAT_PREFIXES = ("gpt-", "o1", "o3", "o4", "chatgpt")
+_NON_CHAT_SUBSTRINGS = (
+    "tts", "transcribe", "audio", "realtime", "image", "embedding", "embed",
+    "moderation", "instruct", "search", "whisper", "dall", "-edit",
+)
+_DATE_SNAPSHOT = re.compile(r"-\d{4}-\d{2}-\d{2}$|-\d{4}$")
+
+
+def _is_current_chat_model(model_id: str) -> bool:
+    low = model_id.lower()
+    if not low.startswith(_CHAT_PREFIXES):
+        return False
+    if any(s in low for s in _NON_CHAT_SUBSTRINGS):
+        return False
+    if _DATE_SNAPSHOT.search(low):  # drop dated snapshots, keep base aliases
+        return False
+    return True
 
 # (model_short_id, display_name, description)
 ANTHROPIC_MODELS: List[Tuple[str, str, str]] = [
@@ -120,7 +146,25 @@ async def sync_cloud_models_to_db(db) -> int:
         if not cfg or not cfg.get("api_key"):
             continue
 
-        for short_id, display_name, description in catalog:
+        # OpenAI: discover the account's live models (filtered to current chat
+        # models) so the list never rots (e.g. o1-preview being removed). Fall
+        # back to the static catalog if discovery fails or returns nothing.
+        entries = catalog
+        if ptype == "openai":
+            try:
+                ids = await _discover_openai_compat_models(
+                    OPENAI_BASE_URL, cfg.get("api_key")
+                )
+                chat_ids = sorted(i for i in ids if _is_current_chat_model(i))
+                if chat_ids:
+                    entries = [(i, i, "OpenAI") for i in chat_ids]
+                    logger.info("OpenAI: discovered %d chat models", len(chat_ids))
+            except Exception as exc:
+                logger.warning(
+                    "OpenAI model discovery failed (%s) — using static catalog", exc
+                )
+
+        for short_id, display_name, description in entries:
             doc_id = f"{ptype}:{short_id}"
             desired_ids.add(doc_id)
             doc = _build_model_doc(
