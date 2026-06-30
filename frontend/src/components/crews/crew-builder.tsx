@@ -886,32 +886,22 @@ export function CrewBuilder({ open, onClose, onCreated, kind = "crew", editCrew 
         />
 
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-200 dark:border-neutral-800">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-primary-50 dark:bg-primary-500/10">
+        <div className="flex items-center justify-between gap-4 px-6 py-4 border-b border-neutral-200 dark:border-neutral-800">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="p-2 rounded-lg bg-primary-50 dark:bg-primary-500/10 flex-shrink-0">
               <Users className="w-5 h-5 text-primary-500" />
             </div>
-            <div>
-              <h2 className="text-lg font-semibold text-neutral-900 dark:text-white">
+            <div className="min-w-0">
+              <h2 className="text-lg font-semibold text-neutral-900 dark:text-white truncate">
                 {isEdit ? `Edit ${noun}` : `Create New ${noun}`}
               </h2>
-              <p className="text-xs text-neutral-500 dark:text-neutral-400">
+              <p className="text-xs text-neutral-500 dark:text-neutral-400 truncate">
                 {STEP_TITLES[step].subtitle}
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-4 flex-shrink-0">
             <StepIndicator currentStep={visualStep} totalSteps={totalSteps} />
-            <a
-              href="https://contextuai.com/cookbook"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
-              title="Recipes & patterns for getting more out of Crews"
-            >
-              <BookOpen className="w-3.5 h-3.5" />
-              Cookbook
-            </a>
             <button
               onClick={onClose}
               className="p-2 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
@@ -2025,7 +2015,7 @@ export function CrewBuilder({ open, onClose, onCreated, kind = "crew", editCrew 
 
         {/* Footer */}
         <div className="flex items-center justify-between px-6 py-4 border-t border-neutral-200 dark:border-neutral-800">
-          <div>
+          <div className="flex items-center gap-3">
             {step > 1 && (
               <button
                 type="button"
@@ -2036,6 +2026,16 @@ export function CrewBuilder({ open, onClose, onCreated, kind = "crew", editCrew 
                 Back
               </button>
             )}
+            <a
+              href="https://contextuai.com/cookbook"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+              title="Recipes & patterns for getting more out of Crews"
+            >
+              <BookOpen className="w-4 h-4" />
+              Cookbook
+            </a>
           </div>
           <div className="flex items-center gap-3">
             <button
