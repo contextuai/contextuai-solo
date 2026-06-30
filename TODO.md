@@ -1,7 +1,7 @@
 # TODO — ContextuAI Solo Moonshot
 
 > Master task list. Prioritized by phases. Check off as completed.
-> **Created:** 2026-03-19 | **Last synced with code:** 2026-06-29
+> **Created:** 2026-03-19 | **Last synced with code:** 2026-06-30
 
 ---
 
@@ -14,6 +14,34 @@ Phases 0–4 and Phase 5 (Coder multi-agent) are shipped and verified against th
 - **CI: bundle the all-MiniLM-L6-v2 ONNX weights** so the KB lifecycle + Personal Docs folder e2e tests can run on GitHub Actions (currently `test.skip(!!process.env.CI)`).
 - **Phase 3/4 dead-code cleanup** — `frontend/src/routes/distribution.tsx`, `frontend/src/routes/schedule.tsx`, `frontend/src/routes/personas.tsx` (banner-only, one-release deprecation), `frontend/src/routes/workspace.tsx`. Delete after one more release cycle past v1.0.0-11.
 - **Backlog (BL-4 / BL-5 / BL-6 / BL-7)** — BL-2 (coding agents) absorbed into Phase 4 PR 6 coder-companion category. The rest are nice-to-haves, none committed.
+
+---
+
+## CLOUD PROVIDERS & RELEASE (in flight — 2026-06-30)
+
+Tracked after the v1.0.0-16 release (crew run-flow fixes + Ollama provider).
+
+### CR-1: Fix `Create Tag` 404 handling in release workflow ⭐
+`.github/workflows/release.yml` "Create Tag" step mis-handles a 404: `existing_sha=$(gh api .../git/ref/tags/$TAG --jq '.object.sha' 2>/dev/null || echo "")` captures the 404 body into `existing_sha` (the `|| echo ""` is *inside* the `$()`), so a non-existent tag is read as "already exists at a different SHA" and the job hard-fails.
+- [ ] Move the fallback outside the substitution: `existing_sha=$(gh api … 2>/dev/null) || existing_sha=""`.
+- Symptom: the auto-triggered release on `main` fired correctly but died at Create Tag; v1.0.0-16 had to be published via a manual `git push origin v1.0.0-16` (tag-push path skips this job). Until fixed, every normal release needs that manual recovery.
+
+### CR-2: Cloud endpoint review (verify each provider end-to-end)
+Test connection → save/persist → chat → crew, per provider:
+- [x] **Ollama** — Test/Save (`/api/tags` probe), chat (localhost base_url), crew routing. Done in v1.0.0-16.
+- [ ] **OpenAI** — paste real key, Test/Save, chat (gpt-4o), crew.
+- [ ] **Anthropic** — re-test (current stored row is a 31-char dummy `sk-ant-…` placeholder, never validated → delete it; add a real key).
+- [ ] **Google (Gemini)** — Test/Save, chat, crew.
+- [ ] **AWS Bedrock** — Test/Save (boto3 list-foundation-models), chat, crew.
+
+### CR-3: Generic `openai_compat` provider (#48 — closes #45)
+One integration to support **any** OpenAI-compatible server (vLLM / LM Studio / llama.cpp server / TGI). NOT covered by the existing OpenAI provider, which hardcodes `https://api.openai.com/v1` (`openai_direct_service.py:19`, used at :64/:156), passes no base_url in the dispatcher, probes a hardcoded URL, and seeds a hardcoded model catalog (no `/v1/models` discovery).
+- [ ] Add `OPENAI_COMPAT = "openai_compat"` to `CloudProviderType`; require `base_url` (key optional); add to `SENSITIVE_KEYS`.
+- [ ] Parameterize the endpoint in `openai_direct_service.stream_chat()` / `call_model()`.
+- [ ] `_probe_openai()` accepts `base_url`; add `openai_compat` branch in `cloud_provider_service`.
+- [ ] `model_dispatcher`: add `openai_compat` to `_KNOWN_PREFIXES`, route with `base_url` from creds.
+- [ ] `cloud_model_seeder`: dynamic model discovery via the server's `/v1/models`.
+- [ ] Frontend: provider guide (`base_url` required + optional `api_key`) + Settings card.
 
 ---
 
