@@ -212,6 +212,8 @@ class CloudProviderService:
                 ok, error = await _probe_bedrock(cfg)
             elif provider_type == CloudProviderType.OLLAMA.value:
                 ok, error = await _probe_ollama(cfg)
+            elif provider_type == CloudProviderType.OPENAI_COMPAT.value:
+                ok, error = await _probe_openai(cfg, require_key=False)
             else:
                 ok, error = False, f"Unsupported provider type: {provider_type!r}"
         except Exception as exc:  # safety net
@@ -268,22 +270,31 @@ async def _probe_anthropic(cfg: Dict[str, Any]):
         return False, _short_error(exc)
 
 
-async def _probe_openai(cfg: Dict[str, Any]):
+async def _probe_openai(cfg: Dict[str, Any], *, require_key: bool = True):
+    """Probe an OpenAI(-compatible) server via GET ``{base_url}/models``.
+
+    For real OpenAI ``require_key=True`` and ``base_url`` defaults to
+    ``https://api.openai.com/v1``. For a custom OpenAI-compatible server
+    (``openai_compat``) the key is optional and ``base_url`` comes from config.
+    """
     api_key = cfg.get("api_key") or ""
-    if not api_key:
+    base_url = (cfg.get("base_url") or "https://api.openai.com/v1").rstrip("/")
+    if require_key and not api_key:
         return False, "Missing api_key"
-    headers = {"Authorization": f"Bearer {api_key}"}
+    headers = {}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
     try:
         async with httpx.AsyncClient(timeout=PROBE_TIMEOUT_SECONDS) as client:
-            resp = await client.get(
-                "https://api.openai.com/v1/models",
-                headers=headers,
-            )
+            resp = await client.get(f"{base_url}/models", headers=headers)
         if 200 <= resp.status_code < 300:
             return True, None
         return False, _extract_error_message(resp, default=f"HTTP {resp.status_code}")
     except httpx.HTTPError as exc:
-        return False, _short_error(exc)
+        return False, (
+            f"Could not reach {base_url} ({_short_error(exc)})"
+            if not require_key else _short_error(exc)
+        )
 
 
 async def _probe_google(cfg: Dict[str, Any]):
@@ -368,6 +379,7 @@ def _default_display_name(provider_type: str) -> str:
         "google": "Google AI",
         "bedrock": "AWS Bedrock",
         "ollama": "Ollama (Local)",
+        "openai_compat": "OpenAI-Compatible",
     }.get(provider_type, provider_type.title())
 
 

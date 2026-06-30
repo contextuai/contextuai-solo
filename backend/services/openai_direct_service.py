@@ -16,12 +16,29 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-OPENAI_API_URL = "https://api.openai.com/v1/chat/completions"
+DEFAULT_BASE_URL = "https://api.openai.com/v1"
+OPENAI_API_URL = f"{DEFAULT_BASE_URL}/chat/completions"
 DEFAULT_TIMEOUT_SECONDS = 60.0
 
 
+def _chat_url(base_url: Optional[str]) -> str:
+    """Resolve the chat-completions endpoint from a ``/v1`` base URL.
+
+    Defaults to OpenAI. A custom OpenAI-compatible server (vLLM, LM Studio,
+    llama.cpp server, TGI, Ollama's ``/v1``, …) passes its own base URL.
+    """
+    return f"{(base_url or DEFAULT_BASE_URL).rstrip('/')}/chat/completions"
+
+
+def _strip_provider_prefix(model_id: str) -> str:
+    for prefix in ("openai_compat:", "openai:"):
+        if model_id.startswith(prefix):
+            return model_id[len(prefix):]
+    return model_id
+
+
 class OpenAIDirectService:
-    """Thin async client for the OpenAI Chat Completions API."""
+    """Thin async client for the OpenAI (or OpenAI-compatible) Chat API."""
 
     async def call_model(
         self,
@@ -31,26 +48,19 @@ class OpenAIDirectService:
         max_tokens: int = 2048,
         temperature: float = 0.7,
         api_key: Optional[str] = None,
+        base_url: Optional[str] = None,
     ) -> Dict[str, Any]:
-        if not api_key:
-            raise RuntimeError(
-                "OpenAI API key not configured. "
-                "Save one in Settings → Models → Cloud."
-            )
-
-        clean_model = model_id
-        if clean_model.startswith("openai:"):
-            clean_model = clean_model[len("openai:"):]
+        # api_key is optional for OpenAI-compatible servers (often keyless).
+        clean_model = _strip_provider_prefix(model_id)
 
         messages = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": prompt})
 
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        }
+        headers = {"Content-Type": "application/json"}
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
         body: Dict[str, Any] = {
             "model": clean_model,
             "messages": messages,
@@ -61,7 +71,7 @@ class OpenAIDirectService:
         try:
             async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT_SECONDS) as client:
                 resp = await client.post(
-                    OPENAI_API_URL, headers=headers, json=body
+                    _chat_url(base_url), headers=headers, json=body
                 )
         except httpx.HTTPError as exc:
             raise RuntimeError(f"OpenAI API call failed: {exc}") from exc
@@ -113,29 +123,28 @@ class OpenAIDirectService:
         messages: List[Dict[str, Any]],
         *,
         model_id: str,
-        api_key: str,
+        api_key: Optional[str] = None,
+        base_url: Optional[str] = None,
         max_tokens: int = 2048,
         temperature: float = 0.7,
         top_p: float = 1.0,
         stop: Optional[List[str]] = None,
     ) -> AsyncIterator[Dict[str, Any]]:
-        """Stream tokens from the OpenAI Chat Completions SSE endpoint.
+        """Stream tokens from an OpenAI(-compatible) Chat Completions SSE endpoint.
 
-        Yields normalized event dicts:
+        ``api_key`` is optional (OpenAI-compatible servers are often keyless);
+        ``base_url`` defaults to OpenAI. Yields normalized event dicts:
         - ``{"type": "delta", "content": "..."}``
         - ``{"type": "done", "finish_reason": "...", "usage": {...}}``
         """
-        clean_model = model_id
-        if clean_model.startswith("openai:"):
-            clean_model = clean_model[len("openai:"):]
+        clean_model = _strip_provider_prefix(model_id)
 
         # Pass messages as-is — OpenAI format already matches.
         openai_messages = [{"role": m["role"], "content": m["content"]} for m in messages]
 
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        }
+        headers = {"Content-Type": "application/json"}
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
         body: Dict[str, Any] = {
             "model": clean_model,
             "messages": openai_messages,
@@ -153,7 +162,7 @@ class OpenAIDirectService:
         output_tokens = 0
 
         async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT_SECONDS * 2) as client:
-            async with client.stream("POST", OPENAI_API_URL, headers=headers, json=body) as resp:
+            async with client.stream("POST", _chat_url(base_url), headers=headers, json=body) as resp:
                 if resp.status_code < 200 or resp.status_code >= 300:
                     body_text = await resp.aread()
                     raise RuntimeError(

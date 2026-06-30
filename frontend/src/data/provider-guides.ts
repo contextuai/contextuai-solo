@@ -10,7 +10,7 @@ export interface ProviderGuideField {
 }
 
 export interface ProviderGuide {
-  id: "anthropic" | "openai" | "google" | "bedrock" | "ollama";
+  id: "anthropic" | "openai" | "google" | "bedrock" | "ollama" | "openai_compat";
   name: string;
   /** One-liner displayed under the name. */
   short_blurb: string;
@@ -156,6 +156,36 @@ export const PROVIDER_GUIDES: readonly ProviderGuide[] = [
         label: "Ollama URL",
         type: "text",
         placeholder: "http://localhost:11434",
+        required: false,
+      },
+    ],
+  },
+  {
+    id: "openai_compat",
+    name: "OpenAI-Compatible",
+    short_blurb: "Any server with an OpenAI /v1 API — vLLM, LM Studio, llama.cpp, TGI",
+    dashboard_url: "https://platform.openai.com/docs/api-reference",
+    steps: [
+      "Start your OpenAI-compatible server (vLLM, LM Studio, llama.cpp server, TGI, …)",
+      "Find its base URL — it must end in /v1 (e.g. http://localhost:8000/v1)",
+      "Confirm with `curl http://your-server:8000/v1/models`",
+      "Paste the base URL below (and an API key only if your server requires one)",
+      "Save — models are auto-discovered from the server's /v1/models",
+    ],
+    cost_copy: "Depends on your server. Self-hosted is free; hosted endpoints bill per their pricing.",
+    fields: [
+      {
+        key: "base_url",
+        label: "Base URL",
+        type: "text",
+        placeholder: "http://localhost:8000/v1",
+        required: true,
+      },
+      {
+        key: "api_key",
+        label: "API Key (optional)",
+        type: "password",
+        placeholder: "sk-… (leave blank if your server is keyless)",
         required: false,
       },
     ],
