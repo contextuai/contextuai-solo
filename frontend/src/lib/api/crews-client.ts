@@ -119,7 +119,39 @@ export interface CrewRunStep {
   completed_at?: string;
   output?: string;
   tokens_used?: number;
+  cost_usd?: number;
   duration_seconds?: number;
+}
+
+// The backend returns agents/total_cost_usd/duration_ms; the UI reads
+// steps/cost_usd/duration_seconds/phases. Normalize the run shape so the
+// progress panel and run list show tokens, cost, steps, and progress.
+function normalizeRun(raw: Record<string, unknown>): CrewRun {
+  const r = (raw ?? {}) as Record<string, any>;
+  const rawSteps = (r.steps ?? r.agents ?? []) as Record<string, any>[];
+  const steps: CrewRunStep[] = rawSteps.map((a) => ({
+    agent_id: a.agent_id,
+    agent_name: a.agent_name ?? a.name,
+    status: a.status,
+    started_at: a.started_at,
+    completed_at: a.completed_at,
+    output: a.output,
+    tokens_used: a.tokens_used,
+    cost_usd: a.cost_usd,
+    duration_seconds: a.duration_seconds,
+  }));
+  const completed = steps.filter((s) => s.status === "completed").length;
+  return {
+    ...(r as CrewRun),
+    steps,
+    cost_usd: r.cost_usd ?? r.total_cost_usd,
+    total_tokens: r.total_tokens,
+    duration_seconds:
+      r.duration_seconds ??
+      (r.duration_ms != null ? Math.round(r.duration_ms / 1000) : undefined),
+    phases_completed: r.phases_completed ?? completed,
+    total_phases: r.total_phases ?? steps.length,
+  };
 }
 
 export interface LibraryAgent {
@@ -194,7 +226,8 @@ export const crewsApi = {
       : `/crews/runs?limit=${limit}`;
     const { data } = await api.get<{ runs?: CrewRun[]; data?: { runs?: CrewRun[] } }>(path);
     const raw = data as Record<string, unknown>;
-    return (raw.runs ?? (raw.data as Record<string, unknown>)?.runs ?? []) as CrewRun[];
+    const runs = (raw.runs ?? (raw.data as Record<string, unknown>)?.runs ?? []) as Record<string, unknown>[];
+    return runs.map(normalizeRun);
   },
 
   startRun: async (
@@ -213,8 +246,8 @@ export const crewsApi = {
 
   getRun: async (_crewId: string, runId: string): Promise<CrewRun> => {
     // Backend route is /crews/runs/{run_id} (no crew_id in path)
-    const { data } = await api.get<{ data: CrewRun }>(`/crews/runs/${runId}`);
-    return (data as { data: CrewRun }).data;
+    const { data } = await api.get<{ data: Record<string, unknown> }>(`/crews/runs/${runId}`);
+    return normalizeRun((data as { data: Record<string, unknown> }).data);
   },
 
   cancelRun: async (_crewId: string, runId: string): Promise<void> => {

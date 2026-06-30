@@ -774,11 +774,20 @@ class CrewOrchestrator:
                 usage = evt.get("usage", {})
 
         output = "".join(parts)
-        tokens_used = usage.get("total_tokens", 0)
+        prompt_tokens = int(usage.get("prompt_tokens", 0) or 0)
+        completion_tokens = int(usage.get("completion_tokens", 0) or 0)
+        tokens_used = usage.get("total_tokens", 0) or (prompt_tokens + completion_tokens)
+
+        # Best-effort cost from a maintained price table (providers don't return
+        # cost). Unknown models → 0.0 (tokens still shown).
+        from services.model_pricing import estimate_cost
+        cost = estimate_cost(model_id, prompt_tokens, completion_tokens)
+
         logger.info(
-            f"Crew agent '{agent_name}' completed via dispatcher (tokens={tokens_used})"
+            f"Crew agent '{agent_name}' completed via dispatcher "
+            f"(tokens={tokens_used}, cost=${cost:.4f})"
         )
-        return {"output": output, "tokens_used": tokens_used, "cost": 0.0}
+        return {"output": output, "tokens_used": tokens_used, "cost": cost}
 
     async def _resolve_instructions(self, agent_cfg: Dict[str, Any]) -> str:
         """Resolve agent instructions, falling back to library agent if instructions are too short."""
