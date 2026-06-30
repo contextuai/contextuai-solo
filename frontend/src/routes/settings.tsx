@@ -297,8 +297,8 @@ function AIProvidersTab() {
 
   const handleSave = useCallback(
     async (providerType: string, config: Record<string, string>) => {
-      // Ollama isn't tracked as a CloudProvider in the backend; skip saving.
-      if (providerType === "ollama") return;
+      // Ollama and OpenAI-compatible are now first-class provider rows too, so
+      // a typed base_url persists (was previously dropped for Ollama).
       await saveCloudProvider({ provider_type: providerType as CloudProviderType, config });
       await refresh();
     },

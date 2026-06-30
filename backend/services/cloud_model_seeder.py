@@ -95,16 +95,17 @@ async def sync_cloud_models_to_db(db) -> int:
     providers_coll = db["cloud_providers"]
     models_coll = db["models"]
 
-    # Map provider_type -> connected boolean for everything in the table.
-    # Also stash the openai_compat row config (base_url/api_key) for dynamic
-    # model discovery below.
-    connected_types: Dict[str, bool] = {}
+    # Capture each provider's saved config so we can seed based on the
+    # presence of the required credential (api_key), not on the `connected`
+    # probe flag — which isn't set on Save, so gating on it left valid keys
+    # with no selectable models.
+    provider_cfgs: Dict[str, Dict[str, Any]] = {}
     openai_compat_cfg: Optional[Dict[str, Any]] = None
     async for row in providers_coll.find({}):
         ptype = row.get("provider_type")
         if not ptype:
             continue
-        connected_types[ptype] = bool(row.get("connected", False))
+        provider_cfgs[ptype] = dict(row.get("config") or {})
         if ptype == "openai_compat":
             openai_compat_cfg = dict(row.get("config") or {})
 
@@ -112,9 +113,11 @@ async def sync_cloud_models_to_db(db) -> int:
     desired_ids: set = set()
 
     for ptype, catalog in _PROVIDER_CATALOGS.items():
-        if not connected_types.get(ptype):
-            # Not connected — skip seeding, fall through to stale cleanup below
-            # so previously-seeded rows for a disconnected provider are removed.
+        cfg = provider_cfgs.get(ptype)
+        # Static-catalog providers (anthropic/openai/google) need an api_key.
+        # No row or no key → skip seeding (stale cleanup below removes any
+        # previously-seeded rows for a now-removed provider).
+        if not cfg or not cfg.get("api_key"):
             continue
 
         for short_id, display_name, description in catalog:

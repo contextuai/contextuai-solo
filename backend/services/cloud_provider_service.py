@@ -90,25 +90,26 @@ class CloudProviderService:
             # Merge non-masked values onto existing config so partial updates work.
             merged = dict(existing.get("config") or {})
             merged.update(merged_config)
-            updated = await self.repo.update(
+            saved = await self.repo.update(
                 existing.get("provider_id") or existing.get("id") or existing.get("_id"),
                 {
                     "display_name": display_name,
                     "config": merged,
                 },
+            ) or existing
+        else:
+            saved = await self.repo.create(
+                provider_type=ptype,
+                display_name=display_name,
+                config=merged_config,
             )
-            self.invalidate_cache(ptype)
-            await self._sync_cloud_models_safe()
-            return CloudProviderResponse.from_row(updated or existing)
 
-        row = await self.repo.create(
-            provider_type=ptype,
-            display_name=display_name,
-            config=merged_config,
-        )
         self.invalidate_cache(ptype)
+        # Seed this provider's models on Save (the seeder gates on the saved
+        # config having the required credential, not on a network probe — so
+        # models become selectable immediately without blocking the save).
         await self._sync_cloud_models_safe()
-        return CloudProviderResponse.from_row(row)
+        return CloudProviderResponse.from_row(saved)
 
     async def update(
         self, provider_id: str, payload: CloudProviderUpdate
@@ -145,6 +146,8 @@ class CloudProviderService:
             self.invalidate_cache(existing.get("provider_type"))
         else:
             self.invalidate_cache()
+        # Remove this provider's seeded model rows now that it's gone.
+        await self._sync_cloud_models_safe()
 
     # ------------------------------------------------------------------
     # Credentials lookup (used by inference paths)
@@ -235,6 +238,10 @@ class CloudProviderService:
             result.ok,
             result.error,
         )
+        # Connection state changed — refresh the seeded model rows so a now-
+        # connected provider's models become selectable immediately.
+        self.invalidate_cache(ptype)
+        await self._sync_cloud_models_safe()
         return result
 
 
