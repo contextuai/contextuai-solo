@@ -21,7 +21,11 @@ import {
   Search,
   Filter,
   FlaskConical,
+  BookOpen,
 } from "lucide-react";
+
+// Recipes, patterns, and walkthroughs for getting more out of Crews.
+const COOKBOOK_URL = "https://contextuai.com/cookbook";
 
 // Phase 4 PR 3: top-level tab kinds for the unified Crews page.
 type CrewsTab = "crews" | "projects" | "runs";
@@ -360,6 +364,16 @@ export default function CrewsPage() {
             </div>
           </div>
           <div className="flex items-center gap-3">
+            <a
+              href={COOKBOOK_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+              title="Recipes & patterns for getting more out of Crews"
+            >
+              <BookOpen className="w-4 h-4" />
+              Cookbook
+            </a>
             <button
               onClick={handleRefresh}
               className="p-2 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"

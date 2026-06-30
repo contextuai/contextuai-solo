@@ -902,6 +902,16 @@ export function CrewBuilder({ open, onClose, onCreated, kind = "crew", editCrew 
           </div>
           <div className="flex items-center gap-4">
             <StepIndicator currentStep={visualStep} totalSteps={totalSteps} />
+            <a
+              href="https://contextuai.com/cookbook"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+              title="Recipes & patterns for getting more out of Crews"
+            >
+              <BookOpen className="w-3.5 h-3.5" />
+              Cookbook
+            </a>
             <button
               onClick={onClose}
               className="p-2 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
