@@ -147,8 +147,17 @@ jobs:
           # auto-release (or a re-run) must NOT hard-fail with HTTP 422
           # "Reference already exists". Only error if the tag exists but points
           # at a different commit — that's a real conflict worth stopping for.
-          existing_sha=$(gh api "repos/${{ github.repository }}/git/ref/tags/$RELEASE_TAG" \
-            --jq '.object.sha' 2>/dev/null || echo "")
+          #
+          # NOTE: `gh api` prints the error body to stdout on a 404, so the old
+          # `$(... || echo "")` captured that JSON body instead of clearing it —
+          # a non-existent tag then looked like it "already exists at a different
+          # SHA" and the job hard-failed (see v1.0.0-16). Capture the SHA only
+          # when the lookup actually succeeds (HTTP 200); a 404 → empty.
+          existing_sha=""
+          if ! existing_sha=$(gh api "repos/${{ github.repository }}/git/ref/tags/$RELEASE_TAG" \
+              --jq '.object.sha' 2>/dev/null); then
+            existing_sha=""
+          fi
           if [[ -n "$existing_sha" ]]; then
             if [[ "$existing_sha" == "$TARGET_SHA" ]]; then
               echo "Tag $RELEASE_TAG already exists at $TARGET_SHA — nothing to do."
