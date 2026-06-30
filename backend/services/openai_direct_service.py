@@ -37,6 +37,37 @@ def _strip_provider_prefix(model_id: str) -> str:
     return model_id
 
 
+_STATUS_HINTS = {
+    401: "invalid or missing API key",
+    403: "access denied for this model/key",
+    404: "model not found or no access",
+    429: "rate limit or quota exceeded — check your plan/billing",
+}
+
+
+def _friendly_error(status_code: int, raw_body: bytes | str) -> str:
+    """Turn an OpenAI(-compatible) error response into a readable message."""
+    text = raw_body.decode(errors="replace") if isinstance(raw_body, bytes) else (raw_body or "")
+    detail = ""
+    try:
+        body = json.loads(text)
+        err = body.get("error") if isinstance(body, dict) else None
+        if isinstance(err, dict):
+            detail = str(err.get("message") or "")
+        elif isinstance(err, str):
+            detail = err
+    except Exception:
+        detail = text[:200]
+    hint = _STATUS_HINTS.get(status_code)
+    parts = [f"HTTP {status_code}"]
+    if hint:
+        parts.append(hint)
+    msg = " — ".join(parts)
+    if detail:
+        msg = f"{msg}: {detail}"
+    return msg
+
+
 class OpenAIDirectService:
     """Thin async client for the OpenAI (or OpenAI-compatible) Chat API."""
 
@@ -82,9 +113,7 @@ class OpenAIDirectService:
                 body_text = resp.text
             except Exception:
                 pass
-            raise RuntimeError(
-                f"OpenAI API call failed: HTTP {resp.status_code} {body_text[:500]}"
-            )
+            raise RuntimeError(f"OpenAI: {_friendly_error(resp.status_code, body_text)}")
 
         try:
             data = resp.json()
@@ -165,9 +194,7 @@ class OpenAIDirectService:
             async with client.stream("POST", _chat_url(base_url), headers=headers, json=body) as resp:
                 if resp.status_code < 200 or resp.status_code >= 300:
                     body_text = await resp.aread()
-                    raise RuntimeError(
-                        f"OpenAI stream failed: HTTP {resp.status_code} {body_text[:500].decode(errors='replace')}"
-                    )
+                    raise RuntimeError(f"OpenAI: {_friendly_error(resp.status_code, body_text)}")
                 async for line in resp.aiter_lines():
                     line = line.strip()
                     if not line or not line.startswith("data:"):

@@ -770,12 +770,27 @@ async def ai_chat(request: ChatRequest, http_request: Request = None):
                 return StreamingResponse(dispatcher_event_generator(), media_type="text/plain")
             else:
                 parts: list = []
-                async for evt in _dispatch_stream(
-                    model_id, disp_messages, db=db,
-                    temperature=request.temperature, max_tokens=request.max_tokens,
-                ):
-                    if evt.get("type") == "delta":
-                        parts.append(evt.get("content", ""))
+                try:
+                    async for evt in _dispatch_stream(
+                        model_id, disp_messages, db=db,
+                        temperature=request.temperature, max_tokens=request.max_tokens,
+                    ):
+                        if evt.get("type") == "delta":
+                            parts.append(evt.get("content", ""))
+                except Exception as e:
+                    logger.error(f"❌ Dispatcher error ({_disp_provider}): {e}")
+                    return JSONResponse(
+                        status_code=502,
+                        content={
+                            "result": "",
+                            "session": session_id,
+                            "status": "error",
+                            "error": True,
+                            "message": str(e),
+                            "user_message_id": user_message_id,
+                            "metadata": {"model_id": model_id},
+                        },
+                    )
                 response_str = "".join(parts)
                 if response_str:
                     await store_message(session_id, "assistant", response_str)
