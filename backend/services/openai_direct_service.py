@@ -105,6 +105,40 @@ def _friendly_error(status_code: int, raw_body: bytes | str) -> str:
     return msg
 
 
+_MAX_PARAM_RETRIES = 3
+
+
+def _detect_param_fix(error_text: str, body: Dict[str, Any]) -> Optional[str]:
+    """Inspect a 400 body for a known parameter incompatibility we can adapt to.
+
+    Makes the client host-agnostic: the same gpt-5/o-series quirks that affect
+    api.openai.com also apply to any OpenAI-compatible proxy that fronts those
+    models (Azure OpenAI, LiteLLM, OpenRouter, …). Returns an action key or
+    None.
+    """
+    t = error_text.lower()
+    if "max_completion_tokens" in t and "max_tokens" in body:
+        return "swap_max_tokens"
+    if "temperature" in t and "temperature" in body and (
+        "unsupported" in t or "does not support" in t or "only the default" in t
+    ):
+        return "drop_temperature"
+    if "top_p" in t and "top_p" in body and (
+        "unsupported" in t or "does not support" in t or "only the default" in t
+    ):
+        return "drop_top_p"
+    return None
+
+
+def _apply_param_fix(body: Dict[str, Any], fix: str) -> None:
+    if fix == "swap_max_tokens":
+        body["max_completion_tokens"] = body.pop("max_tokens")
+    elif fix == "drop_temperature":
+        body.pop("temperature", None)
+    elif fix == "drop_top_p":
+        body.pop("top_p", None)
+
+
 class OpenAIDirectService:
     """Thin async client for the OpenAI (or OpenAI-compatible) Chat API."""
 
@@ -136,21 +170,26 @@ class OpenAIDirectService:
             **_sampling_params(base_url, clean_model, temperature, None),
         }
 
+        url = _chat_url(base_url)
+        resp = None
         try:
             async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT_SECONDS) as client:
-                resp = await client.post(
-                    _chat_url(base_url), headers=headers, json=body
-                )
+                for _ in range(_MAX_PARAM_RETRIES + 1):
+                    resp = await client.post(url, headers=headers, json=body)
+                    if 200 <= resp.status_code < 300:
+                        break
+                    # Adapt to a known parameter incompatibility and retry.
+                    fix = _detect_param_fix(resp.text or "", body)
+                    if not fix:
+                        break
+                    _apply_param_fix(body, fix)
         except httpx.HTTPError as exc:
             raise RuntimeError(f"OpenAI API call failed: {exc}") from exc
 
-        if resp.status_code < 200 or resp.status_code >= 300:
-            body_text = ""
-            try:
-                body_text = resp.text
-            except Exception:
-                pass
-            raise RuntimeError(f"OpenAI: {_friendly_error(resp.status_code, body_text)}")
+        if resp is None or resp.status_code < 200 or resp.status_code >= 300:
+            body_text = (resp.text if resp is not None else "") or ""
+            status = resp.status_code if resp is not None else 0
+            raise RuntimeError(f"OpenAI: {_friendly_error(status, body_text)}")
 
         try:
             data = resp.json()
@@ -226,37 +265,52 @@ class OpenAIDirectService:
         input_tokens = 0
         output_tokens = 0
 
+        url = _chat_url(base_url)
         async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT_SECONDS * 2) as client:
-            async with client.stream("POST", _chat_url(base_url), headers=headers, json=body) as resp:
-                if resp.status_code < 200 or resp.status_code >= 300:
-                    body_text = await resp.aread()
-                    raise RuntimeError(f"OpenAI: {_friendly_error(resp.status_code, body_text)}")
-                async for line in resp.aiter_lines():
-                    line = line.strip()
-                    if not line or not line.startswith("data:"):
-                        continue
-                    raw = line[5:].strip()
-                    if raw == "[DONE]":
-                        break
-                    try:
-                        evt = json.loads(raw)
-                    except json.JSONDecodeError:
-                        continue
+            attempt = 0
+            while True:
+                async with client.stream("POST", url, headers=headers, json=body) as resp:
+                    if resp.status_code < 200 or resp.status_code >= 300:
+                        err_body = await resp.aread()
+                        fix = (
+                            _detect_param_fix(err_body.decode(errors="replace"), body)
+                            if attempt < _MAX_PARAM_RETRIES
+                            else None
+                        )
+                        if fix:
+                            _apply_param_fix(body, fix)
+                            attempt += 1
+                            continue  # re-open the stream with adjusted params
+                        raise RuntimeError(
+                            f"OpenAI: {_friendly_error(resp.status_code, err_body)}"
+                        )
+                    async for line in resp.aiter_lines():
+                        line = line.strip()
+                        if not line or not line.startswith("data:"):
+                            continue
+                        raw = line[5:].strip()
+                        if raw == "[DONE]":
+                            break
+                        try:
+                            evt = json.loads(raw)
+                        except json.JSONDecodeError:
+                            continue
 
-                    # Usage chunk (stream_options)
-                    usage = evt.get("usage")
-                    if usage:
-                        input_tokens = int(usage.get("prompt_tokens") or 0)
-                        output_tokens = int(usage.get("completion_tokens") or 0)
+                        # Usage chunk (stream_options)
+                        usage = evt.get("usage")
+                        if usage:
+                            input_tokens = int(usage.get("prompt_tokens") or 0)
+                            output_tokens = int(usage.get("completion_tokens") or 0)
 
-                    choices = evt.get("choices") or []
-                    if choices:
-                        first = choices[0] or {}
-                        finish_reason = first.get("finish_reason") or finish_reason
-                        delta = first.get("delta") or {}
-                        text = delta.get("content") or ""
-                        if text:
-                            yield {"type": "delta", "content": text}
+                        choices = evt.get("choices") or []
+                        if choices:
+                            first = choices[0] or {}
+                            finish_reason = first.get("finish_reason") or finish_reason
+                            delta = first.get("delta") or {}
+                            text = delta.get("content") or ""
+                            if text:
+                                yield {"type": "delta", "content": text}
+                break  # streamed successfully
 
         yield {
             "type": "done",
