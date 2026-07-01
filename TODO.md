@@ -28,20 +28,35 @@ Tracked after the v1.0.0-16 release (crew run-flow fixes + Ollama provider).
 
 ### CR-2: Cloud endpoint review (verify each provider end-to-end)
 Test connection → save/persist → chat → crew, per provider:
-- [x] **Ollama** — Test/Save (`/api/tags` probe), chat (localhost base_url), crew routing. Done in v1.0.0-16.
-- [ ] **OpenAI** — paste real key, Test/Save, chat (gpt-4o), crew.
-- [ ] **Anthropic** — re-test (current stored row is a 31-char dummy `sk-ant-…` placeholder, never validated → delete it; add a real key).
-- [ ] **Google (Gemini)** — Test/Save, chat, crew.
+- [x] **Ollama** — Test/Save (`/api/tags` probe), chat, crew routing. Done in v1.0.0-16.
+- [x] **OpenAI** — Test/Save, **live model discovery** (filtered from `/v1/models`, no rot), chat + crew via dispatcher, classic (gpt-4o) + reasoning (gpt-5.x/o-series) models, adaptive param retry, clear errors, **cost shown**. Done in PR #57.
+- [x] **Anthropic** — dummy `sk-ant-…` placeholder deleted; routes via Claude SDK (crews) / dispatcher (chat). Real-key test + live discovery still TODO.
+- [ ] **Google (Gemini)** — Test/Save, chat, crew + live discovery.
 - [ ] **AWS Bedrock** — Test/Save (boto3 list-foundation-models), chat, crew.
 
-### CR-3: Generic `openai_compat` provider (#48 — closes #45)
-One integration to support **any** OpenAI-compatible server (vLLM / LM Studio / llama.cpp server / TGI). NOT covered by the existing OpenAI provider, which hardcodes `https://api.openai.com/v1` (`openai_direct_service.py:19`, used at :64/:156), passes no base_url in the dispatcher, probes a hardcoded URL, and seeds a hardcoded model catalog (no `/v1/models` discovery).
-- [ ] Add `OPENAI_COMPAT = "openai_compat"` to `CloudProviderType`; require `base_url` (key optional); add to `SENSITIVE_KEYS`.
-- [ ] Parameterize the endpoint in `openai_direct_service.stream_chat()` / `call_model()`.
-- [ ] `_probe_openai()` accepts `base_url`; add `openai_compat` branch in `cloud_provider_service`.
-- [ ] `model_dispatcher`: add `openai_compat` to `_KNOWN_PREFIXES`, route with `base_url` from creds.
-- [ ] `cloud_model_seeder`: dynamic model discovery via the server's `/v1/models`.
-- [ ] Frontend: provider guide (`base_url` required + optional `api_key`) + Settings card.
+Also shipped in PR #57 (surfaced during the review):
+- Cloud routing **unified on `model_dispatcher`** across Chat + Crews + `/v1` (OpenAI/Anthropic/Google/openai_compat were dead in Chat/Crews before — only local/ollama/bedrock worked).
+- Models **seed on Save** (gated on credential, not the never-set `connected` flag); removed on delete.
+- **Run cost** shown in the crew Run Progress panel + fixed field mismatches (agents→steps, total_cost_usd→cost_usd, duration_ms→duration_seconds, progress). Pricing table rots + can't cover new families (gpt-5.x → $0 until priced).
+- **Approvals** post before marking approved (no false "approved" on a failed publish); 502 + provider message on failure.
+
+### CR-3: Generic `openai_compat` provider (#48 — closes #45) — ✅ DONE (PR #57)
+One integration for **any** OpenAI-compatible server (vLLM / LM Studio / llama.cpp / TGI / Ollama `/v1` / Azure OpenAI / LiteLLM / OpenRouter).
+- [x] `OPENAI_COMPAT` provider type (base_url required, key optional).
+- [x] Parameterized endpoint + optional key in `openai_direct_service`.
+- [x] `_probe_openai(base_url, require_key)` + `openai_compat` test branch.
+- [x] `model_dispatcher` prefix + routing; also wired into Chat + Crews + `/v1`.
+- [x] Dynamic model discovery via the server's `/v1/models` (preserve-on-failure).
+- [x] Frontend provider guide + Settings card.
+- [x] Adaptive param retry → works even when a compat endpoint fronts gpt-5/o-series.
+
+### CR-4: LinkedIn company-page (organization) posting — follow-up
+Personal posting works end-to-end (verified: crew → approval → `/v2/ugcPosts` 201).
+Company-page posting is blocked by **LinkedIn app permissions**, not our code:
+- [ ] Company posting needs the **Community Management API** product (`w_organization_social`), which LinkedIn requires to be the **only** product on a dedicated app → **create a separate LinkedIn app** for it (current app has OpenID + Share products; Request-access is greyed out). Requires a **Privacy Policy URL** on the app + LinkedIn approval + the member being an **admin** of the org.
+- [ ] Then: point the LinkedIn connection at the new app's `client_id`/`client_secret`, add `w_organization_social` to requested scopes, set `author_urn = urn:li:organization:<id>`.
+- ContextuAI side is mostly config (per-connection creds + scope list already stored) — no architectural change.
+- Interim: channel `author_urn` set to `urn:li:person:<id>` (posts as the member).
 
 ---
 
