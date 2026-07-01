@@ -643,11 +643,13 @@ class CrewOrchestrator:
             return await self._invoke_via_ollama(agent_cfg, prompt, model_id)
 
         # Cloud providers that route through the unified model_dispatcher
-        # (direct provider APIs using saved keys / base_url). Anthropic stays on
-        # the Claude SDK path below (works without a saved cloud key).
+        # (direct provider APIs using saved keys / base_url). An explicitly
+        # selected `anthropic:` model uses the saved key + that exact model +
+        # accurate cost; a crew with NO model selected falls through to the
+        # Claude SDK path below (native tool-use, its own auth).
         if model_id and any(
             model_id.lower().startswith(p)
-            for p in ("openai:", "openai_compat:", "google:")
+            for p in ("openai:", "openai_compat:", "anthropic:", "google:")
         ):
             return await self._invoke_via_dispatcher(agent_cfg, prompt, model_id)
 
