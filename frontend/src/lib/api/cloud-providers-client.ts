@@ -9,7 +9,8 @@ export type CloudProviderType =
   | "openai"
   | "google"
   | "bedrock"
-  | "ollama";
+  | "ollama"
+  | "openai_compat";
 
 export interface CloudProvider {
   provider_id: string;

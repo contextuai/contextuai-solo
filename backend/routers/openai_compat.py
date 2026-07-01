@@ -65,7 +65,7 @@ _CLOUD_MODELS: Dict[str, List[str]] = {
     # Ollama models are discovered dynamically via list_models().
 }
 
-_KNOWN_PREFIXES = ("anthropic", "google", "openai", "bedrock", "ollama")
+_KNOWN_PREFIXES = ("anthropic", "google", "openai_compat", "openai", "bedrock", "ollama")
 
 
 # ── Request / Response models ────────────────────────────────────────────────
@@ -476,6 +476,15 @@ async def _cloud_stream_iter(
         from services.ollama_direct_service import OllamaDirectService
         svc = OllamaDirectService()
         return svc.stream_chat(messages, base_url=base_url, **kwargs)
+
+    if provider == "openai_compat":
+        base_url = creds.get("base_url")
+        if not base_url:
+            raise HTTPException(401, "OpenAI-compatible base_url not configured")
+        api_key = creds.get("api_key") or None  # optional for keyless servers
+        from services.openai_direct_service import OpenAIDirectService
+        svc = OpenAIDirectService()
+        return svc.stream_chat(messages, api_key=api_key, base_url=base_url, **kwargs)
 
     raise HTTPException(400, f"Unknown provider: {provider!r}")
 

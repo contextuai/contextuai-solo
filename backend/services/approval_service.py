@@ -66,20 +66,27 @@ class ApprovalService:
         edited_response: Optional[str] = None,
         reviewed_by: str = "desktop-user",
     ) -> Dict[str, Any]:
-        """Approve (optionally edit) and send the response via the channel."""
-        approval = await self.repo.approve(
-            approval_id,
-            reviewed_by=reviewed_by,
-            edited_response=edited_response,
-        )
-        if not approval:
+        """Approve (optionally edit) and send the response via the channel.
+
+        Sends FIRST and only marks the approval ``approved`` if the send
+        actually succeeds — so a failed post (e.g. an expired channel token)
+        leaves the item ``pending`` to retry, instead of falsely showing as
+        approved-but-not-posted.
+        """
+        existing = await self.repo.get_by_id(approval_id)
+        if not existing:
             raise ValueError(f"Approval '{approval_id}' not found")
 
-        response_text = approval.get("final_response") or approval.get("draft_response", "")
-        channel_type = approval["channel_type"]
-        channel_id = approval["channel_id"]
+        response_text = (
+            edited_response
+            or existing.get("final_response")
+            or existing.get("draft_response", "")
+            or existing.get("content", "")
+        )
+        channel_type = existing["channel_type"]
+        channel_id = existing["channel_id"]
 
-        # Send via the appropriate channel
+        # Send first — raises on failure, leaving the approval pending to retry.
         try:
             await self._send_via_channel(channel_type, channel_id, response_text)
             logger.info(
@@ -89,6 +96,15 @@ class ApprovalService:
         except Exception as e:
             logger.error("Failed to send approved response: %s", e)
             raise
+
+        # Sent successfully — now persist the approved/edited state.
+        approval = await self.repo.approve(
+            approval_id,
+            reviewed_by=reviewed_by,
+            edited_response=edited_response,
+        )
+        if not approval:
+            raise ValueError(f"Approval '{approval_id}' not found")
 
         # Store in channel message history
         session_id = approval.get("session_id")

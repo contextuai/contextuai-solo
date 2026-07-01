@@ -16,12 +16,131 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-OPENAI_API_URL = "https://api.openai.com/v1/chat/completions"
+DEFAULT_BASE_URL = "https://api.openai.com/v1"
+OPENAI_API_URL = f"{DEFAULT_BASE_URL}/chat/completions"
 DEFAULT_TIMEOUT_SECONDS = 60.0
 
 
+def _chat_url(base_url: Optional[str]) -> str:
+    """Resolve the chat-completions endpoint from a ``/v1`` base URL.
+
+    Defaults to OpenAI. A custom OpenAI-compatible server (vLLM, LM Studio,
+    llama.cpp server, TGI, Ollama's ``/v1``, …) passes its own base URL.
+    """
+    return f"{(base_url or DEFAULT_BASE_URL).rstrip('/')}/chat/completions"
+
+
+def _is_openai_host(base_url: Optional[str]) -> bool:
+    """True when talking to OpenAI itself (not a custom compatible server)."""
+    return base_url is None or "api.openai.com" in base_url
+
+
+def _token_limit_field(base_url: Optional[str]) -> str:
+    """OpenAI's newer models (gpt-5.x, o-series) reject ``max_tokens`` and
+    require ``max_completion_tokens``; it's accepted by their older models too.
+    OpenAI-compatible servers (Ollama/vLLM/LM Studio/TGI) still expect the
+    classic ``max_tokens``.
+    """
+    return "max_completion_tokens" if _is_openai_host(base_url) else "max_tokens"
+
+
+def _is_reasoning_model(clean_model: str) -> bool:
+    """OpenAI reasoning / gpt-5 models only accept default sampling params."""
+    m = clean_model.lower()
+    return m.startswith(("o1", "o3", "o4", "gpt-5"))
+
+
+def _sampling_params(
+    base_url: Optional[str], clean_model: str, temperature: float, top_p: Optional[float]
+) -> Dict[str, Any]:
+    """Sampling params that the target model accepts.
+
+    OpenAI reasoning/gpt-5 models reject non-default ``temperature``/``top_p``
+    (HTTP 400), so omit them and let the API use its defaults. Everything else
+    (gpt-4o, and all OpenAI-compatible servers) takes them as usual.
+    """
+    if _is_openai_host(base_url) and _is_reasoning_model(clean_model):
+        return {}
+    params: Dict[str, Any] = {"temperature": temperature}
+    if top_p is not None:
+        params["top_p"] = top_p
+    return params
+
+
+def _strip_provider_prefix(model_id: str) -> str:
+    for prefix in ("openai_compat:", "openai:"):
+        if model_id.startswith(prefix):
+            return model_id[len(prefix):]
+    return model_id
+
+
+_STATUS_HINTS = {
+    401: "invalid or missing API key",
+    403: "access denied for this model/key",
+    404: "model not found or no access",
+    429: "rate limit or quota exceeded — check your plan/billing",
+}
+
+
+def _friendly_error(status_code: int, raw_body: bytes | str) -> str:
+    """Turn an OpenAI(-compatible) error response into a readable message."""
+    text = raw_body.decode(errors="replace") if isinstance(raw_body, bytes) else (raw_body or "")
+    detail = ""
+    try:
+        body = json.loads(text)
+        err = body.get("error") if isinstance(body, dict) else None
+        if isinstance(err, dict):
+            detail = str(err.get("message") or "")
+        elif isinstance(err, str):
+            detail = err
+    except Exception:
+        detail = text[:200]
+    hint = _STATUS_HINTS.get(status_code)
+    parts = [f"HTTP {status_code}"]
+    if hint:
+        parts.append(hint)
+    msg = " — ".join(parts)
+    if detail:
+        msg = f"{msg}: {detail}"
+    return msg
+
+
+_MAX_PARAM_RETRIES = 3
+
+
+def _detect_param_fix(error_text: str, body: Dict[str, Any]) -> Optional[str]:
+    """Inspect a 400 body for a known parameter incompatibility we can adapt to.
+
+    Makes the client host-agnostic: the same gpt-5/o-series quirks that affect
+    api.openai.com also apply to any OpenAI-compatible proxy that fronts those
+    models (Azure OpenAI, LiteLLM, OpenRouter, …). Returns an action key or
+    None.
+    """
+    t = error_text.lower()
+    if "max_completion_tokens" in t and "max_tokens" in body:
+        return "swap_max_tokens"
+    if "temperature" in t and "temperature" in body and (
+        "unsupported" in t or "does not support" in t or "only the default" in t
+    ):
+        return "drop_temperature"
+    if "top_p" in t and "top_p" in body and (
+        "unsupported" in t or "does not support" in t or "only the default" in t
+    ):
+        return "drop_top_p"
+    return None
+
+
+def _apply_param_fix(body: Dict[str, Any], fix: str) -> None:
+    if fix == "swap_max_tokens":
+        body["max_completion_tokens"] = body.pop("max_tokens")
+    elif fix == "drop_temperature":
+        body.pop("temperature", None)
+    elif fix == "drop_top_p":
+        body.pop("top_p", None)
+
+
 class OpenAIDirectService:
-    """Thin async client for the OpenAI Chat Completions API."""
+    """Thin async client for the OpenAI (or OpenAI-compatible) Chat API."""
 
     async def call_model(
         self,
@@ -31,50 +150,46 @@ class OpenAIDirectService:
         max_tokens: int = 2048,
         temperature: float = 0.7,
         api_key: Optional[str] = None,
+        base_url: Optional[str] = None,
     ) -> Dict[str, Any]:
-        if not api_key:
-            raise RuntimeError(
-                "OpenAI API key not configured. "
-                "Save one in Settings → Models → Cloud."
-            )
-
-        clean_model = model_id
-        if clean_model.startswith("openai:"):
-            clean_model = clean_model[len("openai:"):]
+        # api_key is optional for OpenAI-compatible servers (often keyless).
+        clean_model = _strip_provider_prefix(model_id)
 
         messages = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": prompt})
 
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        }
+        headers = {"Content-Type": "application/json"}
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
         body: Dict[str, Any] = {
             "model": clean_model,
             "messages": messages,
-            "max_tokens": max_tokens,
-            "temperature": temperature,
+            _token_limit_field(base_url): max_tokens,
+            **_sampling_params(base_url, clean_model, temperature, None),
         }
 
+        url = _chat_url(base_url)
+        resp = None
         try:
             async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT_SECONDS) as client:
-                resp = await client.post(
-                    OPENAI_API_URL, headers=headers, json=body
-                )
+                for _ in range(_MAX_PARAM_RETRIES + 1):
+                    resp = await client.post(url, headers=headers, json=body)
+                    if 200 <= resp.status_code < 300:
+                        break
+                    # Adapt to a known parameter incompatibility and retry.
+                    fix = _detect_param_fix(resp.text or "", body)
+                    if not fix:
+                        break
+                    _apply_param_fix(body, fix)
         except httpx.HTTPError as exc:
             raise RuntimeError(f"OpenAI API call failed: {exc}") from exc
 
-        if resp.status_code < 200 or resp.status_code >= 300:
-            body_text = ""
-            try:
-                body_text = resp.text
-            except Exception:
-                pass
-            raise RuntimeError(
-                f"OpenAI API call failed: HTTP {resp.status_code} {body_text[:500]}"
-            )
+        if resp is None or resp.status_code < 200 or resp.status_code >= 300:
+            body_text = (resp.text if resp is not None else "") or ""
+            status = resp.status_code if resp is not None else 0
+            raise RuntimeError(f"OpenAI: {_friendly_error(status, body_text)}")
 
         try:
             data = resp.json()
@@ -113,35 +228,33 @@ class OpenAIDirectService:
         messages: List[Dict[str, Any]],
         *,
         model_id: str,
-        api_key: str,
+        api_key: Optional[str] = None,
+        base_url: Optional[str] = None,
         max_tokens: int = 2048,
         temperature: float = 0.7,
         top_p: float = 1.0,
         stop: Optional[List[str]] = None,
     ) -> AsyncIterator[Dict[str, Any]]:
-        """Stream tokens from the OpenAI Chat Completions SSE endpoint.
+        """Stream tokens from an OpenAI(-compatible) Chat Completions SSE endpoint.
 
-        Yields normalized event dicts:
+        ``api_key`` is optional (OpenAI-compatible servers are often keyless);
+        ``base_url`` defaults to OpenAI. Yields normalized event dicts:
         - ``{"type": "delta", "content": "..."}``
         - ``{"type": "done", "finish_reason": "...", "usage": {...}}``
         """
-        clean_model = model_id
-        if clean_model.startswith("openai:"):
-            clean_model = clean_model[len("openai:"):]
+        clean_model = _strip_provider_prefix(model_id)
 
         # Pass messages as-is — OpenAI format already matches.
         openai_messages = [{"role": m["role"], "content": m["content"]} for m in messages]
 
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        }
+        headers = {"Content-Type": "application/json"}
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
         body: Dict[str, Any] = {
             "model": clean_model,
             "messages": openai_messages,
-            "max_tokens": max_tokens,
-            "temperature": temperature,
-            "top_p": top_p,
+            _token_limit_field(base_url): max_tokens,
+            **_sampling_params(base_url, clean_model, temperature, top_p),
             "stream": True,
             "stream_options": {"include_usage": True},
         }
@@ -152,39 +265,52 @@ class OpenAIDirectService:
         input_tokens = 0
         output_tokens = 0
 
+        url = _chat_url(base_url)
         async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT_SECONDS * 2) as client:
-            async with client.stream("POST", OPENAI_API_URL, headers=headers, json=body) as resp:
-                if resp.status_code < 200 or resp.status_code >= 300:
-                    body_text = await resp.aread()
-                    raise RuntimeError(
-                        f"OpenAI stream failed: HTTP {resp.status_code} {body_text[:500].decode(errors='replace')}"
-                    )
-                async for line in resp.aiter_lines():
-                    line = line.strip()
-                    if not line or not line.startswith("data:"):
-                        continue
-                    raw = line[5:].strip()
-                    if raw == "[DONE]":
-                        break
-                    try:
-                        evt = json.loads(raw)
-                    except json.JSONDecodeError:
-                        continue
+            attempt = 0
+            while True:
+                async with client.stream("POST", url, headers=headers, json=body) as resp:
+                    if resp.status_code < 200 or resp.status_code >= 300:
+                        err_body = await resp.aread()
+                        fix = (
+                            _detect_param_fix(err_body.decode(errors="replace"), body)
+                            if attempt < _MAX_PARAM_RETRIES
+                            else None
+                        )
+                        if fix:
+                            _apply_param_fix(body, fix)
+                            attempt += 1
+                            continue  # re-open the stream with adjusted params
+                        raise RuntimeError(
+                            f"OpenAI: {_friendly_error(resp.status_code, err_body)}"
+                        )
+                    async for line in resp.aiter_lines():
+                        line = line.strip()
+                        if not line or not line.startswith("data:"):
+                            continue
+                        raw = line[5:].strip()
+                        if raw == "[DONE]":
+                            break
+                        try:
+                            evt = json.loads(raw)
+                        except json.JSONDecodeError:
+                            continue
 
-                    # Usage chunk (stream_options)
-                    usage = evt.get("usage")
-                    if usage:
-                        input_tokens = int(usage.get("prompt_tokens") or 0)
-                        output_tokens = int(usage.get("completion_tokens") or 0)
+                        # Usage chunk (stream_options)
+                        usage = evt.get("usage")
+                        if usage:
+                            input_tokens = int(usage.get("prompt_tokens") or 0)
+                            output_tokens = int(usage.get("completion_tokens") or 0)
 
-                    choices = evt.get("choices") or []
-                    if choices:
-                        first = choices[0] or {}
-                        finish_reason = first.get("finish_reason") or finish_reason
-                        delta = first.get("delta") or {}
-                        text = delta.get("content") or ""
-                        if text:
-                            yield {"type": "delta", "content": text}
+                        choices = evt.get("choices") or []
+                        if choices:
+                            first = choices[0] or {}
+                            finish_reason = first.get("finish_reason") or finish_reason
+                            delta = first.get("delta") or {}
+                            text = delta.get("content") or ""
+                            if text:
+                                yield {"type": "delta", "content": text}
+                break  # streamed successfully
 
         yield {
             "type": "done",

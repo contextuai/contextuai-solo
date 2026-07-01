@@ -110,7 +110,7 @@ Solo is built for people who run a business with a small team — or no team at 
 
 Solo runs 100% on your desktop. No accounts. No cloud sync. No telemetry.
 
-- **AI models run locally** on your CPU — download once, use forever, no internet required
+- **AI models run locally** — on your GPU when available (Apple Metal / NVIDIA CUDA / Vulkan), CPU otherwise — download once, use forever, no internet required
 - **All data stored locally** in SQLite — conversations, agents, crews, everything
 - **No sign-up, no login** — you're the admin, always
 - **Bring Your Own Key** — optionally connect Anthropic, OpenAI, Google, or AWS Bedrock when you need cloud-scale power
@@ -202,9 +202,9 @@ Solo is a native desktop app that runs ~500 MB installed. If you bring your own 
 | **RAM** | 4 GB | 8–32 GB depending on model — see the table in the Local Models section below |
 | **Disk** | ~500 MB for the app | +1–40 GB per downloaded model (keep several; swap between them) |
 | **Network** | Required for cloud provider calls | One-time model download from HuggingFace; fully offline after |
-| **GPU** | Not used | Not used (CPU-only inference in the current build) |
+| **GPU** | Not used | Used automatically when available — Apple Metal (Apple Silicon), NVIDIA CUDA, or Vulkan; falls back to CPU |
 
-**On local inference speed:** llama-cpp-python runs entirely on CPU. On a modern laptop, expect roughly 5–20 tokens/sec on 7–14B models, 1–3 tokens/sec on 70B models. If you need faster 70B output, route to a cloud provider via BYOK instead.
+**On local inference speed:** llama-cpp-python offloads to your GPU automatically when the installed build supports it (Apple Metal, NVIDIA CUDA, Vulkan) — several times faster than CPU on the same model — and falls back to CPU otherwise. On CPU, expect roughly 5–20 tokens/sec on 7–14B models and 1–3 tokens/sec on 70B models; on Apple Silicon or a discrete GPU, substantially more. Set `LOCAL_MODEL_GPU_LAYERS=0` to force CPU, or route 70B output to a cloud provider via BYOK.
 
 ---
 

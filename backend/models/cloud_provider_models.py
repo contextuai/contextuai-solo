@@ -26,6 +26,7 @@ class CloudProviderType(str, Enum):
     GOOGLE = "google"
     BEDROCK = "bedrock"
     OLLAMA = "ollama"
+    OPENAI_COMPAT = "openai_compat"
 
 
 # Sensitive keys per provider type — these are masked in responses.
@@ -36,6 +37,7 @@ SENSITIVE_KEYS = {
     CloudProviderType.GOOGLE.value: {"api_key"},
     CloudProviderType.BEDROCK.value: {"aws_secret_access_key"},
     CloudProviderType.OLLAMA.value: set(),
+    CloudProviderType.OPENAI_COMPAT.value: {"api_key"},
 }
 
 MASK = "***"
@@ -97,6 +99,10 @@ class CloudProviderCreate(BaseModel):
             for key in ("aws_access_key_id", "aws_secret_access_key", "aws_region"):
                 if not cfg.get(key):
                     raise ValueError(f"bedrock config requires {key}")
+        elif ptype == "openai_compat":
+            # Base URL is required; api_key is optional (keyless servers exist).
+            if not cfg.get("base_url"):
+                raise ValueError("openai_compat config requires base_url")
         return self
 
 

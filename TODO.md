@@ -1,7 +1,7 @@
 # TODO — ContextuAI Solo Moonshot
 
 > Master task list. Prioritized by phases. Check off as completed.
-> **Created:** 2026-03-19 | **Last synced with code:** 2026-06-29
+> **Created:** 2026-03-19 | **Last synced with code:** 2026-06-30
 
 ---
 
@@ -14,6 +14,49 @@ Phases 0–4 and Phase 5 (Coder multi-agent) are shipped and verified against th
 - **CI: bundle the all-MiniLM-L6-v2 ONNX weights** so the KB lifecycle + Personal Docs folder e2e tests can run on GitHub Actions (currently `test.skip(!!process.env.CI)`).
 - **Phase 3/4 dead-code cleanup** — `frontend/src/routes/distribution.tsx`, `frontend/src/routes/schedule.tsx`, `frontend/src/routes/personas.tsx` (banner-only, one-release deprecation), `frontend/src/routes/workspace.tsx`. Delete after one more release cycle past v1.0.0-11.
 - **Backlog (BL-4 / BL-5 / BL-6 / BL-7)** — BL-2 (coding agents) absorbed into Phase 4 PR 6 coder-companion category. The rest are nice-to-haves, none committed.
+
+---
+
+## CLOUD PROVIDERS & RELEASE (in flight — 2026-06-30)
+
+Tracked after the v1.0.0-16 release (crew run-flow fixes + Ollama provider).
+
+### CR-1: Fix `Create Tag` 404 handling in release workflow ⭐
+`.github/workflows/release.yml` "Create Tag" step mis-handles a 404: `existing_sha=$(gh api .../git/ref/tags/$TAG --jq '.object.sha' 2>/dev/null || echo "")` captures the 404 body into `existing_sha` (the `|| echo ""` is *inside* the `$()`), so a non-existent tag is read as "already exists at a different SHA" and the job hard-fails.
+- [ ] Move the fallback outside the substitution: `existing_sha=$(gh api … 2>/dev/null) || existing_sha=""`.
+- Symptom: the auto-triggered release on `main` fired correctly but died at Create Tag; v1.0.0-16 had to be published via a manual `git push origin v1.0.0-16` (tag-push path skips this job). Until fixed, every normal release needs that manual recovery.
+
+### CR-2: Cloud endpoint review (verify each provider end-to-end)
+Test connection → save/persist → chat → crew, per provider:
+- [x] **Ollama** — Test/Save (`/api/tags` probe), chat, crew routing. Done in v1.0.0-16.
+- [x] **OpenAI** — Test/Save, **live model discovery** (filtered from `/v1/models`, no rot), chat + crew via dispatcher, classic (gpt-4o) + reasoning (gpt-5.x/o-series) models, adaptive param retry, clear errors, **cost shown**. Done in PR #57.
+- [x] **Anthropic** — dummy `sk-ant-…` placeholder deleted; routes via Claude SDK (crews) / dispatcher (chat). Real-key test + live discovery still TODO.
+- [ ] **Google (Gemini)** — Test/Save, chat, crew + live discovery.
+- [ ] **AWS Bedrock** — Test/Save (boto3 list-foundation-models), chat, crew.
+
+Also shipped in PR #57 (surfaced during the review):
+- Cloud routing **unified on `model_dispatcher`** across Chat + Crews + `/v1` (OpenAI/Anthropic/Google/openai_compat were dead in Chat/Crews before — only local/ollama/bedrock worked).
+- Models **seed on Save** (gated on credential, not the never-set `connected` flag); removed on delete.
+- **Run cost** shown in the crew Run Progress panel + fixed field mismatches (agents→steps, total_cost_usd→cost_usd, duration_ms→duration_seconds, progress). Pricing table rots + can't cover new families (gpt-5.x → $0 until priced).
+- **Approvals** post before marking approved (no false "approved" on a failed publish); 502 + provider message on failure.
+
+### CR-3: Generic `openai_compat` provider (#48 — closes #45) — ✅ DONE (PR #57)
+One integration for **any** OpenAI-compatible server (vLLM / LM Studio / llama.cpp / TGI / Ollama `/v1` / Azure OpenAI / LiteLLM / OpenRouter).
+- [x] `OPENAI_COMPAT` provider type (base_url required, key optional).
+- [x] Parameterized endpoint + optional key in `openai_direct_service`.
+- [x] `_probe_openai(base_url, require_key)` + `openai_compat` test branch.
+- [x] `model_dispatcher` prefix + routing; also wired into Chat + Crews + `/v1`.
+- [x] Dynamic model discovery via the server's `/v1/models` (preserve-on-failure).
+- [x] Frontend provider guide + Settings card.
+- [x] Adaptive param retry → works even when a compat endpoint fronts gpt-5/o-series.
+
+### CR-4: LinkedIn company-page (organization) posting — follow-up
+Personal posting works end-to-end (verified: crew → approval → `/v2/ugcPosts` 201).
+Company-page posting is blocked by **LinkedIn app permissions**, not our code:
+- [ ] Company posting needs the **Community Management API** product (`w_organization_social`), which LinkedIn requires to be the **only** product on a dedicated app → **create a separate LinkedIn app** for it (current app has OpenID + Share products; Request-access is greyed out). Requires a **Privacy Policy URL** on the app + LinkedIn approval + the member being an **admin** of the org.
+- [ ] Then: point the LinkedIn connection at the new app's `client_id`/`client_secret`, add `w_organization_social` to requested scopes, set `author_urn = urn:li:organization:<id>`.
+- ContextuAI side is mostly config (per-connection creds + scope list already stored) — no architectural change.
+- Interim: channel `author_urn` set to `urn:li:person:<id>` (posts as the member).
 
 ---
 

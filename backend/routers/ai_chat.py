@@ -705,6 +705,104 @@ async def ai_chat(request: ChatRequest, http_request: Request = None):
                 })
         # ── End Ollama intercept ──────────────────────────────────────
 
+        # ── Cloud provider intercept (OpenAI / OpenAI-compatible / Anthropic / Google) ──
+        # These route through the unified model_dispatcher (direct provider APIs
+        # using saved keys / base_url), instead of the Bedrock/Strands path below
+        # which only speaks AWS Bedrock. Tool-calling is not applied on this path.
+        from services.model_dispatcher import (
+            _parse_provider as _dispatch_parse,
+            stream_chat as _dispatch_stream,
+        )
+        _disp_provider, _ = _dispatch_parse(model_id)
+        if _disp_provider in ("openai", "openai_compat", "anthropic", "google"):
+            logger.info(f"🌐 ROUTING: {_disp_provider} via model_dispatcher ({model_id})")
+
+            user_message_id = await store_message(session_id, "user", request.prompt)
+
+            sys_prompt = None
+            if request.persona_id:
+                try:
+                    persona_service = PersonaService()
+                    pctx = await persona_service.build_persona_context(request.persona_id)
+                    sys_prompt = (pctx or {}).get("system_prompt")
+                except Exception as e:
+                    logger.warning(f"⚠️ Failed to build persona context: {e}")
+
+            disp_messages: list = []
+            if sys_prompt:
+                disp_messages.append({"role": "system", "content": sys_prompt})
+            for _m in history_messages:
+                _role = _m.get("role", "user")
+                _cp = _m.get("content", [])
+                _txt = _cp[0].get("text", "") if _cp else ""
+                if _txt:
+                    disp_messages.append({"role": _role, "content": _txt})
+            disp_messages.append({"role": "user", "content": effective_prompt})
+
+            if request.stream:
+                async def dispatcher_event_generator() -> AsyncGenerator[str, None]:
+                    collected: list = []
+                    try:
+                        async for evt in _dispatch_stream(
+                            model_id, disp_messages, db=db,
+                            temperature=request.temperature, max_tokens=request.max_tokens,
+                        ):
+                            if evt.get("type") == "delta":
+                                t = evt.get("content", "")
+                                if t:
+                                    collected.append(t)
+                                    yield f"data: {json.dumps({'chunk': t})}\n\n"
+                    except Exception as e:
+                        logger.error(f"❌ Dispatcher streaming error: {e}")
+                        yield f"data: {json.dumps({'status': 'error', 'error': True, 'message': str(e)})}\n\n"
+                    yield "data: [DONE]\n\n"
+
+                    full_response = "".join(collected)
+                    if full_response:
+                        await store_message(session_id, "assistant", full_response)
+                    await update_session_stats(session_id)
+                    if is_first_message and full_response:
+                        try:
+                            await update_session_title_from_first_message(session_id, request.prompt, max_length=20)
+                        except Exception:
+                            pass
+
+                return StreamingResponse(dispatcher_event_generator(), media_type="text/plain")
+            else:
+                parts: list = []
+                try:
+                    async for evt in _dispatch_stream(
+                        model_id, disp_messages, db=db,
+                        temperature=request.temperature, max_tokens=request.max_tokens,
+                    ):
+                        if evt.get("type") == "delta":
+                            parts.append(evt.get("content", ""))
+                except Exception as e:
+                    logger.error(f"❌ Dispatcher error ({_disp_provider}): {e}")
+                    return JSONResponse(
+                        status_code=502,
+                        content={
+                            "result": "",
+                            "session": session_id,
+                            "status": "error",
+                            "error": True,
+                            "message": str(e),
+                            "user_message_id": user_message_id,
+                            "metadata": {"model_id": model_id},
+                        },
+                    )
+                response_str = "".join(parts)
+                if response_str:
+                    await store_message(session_id, "assistant", response_str)
+                await update_session_stats(session_id)
+                return JSONResponse(content={
+                    "result": response_str,
+                    "session": session_id,
+                    "status": "success",
+                    "user_message_id": user_message_id,
+                    "metadata": {"model_id": model_id},
+                })
+
         bedrock_model = BedrockModel(
             model_id=bedrock_model_id,
             temperature=request.temperature,

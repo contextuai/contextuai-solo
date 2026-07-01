@@ -29,7 +29,10 @@ from typing import Any, AsyncIterator, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
-_KNOWN_PREFIXES = ("anthropic", "google", "openai", "bedrock", "ollama")
+# Order matters: "openai_compat" must come before "openai" so an
+# "openai_compat:<model>" id isn't mis-parsed (though the ":" separator
+# already prevents overlap, keep it explicit and unambiguous).
+_KNOWN_PREFIXES = ("anthropic", "google", "openai_compat", "openai", "bedrock", "ollama")
 
 DEFAULT_SENTINEL = "__DEFAULT__"
 
@@ -175,6 +178,15 @@ async def _cloud_stream(
         from services.ollama_direct_service import OllamaDirectService
         svc = OllamaDirectService()
         return svc.stream_chat(messages, base_url=base_url, **kwargs)
+
+    if provider == "openai_compat":
+        base_url = creds.get("base_url")
+        if not base_url:
+            raise ProviderUnavailable("OpenAI-compatible base_url not configured")
+        api_key = creds.get("api_key") or None  # optional for keyless servers
+        from services.openai_direct_service import OpenAIDirectService
+        svc = OpenAIDirectService()
+        return svc.stream_chat(messages, api_key=api_key, base_url=base_url, **kwargs)
 
     raise ProviderUnavailable(f"Unknown provider: {provider!r}")
 

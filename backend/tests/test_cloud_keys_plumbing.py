@@ -233,7 +233,10 @@ async def test_sync_cloud_models_skips_when_no_provider(db_proxy):
 
 
 @pytest.mark.asyncio
-async def test_sync_cloud_models_skips_when_provider_disconnected(db_proxy):
+async def test_sync_cloud_models_seeds_when_credential_present(db_proxy):
+    """A saved provider with its required credential seeds its models even if
+    `connected` is False — the connected flag isn't set on Save, so gating on
+    it left valid keys with no selectable models."""
     from services.cloud_model_seeder import sync_cloud_models_to_db
 
     await db_proxy["cloud_providers"].insert_one(
@@ -243,6 +246,25 @@ async def test_sync_cloud_models_skips_when_provider_disconnected(db_proxy):
             "display_name": "Anthropic",
             "connected": False,
             "config": {"api_key": "sk-ant-x"},
+        }
+    )
+
+    seeded = await sync_cloud_models_to_db(db_proxy)
+    assert seeded > 0
+
+
+@pytest.mark.asyncio
+async def test_sync_cloud_models_skips_when_credential_missing(db_proxy):
+    """No api_key → nothing to seed (provider not really configured)."""
+    from services.cloud_model_seeder import sync_cloud_models_to_db
+
+    await db_proxy["cloud_providers"].insert_one(
+        {
+            "provider_id": "p1",
+            "provider_type": "anthropic",
+            "display_name": "Anthropic",
+            "connected": False,
+            "config": {},
         }
     )
 
