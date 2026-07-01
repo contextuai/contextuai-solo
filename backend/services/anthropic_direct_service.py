@@ -144,11 +144,12 @@ class AnthropicDirectService:
             "anthropic-version": ANTHROPIC_VERSION,
             "content-type": "application/json",
         }
+        # Anthropic rejects temperature + top_p together ("use only one") on
+        # newer models — send just temperature (the primary control).
         body: Dict[str, Any] = {
             "model": clean_model,
             "max_tokens": max_tokens,
             "temperature": temperature,
-            "top_p": top_p,
             "stream": True,
             "messages": user_messages,
         }

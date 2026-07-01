@@ -250,25 +250,17 @@ class CloudProviderService:
 # ---------------------------------------------------------------------------
 
 async def _probe_anthropic(cfg: Dict[str, Any]):
+    # Validate via GET /v1/models (no hardcoded model-name dependency — the old
+    # /v1/messages ping used claude-3-haiku-20240307, which Anthropic retired,
+    # so the probe failed for every valid key).
     api_key = cfg.get("api_key") or ""
     if not api_key:
         return False, "Missing api_key"
-    headers = {
-        "x-api-key": api_key,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-    }
-    body = {
-        "model": "claude-3-haiku-20240307",
-        "max_tokens": 1,
-        "messages": [{"role": "user", "content": "ping"}],
-    }
+    headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01"}
     try:
         async with httpx.AsyncClient(timeout=PROBE_TIMEOUT_SECONDS) as client:
-            resp = await client.post(
-                "https://api.anthropic.com/v1/messages",
-                headers=headers,
-                json=body,
+            resp = await client.get(
+                "https://api.anthropic.com/v1/models", headers=headers
             )
         if 200 <= resp.status_code < 300:
             return True, None
