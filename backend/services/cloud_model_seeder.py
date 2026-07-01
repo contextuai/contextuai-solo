@@ -108,6 +108,33 @@ async def _discover_openai_compat_models(
     return ids
 
 
+ANTHROPIC_MODELS_URL = "https://api.anthropic.com/v1/models"
+ANTHROPIC_VERSION = "2023-06-01"
+
+
+async def _discover_anthropic_models(api_key: str) -> List[Tuple[str, str]]:
+    """Fetch (id, display_name) for the account's Claude models.
+
+    GET https://api.anthropic.com/v1/models with x-api-key + anthropic-version.
+    Response: ``{"data": [{"id": "claude-…", "display_name": "…"}], ...}``.
+    Raises on error so the caller can fall back to the static catalog.
+    """
+    headers = {"x-api-key": api_key, "anthropic-version": ANTHROPIC_VERSION}
+    async with httpx.AsyncClient(timeout=_DISCOVERY_TIMEOUT_SECONDS) as client:
+        resp = await client.get(ANTHROPIC_MODELS_URL, headers=headers)
+    resp.raise_for_status()
+    data = resp.json()
+    items = data.get("data") if isinstance(data, dict) else data
+    out: List[Tuple[str, str]] = []
+    for m in items or []:
+        if not isinstance(m, dict):
+            continue
+        mid = m.get("id")
+        if mid:
+            out.append((str(mid), str(m.get("display_name") or mid)))
+    return out
+
+
 async def sync_cloud_models_to_db(db) -> int:
     """Upsert cloud model rows for each connected provider.
 
@@ -162,6 +189,18 @@ async def sync_cloud_models_to_db(db) -> int:
             except Exception as exc:
                 logger.warning(
                     "OpenAI model discovery failed (%s) — using static catalog", exc
+                )
+        elif ptype == "anthropic":
+            # Live discovery so the Claude list never rots. Anthropic's list is
+            # small and all chat models, so no filtering needed.
+            try:
+                pairs = await _discover_anthropic_models(cfg.get("api_key"))
+                if pairs:
+                    entries = [(mid, name, "Anthropic") for mid, name in pairs]
+                    logger.info("Anthropic: discovered %d models", len(pairs))
+            except Exception as exc:
+                logger.warning(
+                    "Anthropic model discovery failed (%s) — using static catalog", exc
                 )
 
         for short_id, display_name, description in entries:

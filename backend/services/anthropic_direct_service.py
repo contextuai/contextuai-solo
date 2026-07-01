@@ -22,6 +22,28 @@ logger = logging.getLogger(__name__)
 ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
 ANTHROPIC_VERSION = "2023-06-01"
 DEFAULT_TIMEOUT_SECONDS = 60.0
+_MAX_PARAM_RETRIES = 3
+
+
+def _detect_anthropic_param_fix(error_text: str, body: dict) -> Optional[str]:
+    """Detect a param incompatibility we can adapt to and retry.
+
+    Claude models differ on sampling params: some reject temperature+top_p
+    together ("use only one"), and the newest (e.g. sonnet-5) deprecate
+    temperature entirely. Adapt at runtime instead of hardcoding per-model.
+    """
+    t = error_text.lower()
+    if "temperature" in t and "temperature" in body and (
+        "deprecat" in t or "not supported" in t or "unsupported" in t
+        or "cannot both" in t or "only one" in t
+    ):
+        return "drop_temperature"
+    if "top_p" in t and "top_p" in body and (
+        "deprecat" in t or "not supported" in t or "unsupported" in t
+        or "cannot both" in t or "only one" in t
+    ):
+        return "drop_top_p"
+    return None
 
 
 class AnthropicDirectService:
@@ -144,11 +166,12 @@ class AnthropicDirectService:
             "anthropic-version": ANTHROPIC_VERSION,
             "content-type": "application/json",
         }
+        # Anthropic rejects temperature + top_p together ("use only one") on
+        # newer models — send just temperature (the primary control).
         body: Dict[str, Any] = {
             "model": clean_model,
             "max_tokens": max_tokens,
             "temperature": temperature,
-            "top_p": top_p,
             "stream": True,
             "messages": user_messages,
         }
@@ -162,40 +185,53 @@ class AnthropicDirectService:
         finish_reason = "stop"
 
         async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT_SECONDS * 2) as client:
-            async with client.stream("POST", ANTHROPIC_API_URL, headers=headers, json=body) as resp:
-                if resp.status_code < 200 or resp.status_code >= 300:
-                    body_text = await resp.aread()
-                    raise RuntimeError(
-                        f"Anthropic stream failed: HTTP {resp.status_code} {body_text[:500].decode(errors='replace')}"
-                    )
-                async for line in resp.aiter_lines():
-                    line = line.strip()
-                    if not line or not line.startswith("data:"):
-                        continue
-                    raw = line[5:].strip()
-                    if raw == "[DONE]":
-                        break
-                    try:
-                        evt = json.loads(raw)
-                    except json.JSONDecodeError:
-                        continue
+            attempt = 0
+            while True:
+                async with client.stream("POST", ANTHROPIC_API_URL, headers=headers, json=body) as resp:
+                    if resp.status_code < 200 or resp.status_code >= 300:
+                        err_body = await resp.aread()
+                        fix = (
+                            _detect_anthropic_param_fix(err_body.decode(errors="replace"), body)
+                            if attempt < _MAX_PARAM_RETRIES
+                            else None
+                        )
+                        if fix:
+                            body.pop("temperature" if fix == "drop_temperature" else "top_p", None)
+                            attempt += 1
+                            continue  # retry with adjusted params
+                        raise RuntimeError(
+                            f"Anthropic stream failed: HTTP {resp.status_code} "
+                            f"{err_body[:500].decode(errors='replace')}"
+                        )
+                    async for line in resp.aiter_lines():
+                        line = line.strip()
+                        if not line or not line.startswith("data:"):
+                            continue
+                        raw = line[5:].strip()
+                        if raw == "[DONE]":
+                            break
+                        try:
+                            evt = json.loads(raw)
+                        except json.JSONDecodeError:
+                            continue
 
-                    evt_type = evt.get("type", "")
-                    if evt_type == "message_start":
-                        usage = evt.get("message", {}).get("usage") or {}
-                        input_tokens = int(usage.get("input_tokens") or 0)
-                    elif evt_type == "content_block_delta":
-                        delta = evt.get("delta") or {}
-                        if delta.get("type") == "text_delta":
-                            text = delta.get("text") or ""
-                            if text:
-                                yield {"type": "delta", "content": text}
-                    elif evt_type == "message_delta":
-                        usage = evt.get("usage") or {}
-                        output_tokens = int(usage.get("output_tokens") or 0)
-                        finish_reason = evt.get("delta", {}).get("stop_reason") or "stop"
-                    elif evt_type == "message_stop":
-                        break
+                        evt_type = evt.get("type", "")
+                        if evt_type == "message_start":
+                            usage = evt.get("message", {}).get("usage") or {}
+                            input_tokens = int(usage.get("input_tokens") or 0)
+                        elif evt_type == "content_block_delta":
+                            delta = evt.get("delta") or {}
+                            if delta.get("type") == "text_delta":
+                                text = delta.get("text") or ""
+                                if text:
+                                    yield {"type": "delta", "content": text}
+                        elif evt_type == "message_delta":
+                            usage = evt.get("usage") or {}
+                            output_tokens = int(usage.get("output_tokens") or 0)
+                            finish_reason = evt.get("delta", {}).get("stop_reason") or "stop"
+                        elif evt_type == "message_stop":
+                            break
+                break  # streamed successfully
 
         yield {
             "type": "done",
