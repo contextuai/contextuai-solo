@@ -49,15 +49,23 @@ const PROVIDER_COLORS: Record<string, string> = {
 // ---------------------------------------------------------------------------
 
 export function ProviderCard({ guide, saved, onSave, onTest, onRemove }: ProviderCardProps) {
-  const isConnected = !!saved && saved.connected;
+  // A provider is "configured" once a credential is saved — independent of
+  // whether a connection test has run. `saved.connected` only flips true after
+  // a successful *test*, so gating the configured state on it wrongly showed
+  // "Not configured" for a saved-but-untested key. Treat a saved required
+  // credential (secrets arrive masked as "***", still truthy) as configured,
+  // and fold in `connected` for keyless providers (e.g. Ollama, verified by probe).
+  const hasSavedCredential =
+    !!saved && guide.fields.some((f) => f.required && !!saved.config?.[f.key]);
+  const isConfigured = (!!saved && saved.connected) || hasSavedCredential;
 
-  // Collapsible: open by default if not connected, closed if connected
-  const [stepsOpen, setStepsOpen] = useState(!isConnected);
+  // Collapsible: open by default until configured, closed once configured
+  const [stepsOpen, setStepsOpen] = useState(!isConfigured);
 
-  // Re-sync when connection status changes
+  // Re-sync when configured status changes
   useEffect(() => {
-    setStepsOpen(!isConnected);
-  }, [isConnected]);
+    setStepsOpen(!isConfigured);
+  }, [isConfigured]);
 
   // Per-field form state
   const [formData, setFormData] = useState<Record<string, string>>({});
@@ -118,16 +126,16 @@ export function ProviderCard({ guide, saved, onSave, onTest, onRemove }: Provide
       const userVal = formData[f.key]?.trim();
       if (f.type === "password") {
         // For initial connect we need the key; for update it can be blank (keep existing)
-        if (!isConnected && !userVal) return false;
+        if (!isConfigured && !userVal) return false;
       } else {
         const v = userVal ?? prefilledFromSaved[f.key] ?? "";
         if (!v.trim()) return false;
       }
     }
     return true;
-  }, [formData, prefilledFromSaved, guide.fields, isConnected]);
+  }, [formData, prefilledFromSaved, guide.fields, isConfigured]);
 
-  const canTest = isConnected || canSubmit;
+  const canTest = isConfigured || canSubmit;
 
   const handleSave = async () => {
     setSaving(true);
@@ -149,7 +157,7 @@ export function ProviderCard({ guide, saved, onSave, onTest, onRemove }: Provide
     setTestResult(null);
     try {
       const userTouched = Object.values(formData).some((v) => v.trim());
-      const cfg = isConnected && !userTouched ? undefined : buildConfig();
+      const cfg = isConfigured && !userTouched ? undefined : buildConfig();
       const result = await onTest(guide.id, cfg);
       setTestResult(result);
     } catch (err) {
@@ -185,7 +193,7 @@ export function ProviderCard({ guide, saved, onSave, onTest, onRemove }: Provide
       data-testid={`provider-card-${guide.id}`}
       className={cn(
         "rounded-2xl border bg-white dark:bg-neutral-900 transition-all",
-        isConnected
+        isConfigured
           ? "border-emerald-200 dark:border-emerald-800/50"
           : "border-neutral-200 dark:border-neutral-800",
       )}
@@ -208,7 +216,7 @@ export function ProviderCard({ guide, saved, onSave, onTest, onRemove }: Provide
         </div>
 
         {/* Status badge */}
-        {isConnected ? (
+        {isConfigured ? (
           <span
             data-testid={`status-badge-${guide.id}`}
             className="flex items-center gap-1 flex-shrink-0 text-[10px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-500/20 px-2 py-0.5 rounded-full"
@@ -412,11 +420,11 @@ export function ProviderCard({ guide, saved, onSave, onTest, onRemove }: Provide
           )}
         >
           {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
-          {isConnected ? "Update" : "Save"}
+          {isConfigured ? "Update" : "Save"}
         </button>
 
         {/* Remove key */}
-        {isConnected && !showRemoveConfirm && (
+        {isConfigured && !showRemoveConfirm && (
           <button
             type="button"
             onClick={() => setShowRemoveConfirm(true)}

@@ -20,6 +20,29 @@ logger = logging.getLogger(__name__)
 
 GOOGLE_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
 DEFAULT_TIMEOUT_SECONDS = 60.0
+_MAX_PARAM_RETRIES = 3
+
+
+def _detect_google_param_fix(error_text: str, generation_config: dict) -> Optional[str]:
+    """Detect a generationConfig param the model rejected so we can retry.
+
+    Gemini models differ on sampling params — some thinking/preview variants
+    reject ``temperature`` or ``topP`` (INVALID_ARGUMENT on a 400). Adapt at
+    runtime instead of hardcoding per-model, mirroring the Anthropic/OpenAI
+    param-retry behaviour.
+    """
+    t = error_text.lower()
+    if "temperature" in t and "temperature" in generation_config and (
+        "not supported" in t or "unsupported" in t or "invalid" in t
+        or "deprecat" in t or "not allowed" in t
+    ):
+        return "drop_temperature"
+    if ("topp" in t or "top_p" in t or "top-p" in t) and "topP" in generation_config and (
+        "not supported" in t or "unsupported" in t or "invalid" in t
+        or "deprecat" in t or "not allowed" in t
+    ):
+        return "drop_topP"
+    return None
 
 
 class GoogleDirectService:
@@ -164,38 +187,89 @@ class GoogleDirectService:
         input_tokens = 0
         output_tokens = 0
         finish_reason = "stop"
+        gen_cfg = body["generationConfig"]
 
         async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT_SECONDS * 2) as client:
-            async with client.stream("POST", url, params=params, json=body) as resp:
-                if resp.status_code < 200 or resp.status_code >= 300:
-                    body_text = await resp.aread()
+            attempt = 0
+            streamed = False
+            while True:
+                async with client.stream("POST", url, params=params, json=body) as resp:
+                    if resp.status_code < 200 or resp.status_code >= 300:
+                        err_body = await resp.aread()
+                        err_text = err_body.decode(errors="replace")
+                        fix = (
+                            _detect_google_param_fix(err_text, gen_cfg)
+                            if attempt < _MAX_PARAM_RETRIES
+                            else None
+                        )
+                        if fix:
+                            gen_cfg.pop(
+                                "temperature" if fix == "drop_temperature" else "topP",
+                                None,
+                            )
+                            attempt += 1
+                            continue  # retry with adjusted params
+                        # Some credentials (ephemeral / method-restricted keys)
+                        # permit unary generateContent but 403 on the streaming
+                        # method. Fall back to a single unary call below rather
+                        # than failing the whole request.
+                        if resp.status_code == 403:
+                            break
+                        raise RuntimeError(
+                            f"Google stream failed: HTTP {resp.status_code} "
+                            f"{err_text[:500]}"
+                        )
+                    async for line in resp.aiter_lines():
+                        line = line.strip()
+                        if not line or not line.startswith("data:"):
+                            continue
+                        raw = line[5:].strip()
+                        try:
+                            evt = json.loads(raw)
+                        except json.JSONDecodeError:
+                            continue
+
+                        candidates = evt.get("candidates") or []
+                        if candidates:
+                            first = candidates[0] or {}
+                            finish_reason = first.get("finishReason") or finish_reason
+                            parts = (first.get("content") or {}).get("parts") or []
+                            for part in parts:
+                                text = part.get("text") or ""
+                                if text:
+                                    yield {"type": "delta", "content": text}
+
+                        usage = evt.get("usageMetadata") or {}
+                        if usage:
+                            input_tokens = int(usage.get("promptTokenCount") or input_tokens)
+                            output_tokens = int(usage.get("candidatesTokenCount") or output_tokens)
+                streamed = True
+                break  # streamed successfully
+
+            if not streamed:
+                # Unary fallback: the streaming method was forbidden (403) but
+                # the key may still allow generateContent. Emit the whole reply
+                # as a single delta so the normalized stream contract holds.
+                unary_url = f"{GOOGLE_API_BASE}/{clean_model}:generateContent"
+                r = await client.post(unary_url, params={"key": api_key}, json=body)
+                if r.status_code < 200 or r.status_code >= 300:
                     raise RuntimeError(
-                        f"Google stream failed: HTTP {resp.status_code} {body_text[:500].decode(errors='replace')}"
+                        f"Google request failed: HTTP {r.status_code} {r.text[:500]}"
                     )
-                async for line in resp.aiter_lines():
-                    line = line.strip()
-                    if not line or not line.startswith("data:"):
-                        continue
-                    raw = line[5:].strip()
-                    try:
-                        evt = json.loads(raw)
-                    except json.JSONDecodeError:
-                        continue
-
-                    candidates = evt.get("candidates") or []
-                    if candidates:
-                        first = candidates[0] or {}
-                        finish_reason = first.get("finishReason") or finish_reason
-                        parts = (first.get("content") or {}).get("parts") or []
-                        for part in parts:
-                            text = part.get("text") or ""
-                            if text:
-                                yield {"type": "delta", "content": text}
-
-                    usage = evt.get("usageMetadata") or {}
-                    if usage:
-                        input_tokens = int(usage.get("promptTokenCount") or input_tokens)
-                        output_tokens = int(usage.get("candidatesTokenCount") or output_tokens)
+                data = r.json()
+                candidates = data.get("candidates") or []
+                if candidates:
+                    first = candidates[0] or {}
+                    finish_reason = first.get("finishReason") or finish_reason
+                    parts = (first.get("content") or {}).get("parts") or []
+                    text = "".join(
+                        p.get("text") or "" for p in parts if isinstance(p, dict)
+                    )
+                    if text:
+                        yield {"type": "delta", "content": text}
+                usage = data.get("usageMetadata") or {}
+                input_tokens = int(usage.get("promptTokenCount") or input_tokens)
+                output_tokens = int(usage.get("candidatesTokenCount") or output_tokens)
 
         yield {
             "type": "done",

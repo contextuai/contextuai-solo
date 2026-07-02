@@ -66,9 +66,9 @@ OPENAI_MODELS: List[Tuple[str, str, str]] = [
 ]
 
 GOOGLE_MODELS: List[Tuple[str, str, str]] = [
+    ("gemini-2.5-pro", "Gemini 2.5 Pro", "Google — top-tier"),
+    ("gemini-2.5-flash", "Gemini 2.5 Flash", "Google — fast/cheap"),
     ("gemini-2.0-flash", "Gemini 2.0 Flash", "Google — fast"),
-    ("gemini-2.0-pro", "Gemini 2.0 Pro", "Google — top-tier"),
-    ("gemini-1.5-pro", "Gemini 1.5 Pro", "Google — long context"),
 ]
 
 _PROVIDER_CATALOGS: Dict[str, List[Tuple[str, str, str]]] = {
@@ -132,6 +132,49 @@ async def _discover_anthropic_models(api_key: str) -> List[Tuple[str, str]]:
         mid = m.get("id")
         if mid:
             out.append((str(mid), str(m.get("display_name") or mid)))
+    return out
+
+
+GOOGLE_MODELS_URL = "https://generativelanguage.googleapis.com/v1beta/models"
+
+# Gemini's /v1beta/models lists many non-text variants that still advertise
+# generateContent — image gen (Nano Banana), TTS, robotics, computer-use.
+# Drop them so the chat dropdown only shows general-purpose text chat models
+# (mirrors the OpenAI _NON_CHAT_SUBSTRINGS filter).
+_GOOGLE_NON_CHAT_SUBSTRINGS = ("image", "tts", "robotics", "computer-use", "audio")
+
+
+async def _discover_google_models(api_key: str) -> List[Tuple[str, str]]:
+    """Fetch (id, display_name) for the account's Gemini chat models.
+
+    GET https://generativelanguage.googleapis.com/v1beta/models?key=<api_key>.
+    Response: ``{"models": [{"name": "models/gemini-…", "displayName": "…",
+    "supportedGenerationMethods": [...]}, ...]}``. We keep only Gemini models
+    that support ``generateContent`` (drops embedding / aqa / imagen) and are
+    general-purpose text chat (drops image / tts / robotics / computer-use
+    variants), then strip the ``models/`` name prefix. Raises on error so the
+    caller can fall back to the static catalog.
+    """
+    async with httpx.AsyncClient(timeout=_DISCOVERY_TIMEOUT_SECONDS) as client:
+        resp = await client.get(GOOGLE_MODELS_URL, params={"key": api_key})
+    resp.raise_for_status()
+    data = resp.json()
+    items = data.get("models") if isinstance(data, dict) else data
+    out: List[Tuple[str, str]] = []
+    for m in items or []:
+        if not isinstance(m, dict):
+            continue
+        methods = m.get("supportedGenerationMethods") or []
+        if "generateContent" not in methods:
+            continue
+        name = str(m.get("name") or "")
+        mid = name.split("/")[-1]
+        low = mid.lower()
+        if not low.startswith("gemini"):
+            continue
+        if any(s in low for s in _GOOGLE_NON_CHAT_SUBSTRINGS):
+            continue
+        out.append((mid, str(m.get("displayName") or mid)))
     return out
 
 
@@ -201,6 +244,19 @@ async def sync_cloud_models_to_db(db) -> int:
             except Exception as exc:
                 logger.warning(
                     "Anthropic model discovery failed (%s) — using static catalog", exc
+                )
+        elif ptype == "google":
+            # Live discovery so the Gemini list never rots. Filtered to Gemini
+            # models that support generateContent (chat), dropping embedding /
+            # aqa / imagen entries the /v1beta/models endpoint also returns.
+            try:
+                pairs = await _discover_google_models(cfg.get("api_key"))
+                if pairs:
+                    entries = [(mid, name, "Google") for mid, name in pairs]
+                    logger.info("Google: discovered %d models", len(pairs))
+            except Exception as exc:
+                logger.warning(
+                    "Google model discovery failed (%s) — using static catalog", exc
                 )
 
         for short_id, display_name, description in entries:
