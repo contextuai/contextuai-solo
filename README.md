@@ -174,7 +174,7 @@ Solo exposes an **OpenAI-compatible API endpoint** (`/v1/chat/completions`) on y
 - **10 Distribution Channels** — Telegram, Discord, Reddit, LinkedIn, Twitter/X, Instagram, Facebook, Blog, Email, and Slack — with inbound auto-reply and approval gates. See the [Distributions Guide](CONNECTIONS-GUIDE.md) for setup
 - **Knowledge Base (Local RAG)** — Upload PDFs / DOCX / TXT / MD or map a whole folder on disk, chunk + embed locally with a bundled MiniLM model, and chat with citations. Folder mappings auto-sync on a `1h` / `6h` / `24h` schedule with friction guardrails for large directories. Crews and workspace agents can bind to specific KBs. Pre-built starter packs live under `knowledge-base-packs/`
 - **Cross-mode handoffs** — Crews can include a Coder run as a step. Automations can route output to a Coder project. Coder projects can be indexed as a KB. Coder errors deep-link into Solo chat with `@bug-analyzer`
-- **AI Providers onboarding** — Settings → AI Providers shows Distributions-style cards for Anthropic, OpenAI, Google Gemini, AWS Bedrock, and Ollama. Paste a key, test the connection, and every saved provider's models appear in the OpenAI-compatible `/v1/models` list
+- **AI Providers onboarding** — Settings → AI Providers shows Distributions-style cards for Anthropic, OpenAI, Google Gemini, AWS Bedrock, Ollama, and any OpenAI-compatible endpoint (vLLM / LM Studio / llama.cpp server / TGI / LiteLLM / OpenRouter — base URL required, key optional). Paste a key, test the connection, and every saved provider's models appear in the OpenAI-compatible `/v1/models` list. Anthropic and OpenAI models are discovered live from each account so the list never rots
 - **Brand Voice** — Define your business identity so every response sounds like you
 - **Dark/Light Theme** — Easy on the eyes, day or night
 
@@ -340,7 +340,7 @@ contextuai-solo/
 | **Icons** | [Lucide Icons](https://lucide.dev/) |
 | **Backend** | [FastAPI](https://fastapi.tiangolo.com/) (Python 3.11+) |
 | **Database** | [SQLite](https://sqlite.org/) via async adapter |
-| **AI Providers** | Anthropic Claude, OpenAI GPT, Google Gemini, AWS Bedrock, Ollama (all surfaced via a unified `/v1/*` dispatcher) |
+| **AI Providers** | Anthropic Claude, OpenAI GPT, Google Gemini, AWS Bedrock, Ollama, any OpenAI-compatible endpoint (all surfaced via a unified `/v1/*` dispatcher) |
 | **Local AI** | 41 GGUF models via llama-cpp-python (Gemma 4, Qwen 3.5, Qwen 3, DeepSeek R1, Llama 3, Mistral, Phi-4) — 0.5B to 70B |
 | **Agent Framework** | [Strands Agents SDK](https://github.com/strands-agents/sdk-python) |
 

@@ -1,7 +1,7 @@
 # TODO — ContextuAI Solo Moonshot
 
 > Master task list. Prioritized by phases. Check off as completed.
-> **Created:** 2026-03-19 | **Last synced with code:** 2026-06-30
+> **Created:** 2026-03-19 | **Last synced with code:** 2026-07-01
 
 ---
 
@@ -21,17 +21,23 @@ Phases 0–4 and Phase 5 (Coder multi-agent) are shipped and verified against th
 
 Tracked after the v1.0.0-16 release (crew run-flow fixes + Ollama provider).
 
-### CR-1: Fix `Create Tag` 404 handling in release workflow ⭐
-`.github/workflows/release.yml` "Create Tag" step mis-handles a 404: `existing_sha=$(gh api .../git/ref/tags/$TAG --jq '.object.sha' 2>/dev/null || echo "")` captures the 404 body into `existing_sha` (the `|| echo ""` is *inside* the `$()`), so a non-existent tag is read as "already exists at a different SHA" and the job hard-fails.
-- [ ] Move the fallback outside the substitution: `existing_sha=$(gh api … 2>/dev/null) || existing_sha=""`.
-- Symptom: the auto-triggered release on `main` fired correctly but died at Create Tag; v1.0.0-16 had to be published via a manual `git push origin v1.0.0-16` (tag-push path skips this job). Until fixed, every normal release needs that manual recovery.
+### CR-1: Fix `Create Tag` 404 handling in release workflow ⭐ — ✅ DONE (PR #55)
+`.github/workflows/release.yml` "Create Tag" step mis-handled a 404: `existing_sha=$(gh api .../git/ref/tags/$TAG --jq '.object.sha' 2>/dev/null || echo "")` captured the 404 body into `existing_sha` (the `|| echo ""` was *inside* the `$()`), so a non-existent tag read as "already exists at a different SHA" and the job hard-failed.
+- [x] Capture the SHA only on a successful (HTTP 200) lookup; a 404 now yields an empty string so the job creates the tag as intended (PR #55, `fc2030d`).
+- Symptom (now fixed): the auto-triggered release on `main` fired correctly but died at Create Tag; v1.0.0-16 had to be published via a manual `git push origin v1.0.0-16` (tag-push path skips this job). Verified for both 404 (absent) and 200 (present) cases.
 
 ### CR-2: Cloud endpoint review (verify each provider end-to-end)
 Test connection → save/persist → chat → crew, per provider:
 - [x] **Ollama** — Test/Save (`/api/tags` probe), chat, crew routing. Done in v1.0.0-16.
 - [x] **OpenAI** — Test/Save, **live model discovery** (filtered from `/v1/models`, no rot), chat + crew via dispatcher, classic (gpt-4o) + reasoning (gpt-5.x/o-series) models, adaptive param retry, clear errors, **cost shown**. Done in PR #57.
-- [x] **Anthropic** — dummy `sk-ant-…` placeholder deleted; routes via Claude SDK (crews) / dispatcher (chat). Real-key test + live discovery still TODO.
-- [ ] **Google (Gemini)** — Test/Save, chat, crew + live discovery.
+- [x] **Anthropic** — Test/Save (probe via `GET /v1/models`), **live model discovery** (10 Claude models from Anthropic's `/v1/models`, static-catalog fallback on failure), chat (stream + non-stream), crew routing (explicit `anthropic:` model → dispatcher w/ cost; no-model crews stay on the Claude SDK path), adaptive param retry (drops deprecated `temperature`/`top_p`), **cost shown** ($0.0071 on a 3-step haiku-4-5 crew). Verified live in PR #59.
+- [x] **Google (Gemini)** — Test/Save, live discovery, chat, **and crew all verified live** (2026-07-02). Only nicety missing: **cost shown = $0.00** (no Gemini entries in the pricing table yet — same rot as gpt-5.x; tokens are tracked correctly).
+  - Crew verified: single-agent crew on `google:gemini-2.5-flash` + `approval_required` bound to LinkedIn outbound → manual run completed (320 tok, 5.6s) → output correctly **held in Approvals** (`crew_publish`, pending) rather than posted. Quality good. Probe (`_probe_google` via `GET /v1beta/models`) and dispatcher routing (`google:` → `GoogleDirectService`) already shipped; this pass added **live model discovery** (`_discover_google_models` — filters `/v1beta/models` to Gemini models supporting `generateContent`, then drops image/tts/robotics/computer-use variants; static-catalog fallback), **adaptive param retry** (`_detect_google_param_fix` drops `temperature`/`topP` on a 400), and a **unary fallback** (see below). Tests: `test_google_discovery.py`, `test_google_param_retry.py`.
+  - Verified live (2026-07-02): Test → 200; Save → live discovery seeded **18 Gemini chat models** (30 raw → 12 non-chat filtered out); chat via `/v1/chat/completions` (`google:gemini-2.5-flash`) → **"GEMINI OK"**, 11 tokens.
+  - **Unary fallback added** (`google_direct_service.py`): method-restricted / ephemeral `AQ.…` keys allow `generateContent` but `403 PERMISSION_DENIED` on `streamGenerateContent`. `stream_chat` now falls back to a single unary `generateContent` call on a streaming 403 and emits the reply as one delta + done. Regression test: `test_stream_falls_back_to_unary_on_403`.
+  - Note: `AQ.…` keys are ephemeral tokens with a low rate limit (intermittent 403/429). A standard persistent `AIzaSy…` AI Studio key streams natively (no fallback needed).
+  - TODO: run a crew with a `google:` model to tick the last box; confirm cost shown.
+  - **Defect still open (all cloud providers, pre-existing):** a provider error raised *mid-stream* surfaces as an opaque **HTTP 500** instead of a clean status+message, because `_sync_cloud_chat`/`_stream_cloud_chat` iterate outside the router's try/except in `routers/openai_compat.py`. Wrap so 4xx/5xx provider errors propagate a meaningful message to the UI.
 - [ ] **AWS Bedrock** — Test/Save (boto3 list-foundation-models), chat, crew.
 
 Also shipped in PR #57 (surfaced during the review):
@@ -341,13 +347,13 @@ Company-page posting is blocked by **LinkedIn app permissions**, not our code:
 
 **Total models in catalog:** 41 (9 families: Qwen 2.5, Qwen 3, Qwen 3.5, Gemma 3, Gemma 4, Llama, Mistral, Phi, DeepSeek)
 **Total agents:** 113 markdown files across 14 categories (engineering 12 + coder-companion 5 excluded from Solo's main library → 96 visible in Solo; the 5 coder-companion agents surface in Coder mode)
-**Current release tag:** v1.0.0-11 (cut 2026-05-15)
+**Current release tag:** v1.0.0-18 (cut 2026-07-01)
 **Moonshot pick model:** Qwen 3.5 35B-A3B (MoE) — 35B brain, 3B speed, thinking + vision + 256K context
 **Backend port:** 18741
 **Key files for Phase 1:**
 - `backend/services/channels/channel_service.py` (stub to replace)
 - `backend/services/local_model_service.py` (inference engine)
-- `backend/services/model_catalog.py` (37 models)
+- `backend/services/model_catalog.py` (41 models)
 - `frontend/src/routes/connections.tsx` (trigger UI)
 
 **Key files for Phase 2.5 (Reddit + KB):**
