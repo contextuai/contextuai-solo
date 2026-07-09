@@ -18,6 +18,7 @@ import {
   Zap,
   Plug,
   Bot,
+  Brain,
 } from "lucide-react";
 import { useAiMode } from "@/contexts/ai-mode-context";
 import logoImg from "@/assets/logo.png";
@@ -33,9 +34,13 @@ interface NavItem {
 // the prompt-agent library; the database/api/mcp/web/file kinds live under
 // Connectors. "Crews" page renamed to "Workspace" (same /crews route),
 // with internal Crews | Projects | Runs tabs.
+// SPEC-14 PR-A: added "Memory" (11th item) next to Knowledge — the
+// user-visible memory panel (facts store, search, pin/edit/delete, export,
+// kill switch).
 const navItems: NavItem[] = [
   { label: "Chat", path: "/", icon: MessageSquare },
   { label: "Knowledge", path: "/knowledge", icon: Library },
+  { label: "Memory", path: "/memory", icon: Brain },
   { label: "Connectors", path: "/personas", icon: Plug },
   { label: "Agents", path: "/agents", icon: Bot },
   { label: "Automations", path: "/automations", icon: Zap },
