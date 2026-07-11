@@ -30,8 +30,10 @@ test("DC-NAV-01: sidebar shows all navigation items", async () => {
 
 // DC-NAV-02: Navigate to each page and verify heading
 test("DC-NAV-02: navigate to each page and verify heading", async ({ page }) => {
-  const routes: { label: string; heading: string }[] = [
-    { label: "Chat", heading: "Start a conversation" },
+  const routes: { label: string; heading: string | RegExp }[] = [
+    // Chat's empty state depends on model availability: the normal heading, or
+    // the "Set up an AI model…" nudge when none is configured (e.g. in CI).
+    { label: "Chat", heading: /Start a conversation|Set up an AI model to start chatting/ },
     { label: "Knowledge", heading: "Knowledge Bases" },
     { label: "Memory", heading: "Memory" },
     { label: "Connectors", heading: "Connectors" },
@@ -48,7 +50,7 @@ test("DC-NAV-02: navigate to each page and verify heading", async ({ page }) => 
     await nav.navigateTo(route.label);
     await page.waitForTimeout(500);
 
-    const headingEl = page.locator(`text=${route.heading}`).first();
+    const headingEl = page.getByText(route.heading).first();
     await expect(headingEl).toBeVisible({ timeout: 5000 });
   }
 });
