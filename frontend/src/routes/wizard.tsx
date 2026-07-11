@@ -284,6 +284,7 @@ export default function WizardPage() {
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const downloadCancelRef = useRef<{ cancel: () => void } | null>(null);
   const [showCloudProviders, setShowCloudProviders] = useState(false);
+  const [confirmSkip, setConfirmSkip] = useState(false);
   const [data, setData] = useState<WizardData>({
     name: "",
     provider: "",
@@ -428,6 +429,16 @@ export default function WizardPage() {
     const needsKey = data.provider && data.provider !== "ollama" && data.provider !== "local";
     const isLocal = data.provider === "local";
     const cloudProviders = PROVIDERS.filter((p) => p.id !== "local");
+
+    // Is the user actually set up to chat after this step?
+    // Local → a model finished downloading; Ollama → assumed running; cloud → key tested OK.
+    const isReady = isLocal
+      ? testResult === "success"
+      : data.provider === "ollama"
+        ? true
+        : needsKey
+          ? testResult === "success"
+          : false;
 
     const handleLocalDownload = async () => {
       if (!data.model) return;
@@ -846,6 +857,53 @@ export default function WizardPage() {
               </div>
             )}
 
+            {/* ── Informed-skip notice: shown when Continue is pressed without a ready model ── */}
+            {confirmSkip && !isReady && (
+              <div className="mb-4 p-4 rounded-xl border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-500/10">
+                <div className="flex items-start gap-3">
+                  <Info className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">
+                      No AI model is set up yet
+                    </p>
+                    <p className="text-xs text-amber-700/90 dark:text-amber-400/90 mt-1 leading-relaxed">
+                      {isLocal
+                        ? "You haven't downloaded a model. Without one you won't be able to chat until you download a local model or connect a cloud provider."
+                        : "You haven't connected a provider. Without one you won't be able to chat until you add a cloud key or download a local model."}{" "}
+                      You can do this now, or anytime later from{" "}
+                      <span className="font-semibold">Models</span> in the sidebar.
+                    </p>
+                    <div className="flex flex-wrap items-center gap-2 mt-3">
+                      {isLocal && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setConfirmSkip(false);
+                            handleLocalDownload();
+                          }}
+                          disabled={!data.model || downloading}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-500 hover:bg-emerald-600 text-white transition-colors disabled:opacity-50"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          Download now
+                        </button>
+                      )}
+                      <button
+                        onClick={() => {
+                          setConfirmSkip(false);
+                          setStep(3);
+                        }}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-500/20 transition-colors"
+                      >
+                        Skip &mdash; I&apos;ll set up later
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Navigation */}
             <div className="flex items-center justify-between pt-4">
               <button
@@ -854,17 +912,39 @@ export default function WizardPage() {
               >
                 Back
               </button>
-              <button
-                onClick={() => {
-                  // Set AI mode based on provider choice
-                  setAiMode(isLocal ? "local" : "cloud");
-                  setStep(3);
-                }}
-                className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-semibold bg-primary-500 hover:bg-primary-600 text-white shadow-lg shadow-primary-500/25 transition-all"
-              >
-                Continue
-                <ArrowRight className="w-4 h-4" />
-              </button>
+              <div className="flex items-center gap-3">
+                {/* Readiness hint — tells the user where they stand before they proceed */}
+                {isReady ? (
+                  <span className="hidden sm:flex items-center gap-1.5 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                    <Check className="w-3.5 h-3.5" /> Ready to chat
+                  </span>
+                ) : (
+                  <span className="hidden sm:block text-xs text-neutral-400">
+                    {downloading ? "Download in progress…" : "No model downloaded yet"}
+                  </span>
+                )}
+                <button
+                  onClick={() => {
+                    // Set AI mode based on provider choice
+                    setAiMode(isLocal ? "local" : "cloud");
+                    if (isReady) {
+                      setStep(3);
+                    } else {
+                      // Don't silently proceed — surface the consequence and let them choose.
+                      setConfirmSkip(true);
+                    }
+                  }}
+                  className={cn(
+                    "flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-semibold transition-all",
+                    isReady
+                      ? "bg-primary-500 hover:bg-primary-600 text-white shadow-lg shadow-primary-500/25"
+                      : "bg-neutral-200 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-200 hover:bg-neutral-300 dark:hover:bg-neutral-600"
+                  )}
+                >
+                  {isReady ? "Continue" : "Skip for now"}
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </div>
             </div>
           </div>
         </div>

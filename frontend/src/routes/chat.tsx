@@ -29,6 +29,9 @@ export default function ChatPage() {
 
   // ── Data state ─────────────────────────────────────────────────
   const [models, setModels] = useState<ModelConfig[]>([]);
+  // True once the first models fetch has resolved — avoids flashing the
+  // no-model nudge during initial load before the model list arrives.
+  const [modelsLoaded, setModelsLoaded] = useState(false);
   const [personas, setPersonas] = useState<Persona[]>([]);
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
@@ -140,6 +143,8 @@ export default function ChatPage() {
       }
     } catch (err) {
       console.warn("Failed to load models:", err);
+    } finally {
+      setModelsLoaded(true);
     }
   }
 
@@ -416,6 +421,7 @@ export default function ChatPage() {
           streamingContent={streamingContent}
           streamingThinking={streamingThinking}
           isStreaming={isStreaming}
+          noModel={modelsLoaded && !models.some((m) => m.enabled)}
         />
 
         <ChatInput
