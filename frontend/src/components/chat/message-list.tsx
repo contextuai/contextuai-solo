@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
-import { Bot, User, Brain, ChevronRight } from "lucide-react";
+import { Bot, User, Brain, ChevronRight, Download, Cloud, ArrowRight } from "lucide-react";
 import type { ChatMessage } from "@/types/chat";
 
 interface MessageListProps {
@@ -8,6 +9,8 @@ interface MessageListProps {
   streamingContent: string;
   streamingThinking: string;
   isStreaming: boolean;
+  /** No usable model is set up yet — show the finish-setup nudge instead of the generic empty state. */
+  noModel?: boolean;
 }
 
 /** Lightweight markdown renderer for AI chat messages. */
@@ -268,11 +271,55 @@ function EmptyState() {
   );
 }
 
+/**
+ * Shown on the empty chat when no usable model is set up yet — the landing spot
+ * for a user who skipped model setup in the first-run wizard. Gives two clear
+ * ways to finish: download a local model, or add a cloud provider key.
+ */
+function NoModelState() {
+  const navigate = useNavigate();
+  return (
+    <div className="flex flex-col items-center justify-center h-full text-center px-8">
+      <div className="flex items-center justify-center w-16 h-16 rounded-2xl bg-emerald-50 dark:bg-emerald-500/10 mb-6">
+        <Download className="w-8 h-8 text-emerald-500" />
+      </div>
+      <h2 className="text-xl font-semibold text-neutral-900 dark:text-white mb-2">
+        Set up an AI model to start chatting
+      </h2>
+      <p className="text-sm text-neutral-500 dark:text-neutral-400 max-w-sm leading-relaxed mb-6">
+        You haven&apos;t set up a model yet. Download a free local model that
+        runs on your machine, or connect a cloud provider with an API key. It
+        only takes a minute.
+      </p>
+      <div className="flex items-center gap-2.5 flex-wrap justify-center">
+        <button
+          onClick={() => navigate("/models")}
+          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold bg-emerald-500 hover:bg-emerald-600 text-white shadow-lg shadow-emerald-500/25 transition-all"
+          data-testid="chat-download-model"
+        >
+          <Download className="w-4 h-4" />
+          Download a local model
+          <ArrowRight className="w-4 h-4" />
+        </button>
+        <button
+          onClick={() => navigate("/settings?tab=ai-providers")}
+          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-all"
+          data-testid="chat-add-cloud-key"
+        >
+          <Cloud className="w-4 h-4" />
+          Add a cloud key
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function MessageList({
   messages,
   streamingContent,
   streamingThinking,
   isStreaming,
+  noModel,
 }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -281,7 +328,7 @@ export default function MessageList({
   }, [messages, streamingContent, streamingThinking]);
 
   if (messages.length === 0 && !isStreaming) {
-    return <EmptyState />;
+    return noModel ? <NoModelState /> : <EmptyState />;
   }
 
   return (

@@ -83,9 +83,15 @@ export class ChatPage {
     return this.page.locator("button:has(svg.lucide-sparkles)").first();
   }
 
-  /** The empty state heading shown when no messages exist. */
+  /**
+   * The empty-state heading shown when a chat has no messages. Matches either
+   * variant: the normal "Start a conversation" (a usable model exists) or the
+   * "Set up an AI model…" nudge (no model/key configured, e.g. in CI).
+   */
   get emptyStateHeading(): Locator {
-    return this.page.getByText("Start a conversation");
+    return this.page.getByText(
+      /Start a conversation|Set up an AI model to start chatting/
+    );
   }
 
   // ── Actions ─────────────────────────────────────────────────────
