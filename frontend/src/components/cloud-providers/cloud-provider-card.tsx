@@ -195,10 +195,13 @@ export function CloudProviderCard({
     setError(null);
     setTestResult(null);
     try {
-      // If already saved AND user hasn't typed any new values, hit the saved endpoint.
-      // Otherwise build a fresh config (covers both first-time-test and update flows).
+      // If a row is already saved AND the user hasn't typed any new values, hit
+      // the saved-provider endpoint so the test persists `connected`. (Gating on
+      // `isConnected` here created a chicken-and-egg: a saved-but-not-yet-
+      // connected provider could never flip to connected.) Otherwise build a
+      // fresh config (covers first-time-test and update flows).
       const userTouched = Object.values(formData).some((v) => v.trim());
-      const cfg = isConnected && !userTouched ? undefined : buildConfig();
+      const cfg = !!saved && !userTouched ? undefined : buildConfig();
       const result = await onTest(cfg);
       setTestResult(result);
     } catch (err) {
