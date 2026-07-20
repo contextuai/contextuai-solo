@@ -327,9 +327,54 @@ async def sync_cloud_models_to_db(db) -> int:
                 if isinstance(rid, str) and rid.startswith("openai_compat:"):
                     desired_ids.add(rid)
 
+    # Dynamic discovery for Ollama — model names come from the server's own
+    # /api/tags, not a static catalog. Gate on the provider row existing (not
+    # the `connected` flag): discovery validates connectivity itself, and a
+    # freshly-saved provider hasn't been marked connected yet. Ollama model
+    # names contain colons (e.g. "deepseek-r1:32b") — the "ollama:" prefix plus
+    # the full name still round-trips through the dispatcher's prefix parser.
+    ollama_cfg = provider_cfgs.get("ollama")
+    if ollama_cfg is not None:
+        base_url = ollama_cfg.get("base_url") or None
+        discovered_ollama: Optional[List[str]] = None
+        try:
+            from services.ollama_direct_service import OllamaDirectService
+
+            models = await OllamaDirectService().list_models(base_url=base_url)
+            discovered_ollama = [
+                str(m.get("name")) for m in models if (m or {}).get("name")
+            ]
+        except Exception as exc:
+            logger.warning(
+                "Ollama model discovery failed (%s) — preserving existing rows", exc
+            )
+        if discovered_ollama is not None:
+            for name in discovered_ollama:
+                doc_id = f"ollama:{name}"
+                desired_ids.add(doc_id)
+                doc = _build_ollama_model_doc(doc_id=doc_id, name=name)
+                existing = await models_coll.find_one({"_id": doc_id})
+                if existing:
+                    await models_coll.find_one_and_update({"_id": doc_id}, {"$set": doc})
+                else:
+                    doc_to_insert = dict(doc)
+                    doc_to_insert["_id"] = doc_id
+                    await models_coll.insert_one(doc_to_insert)
+                    logger.info("Registered ollama model: %s", doc_id)
+                seeded += 1
+        else:
+            # Discovery unavailable (server down / bad URL): keep whatever ollama
+            # rows exist so a transient outage doesn't wipe the user's list.
+            async for row in models_coll.find({}):
+                rid = row.get("_id") or row.get("id") or ""
+                if isinstance(rid, str) and rid.startswith("ollama:"):
+                    desired_ids.add(rid)
+
     # Remove stale cloud model rows: any row whose _id starts with a known
     # cloud prefix but no longer corresponds to a connected provider.
-    known_prefixes = tuple(f"{p}:" for p in _PROVIDER_CATALOGS) + ("openai_compat:",)
+    known_prefixes = (
+        tuple(f"{p}:" for p in _PROVIDER_CATALOGS) + ("openai_compat:", "ollama:")
+    )
     async for stale in models_coll.find({}):
         stale_id = stale.get("_id") or stale.get("id") or ""
         if not isinstance(stale_id, str):
@@ -345,6 +390,30 @@ async def sync_cloud_models_to_db(db) -> int:
         logger.info("Synced %d cloud model row(s) to database", seeded)
 
     return seeded
+
+
+def _build_ollama_model_doc(*, doc_id: str, name: str) -> Dict[str, Any]:
+    """Build a ``models`` row for an Ollama-served model.
+
+    ``provider`` and ``model_metadata.runtime`` are both set to ``"ollama"`` so
+    ``OllamaService.is_ollama_model()`` routes chat to the Ollama path, and
+    ``model_metadata.ollama_model`` carries the exact tag (colons and all) to
+    hand back to the Ollama server.
+    """
+    return {
+        "id": doc_id,
+        "name": f"{name} (Ollama)",
+        "description": "Local Ollama model",
+        "provider": "ollama",
+        "model": name,
+        "enabled": True,
+        "model_metadata": {
+            "provider_type": "ollama",
+            "runtime": "ollama",
+            "ollama_model": name,
+            "hf_filename": None,
+        },
+    }
 
 
 def _build_model_doc(

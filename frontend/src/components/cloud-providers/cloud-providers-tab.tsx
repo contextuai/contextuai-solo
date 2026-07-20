@@ -122,7 +122,20 @@ export function CloudProvidersTab() {
       display_name?: string;
       config: Record<string, string>;
     }) => {
-      await saveCloudProvider(input);
+      const savedProvider = await saveCloudProvider(input);
+      // Probe the freshly-saved provider so its `connected` flag is persisted
+      // and the card shows "Connected" without a separate manual test. This is
+      // the only place `connected` gets set for a keyless provider like Ollama
+      // (base_url only), which otherwise stays "not configured" after a passing
+      // test. Non-fatal — a failed probe just leaves the card disconnected.
+      const providerId = savedProvider?.provider_id;
+      if (providerId) {
+        try {
+          await testSavedCloudProvider(providerId);
+        } catch {
+          /* probe failure is surfaced via the refreshed row's last_test_* */
+        }
+      }
       await refresh();
     },
     [refresh],
