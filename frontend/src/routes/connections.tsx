@@ -810,7 +810,12 @@ export default function ConnectionsPage() {
                             {oauthStatus?.profile_name && (
                               <span className="flex items-center gap-1 text-[10px] font-medium text-blue-600 dark:text-blue-400 bg-blue-100 dark:bg-blue-500/15 px-2 py-0.5 rounded-full">
                                 <User className="w-2.5 h-2.5" /> {oauthStatus.profile_name}
-                                {oauthStatus.org_id && " (Company)"}
+                                {/* Only claim Company when the org scope was
+                                    actually granted — otherwise posts go out
+                                    as the member, not the page. */}
+                                {oauthStatus.org_id &&
+                                  oauthStatus.scopes?.includes("w_organization_social") &&
+                                  " (Company)"}
                               </span>
                             )}
                             {oauthStatus?.expires_at && (() => {

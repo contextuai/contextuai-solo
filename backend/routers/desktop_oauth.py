@@ -67,6 +67,46 @@ REDIRECT_BASE = f"http://localhost:{DESKTOP_PORT}"
 # In-memory state store (single desktop user, fine for this use case)
 _pending_states: dict[str, dict] = {}
 
+# Posting as a company page needs this scope; without it LinkedIn rejects an
+# organization author with 403 ACCESS_DENIED on /author.
+LINKEDIN_ORG_SCOPE = "w_organization_social"
+
+
+def _parse_granted_scopes(raw: Optional[str]) -> list[str]:
+    """Normalise the `scope` field of a token response into a list.
+
+    Providers are inconsistent here — LinkedIn returns comma-separated,
+    the OAuth2 spec says space-separated.
+    """
+    if not raw:
+        return []
+    return [s for s in raw.replace(",", " ").split() if s]
+
+
+def _linkedin_author_urn(
+    org_id: Optional[str],
+    profile_id: Optional[str],
+    granted_scopes: list[str],
+) -> Optional[str]:
+    """Pick the author URN for LinkedIn posts.
+
+    Only claim an organization author when the org scope was actually
+    granted. Falling back to the member URN keeps posting working instead
+    of failing every publish with an opaque 403.
+    """
+    if org_id:
+        if LINKEDIN_ORG_SCOPE in granted_scopes:
+            return f"urn:li:organization:{org_id}"
+        logger.warning(
+            "LinkedIn org_id %s is configured but '%s' was not granted — "
+            "posting as the member instead. Company-page posting needs "
+            "Community Management API access on the LinkedIn app.",
+            org_id, LINKEDIN_ORG_SCOPE,
+        )
+    if profile_id:
+        return f"urn:li:person:{profile_id}"
+    return None
+
 
 # ---------------------------------------------------------------------------
 # Models
@@ -349,6 +389,12 @@ async def oauth_callback(
         refresh_token = tokens.get("refresh_token")
         expires_in = tokens.get("expires_in")
 
+        # What the provider actually granted, which can be narrower than what
+        # we asked for. Fall back to the requested list if it stays silent.
+        granted_scopes = _parse_granted_scopes(tokens.get("scope")) or list(
+            provider_config["scopes"]
+        )
+
         if not access_token:
             return HTMLResponse(
                 _render_error("No access token", "Provider did not return an access token."),
@@ -386,7 +432,7 @@ async def oauth_callback(
                 "expires_in": expires_in,
                 "profile_name": profile_name,
                 "profile_id": profile_id,
-                "scopes": provider_config["scopes"],
+                "scopes": granted_scopes,
                 "status": "connected",
                 "connected_at": datetime.utcnow().isoformat() + "Z",
             }},
@@ -483,13 +529,13 @@ async def oauth_callback(
             if not existing:
                 import uuid
                 channel_config = {"access_token": access_token, **extra_config}
-                if provider == "linkedin" and profile_id:
-                    # Use org_id for company page, profile_id for personal
-                    org_id = doc.get("org_id")
-                    if org_id:
-                        channel_config["author_urn"] = f"urn:li:organization:{org_id}"
-                    else:
-                        channel_config["author_urn"] = f"urn:li:person:{profile_id}"
+                if provider == "linkedin":
+                    # Company page when the org scope was granted, else member
+                    author_urn = _linkedin_author_urn(
+                        doc.get("org_id"), profile_id, granted_scopes
+                    )
+                    if author_urn:
+                        channel_config["author_urn"] = author_urn
                 await dist_coll.insert_one({
                     "_id": str(uuid.uuid4()),
                     "channel_id": str(uuid.uuid4()),
@@ -512,11 +558,11 @@ async def oauth_callback(
                     "updated_at": datetime.utcnow().isoformat(),
                 }
                 if provider == "linkedin":
-                    org_id = doc.get("org_id")
-                    if org_id:
-                        update_set["config.author_urn"] = f"urn:li:organization:{org_id}"
-                    elif profile_id:
-                        update_set["config.author_urn"] = f"urn:li:person:{profile_id}"
+                    author_urn = _linkedin_author_urn(
+                        doc.get("org_id"), profile_id, granted_scopes
+                    )
+                    if author_urn:
+                        update_set["config.author_urn"] = author_urn
                 for k, v in extra_config.items():
                     update_set[f"config.{k}"] = v
                 await dist_coll.update_one(
