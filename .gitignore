@@ -1,5 +1,6 @@
 # Internal planning docs — never commit
 MOONSHOT.md
+docs/planning/post-zero-drafts.md
 docs/launch-posts/
 docs/video-guides/
 docs/dailydose-screenshots/
@@ -52,9 +53,9 @@ test-results/
 playwright-report/
 coverage/
 
-# Local AI models
-models/embedding/
-models/chat/
+# Local AI models (any depth — backend/models/embedding/ holds the ~90 MB bundled MiniLM)
+**/models/embedding/
+**/models/chat/
 *.gguf
 
 # Large media (use external hosting for demos)
