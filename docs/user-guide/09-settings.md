@@ -14,7 +14,7 @@ Navigate to **Settings** from the sidebar. The page has 5 tabs.
 
 Configure the AI models available throughout the app. See the [Model Hub guide](02-model-hub.md) for detailed setup instructions.
 
-**6 provider cards:**
+**7 provider cards** (Local AI plus 6 provider types):
 
 | Provider | Key Required | Notes |
 |----------|-------------|-------|
@@ -24,6 +24,9 @@ Configure the AI models available throughout the app. See the [Model Hub guide](
 | Google Gemini | Yes | Gemini 2.0 Flash/Pro |
 | AWS Bedrock | Yes | Claude 3 via AWS |
 | Ollama | No | Local models via Ollama server. Expand the card, enter your server URL, and click **Test Connection** — Solo probes the running Ollama server and displays a connected/saved indicator once verified, the same as cloud providers. |
+| OpenAI-Compatible | No (base URL required, key optional) | Any `/v1` server — vLLM, LM Studio, llama.cpp server, TGI, LiteLLM, OpenRouter |
+
+Anthropic, OpenAI, Google Gemini, and Ollama model lists are discovered live from your account (or your local Ollama server), so they stay in step with what's actually available.
 
 For each cloud provider:
 1. Expand the card.

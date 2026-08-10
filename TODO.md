@@ -1,7 +1,7 @@
 # TODO — ContextuAI Solo Moonshot
 
 > Master task list. Prioritized by phases. Check off as completed.
-> **Created:** 2026-03-19 | **Last synced with code:** 2026-07-01
+> **Created:** 2026-03-19 | **Last synced with code:** 2026-08-10
 
 ---
 
@@ -597,7 +597,7 @@ Must be idempotent, dry-run capable (`MIGRATE_DRY_RUN=1` env var), and must writ
 - [ ] Models stays at `/solo/models`, sidebar entry retained
 - [ ] Delete `frontend/src/routes/distribution.tsx`, `schedule.tsx` (Phase 3 cleanup carryover)
 - [ ] Delete `frontend/src/routes/agents.tsx` (replaced by tabbed picker inside Crew/Automation builders — see P4-2)
-- [ ] Update navigation E2E test → **8 sidebar items** in Solo mode (Chat, Knowledge, Automations, Crews, Approvals, Distributions, Models, Settings)
+- [x] Update navigation E2E test → **11 sidebar items** in Solo mode (Chat, Knowledge, Memory, Connectors, Agents, Automations, Workspace, Approvals, Distributions, Models, Settings) — `navigation.spec.ts` asserts the 11-item list
 - [ ] **Library hub deferred** — tabbed pickers in P4-2 / P4-3 cover discoverability; revisit if usage data shows browsing pain
 
 ### P4-5: App-shell mode toggle ⭐ FOUNDATION

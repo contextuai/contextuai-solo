@@ -1,7 +1,7 @@
 # SPEC-14 — Unified Memory Layer · Detailed Design (for review before coding)
 
 - **Parent spec:** `SPEC-14-unified-memory-layer.md` (roadmap F-1, Q3 2026 flagship)
-- **Status:** ✅ reviewed 2026-07-08 — decisions confirmed (all 5 recommendations accepted). Building PR-A.
+- **Status:** ✅ reviewed 2026-07-08 — decisions confirmed (all 5 recommendations accepted). **PR-A shipped/merged** (2026-07-22) — store + panel + manual facts + export + kill switch. PR-B (recall), PR-C (extraction), PR-D (episodes) still open.
 - **Author:** implementing agent, grounded in a code map of `crew_memory_service`, `rag_service`/`embedding_service`, and the `personal_docs` job pattern.
 
 ---
