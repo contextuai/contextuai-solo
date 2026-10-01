@@ -64,6 +64,22 @@ const SPEED_LABELS: Record<string, string> = {
   slow: "Slow",
 };
 
+/** Models released within this many months get a "New" badge. */
+const NEW_MODEL_MONTHS = 6;
+
+function isNewRelease(released?: string): boolean {
+  if (!released) return false;
+  const [year, month] = released.split("-").map(Number);
+  const now = new Date();
+  const ageMonths = (now.getFullYear() - year) * 12 + (now.getMonth() + 1 - month);
+  return ageMonths >= 0 && ageMonths < NEW_MODEL_MONTHS;
+}
+
+function formatContext(tokens: number): string {
+  if (tokens >= 1_048_576) return `${Math.round(tokens / 1_048_576)}M ctx`;
+  return `${Math.round(tokens / 1024)}K ctx`;
+}
+
 type Tab = "discover" | "installed" | "cloud";
 
 // ── RAM indicator ────────────────────────────────────────────────────────
@@ -130,9 +146,23 @@ function ModelCard({
             {model.provider} · {model.parameter_size} · {model.size_gb} GB download
           </p>
         </div>
-        <span className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded", QUALITY_COLORS[model.quality_tier])}>
-          {model.quality_tier}
-        </span>
+        <div className="flex items-center gap-1 shrink-0">
+          {model.legacy ? (
+            <span
+              className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400"
+              title="Superseded by a newer generation in this list"
+            >
+              legacy
+            </span>
+          ) : isNewRelease(model.released) ? (
+            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400">
+              new
+            </span>
+          ) : null}
+          <span className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded", QUALITY_COLORS[model.quality_tier])}>
+            {model.quality_tier}
+          </span>
+        </div>
       </div>
 
       {/* Description */}
@@ -168,7 +198,7 @@ function ModelCard({
           );
         })}
         <span className="text-[10px] text-neutral-400 px-1.5 py-0.5">
-          {SPEED_LABELS[model.speed_tier]} · {model.context_window >= 100000 ? "128K ctx" : `${Math.round(model.context_window / 1024)}K ctx`}
+          {SPEED_LABELS[model.speed_tier]} · {formatContext(model.context_window)}
         </span>
       </div>
 

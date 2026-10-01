@@ -350,10 +350,15 @@ class ModelManager:
 
         try:
             loop = asyncio.get_event_loop()
+            remote_filename = await loop.run_in_executor(
+                None,
+                self._resolve_repo_filename,
+                repo_id, filename, entry.get("quantization", ""),
+            )
             download_future = loop.run_in_executor(
                 None,
                 self._download_with_progress,
-                repo_id, filename, dest_path, model_id, progress_queue,
+                repo_id, remote_filename, dest_path, model_id, progress_queue,
             )
 
             # Poll progress queue while download runs
@@ -441,6 +446,43 @@ class ModelManager:
         import re
         return re.sub(r'-\d{5}-of-\d{5}\.gguf$', '-*-of-*.gguf', filename)
 
+    def _resolve_repo_filename(self, repo_id: str, filename: str, quantization: str) -> str:
+        """Return the file to fetch from *repo_id* for a catalog entry.
+
+        Quantisers occasionally delete or rename files after a catalog entry
+        is pinned (e.g. unsloth replacing ``X-Q4_K_M.gguf`` with
+        ``X-UD-Q4_K_M.gguf``). If *filename* is gone, pick a top-level,
+        single-file GGUF with the same quantisation instead. Returns
+        *filename* unchanged whenever it exists or the repo can't be listed.
+        """
+        import re
+
+        if not quantization or self._is_sharded_filename(filename):
+            return filename
+        try:
+            from huggingface_hub import HfApi
+            files = HfApi().list_repo_files(repo_id)
+        except Exception as exc:
+            logger.warning("Could not list %s to verify %s: %s", repo_id, filename, exc)
+            return filename
+        if filename in files:
+            return filename
+
+        quant_re = re.compile(rf"[-_.](ud-)?{re.escape(quantization.lower())}\.gguf$")
+        candidates = [
+            f for f in files
+            if "/" not in f
+            and "mmproj" not in f.lower()
+            and not self._is_sharded_filename(f)
+            and quant_re.search(f.lower())
+        ]
+        if not candidates:
+            return filename
+        # Prefer the plain quant over unsloth's UD- variant, then the shortest name
+        choice = min(candidates, key=lambda f: ("-ud-" in f.lower(), len(f)))
+        logger.warning("%s no longer has %s — downloading %s instead", repo_id, filename, choice)
+        return choice
+
     def _download_with_progress(
         self, repo_id: str, filename: str, dest_path: str, model_id: str,
         progress_queue=None,
@@ -495,6 +537,12 @@ class ModelManager:
                     tqdm_class=tqdm_cls,
                 )
                 logger.info("hf_hub_download completed: %s", downloaded_path)
+
+                # A fallback file (see _resolve_repo_filename) is stored under
+                # the catalog filename so is_installed()/get_model_path() find it.
+                if os.path.abspath(downloaded_path) != os.path.abspath(dest_path):
+                    os.replace(downloaded_path, dest_path)
+                    downloaded_path = dest_path
 
                 size = os.path.getsize(downloaded_path)
                 logger.info("Download complete: %s (%.2f GB)", downloaded_path, size / (1024**3))

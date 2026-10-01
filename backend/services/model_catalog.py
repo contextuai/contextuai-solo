@@ -8,6 +8,17 @@ Each entry carries the metadata the UI needs: download size, RAM requirement,
 categories, quality/speed tier, and the exact HuggingFace coordinates for
 one-click download.
 
+``released`` (``YYYY-MM``) drives newest-first ordering in the Model Hub.
+``legacy: True`` marks entries superseded by a newer generation in this
+catalog: they stay listed (and resolvable) so existing downloads keep
+working, but are sorted last and never recommended.
+
+Prefer quantisers that keep stable filenames (official vendor repos,
+bartowski). Unsloth periodically replaces its plain ``Q4_K_M`` files with
+"Dynamic" ``UD-`` variants; ``model_manager`` falls back to a same-quant
+file when a pinned filename disappears, but new entries should not rely on
+that. Run ``python scripts/verify_model_catalog.py`` after editing.
+
 RAM cap: 64 GB — models requiring more than 64 GB are excluded.
 """
 
@@ -32,7 +43,7 @@ SPEED_TIERS   = ("fast", "medium", "slow")
 # ── The Catalog ─────────────────────────────────────────────────────────────
 
 LOCAL_MODEL_CATALOG: List[Dict] = [
-    # ── Qwen (Official GGUF) ───────────────────────────────────────────────
+    # ── Qwen 2.5 (Official GGUF) — legacy ──────────────────────────────────
     {
         "id": "qwen2.5-0.5b",
         "name": "Qwen 2.5 0.5B",
@@ -54,6 +65,8 @@ LOCAL_MODEL_CATALOG: List[Dict] = [
         "hf_repo": "Qwen/Qwen2.5-0.5B-Instruct-GGUF",
         "hf_filename": "qwen2.5-0.5b-instruct-q4_k_m.gguf",
         "chat_template": "chatml",
+        "released": "2024-09",
+        "legacy": True,
     },
     {
         "id": "qwen2.5-1.5b",
@@ -76,6 +89,8 @@ LOCAL_MODEL_CATALOG: List[Dict] = [
         "hf_repo": "Qwen/Qwen2.5-1.5B-Instruct-GGUF",
         "hf_filename": "qwen2.5-1.5b-instruct-q4_k_m.gguf",
         "chat_template": "chatml",
+        "released": "2024-09",
+        "legacy": True,
     },
     {
         "id": "qwen2.5-3b",
@@ -98,6 +113,8 @@ LOCAL_MODEL_CATALOG: List[Dict] = [
         "hf_repo": "Qwen/Qwen2.5-3B-Instruct-GGUF",
         "hf_filename": "qwen2.5-3b-instruct-q4_k_m.gguf",
         "chat_template": "chatml",
+        "released": "2024-09",
+        "legacy": True,
     },
     {
         "id": "qwen2.5-7b",
@@ -120,6 +137,8 @@ LOCAL_MODEL_CATALOG: List[Dict] = [
         "hf_repo": "Qwen/Qwen2.5-7B-Instruct-GGUF",
         "hf_filename": "qwen2.5-7b-instruct-q4_k_m.gguf",
         "chat_template": "chatml",
+        "released": "2024-09",
+        "legacy": True,
     },
     {
         "id": "qwen2.5-14b",
@@ -142,6 +161,8 @@ LOCAL_MODEL_CATALOG: List[Dict] = [
         "hf_repo": "Qwen/Qwen2.5-14B-Instruct-GGUF",
         "hf_filename": "qwen2.5-14b-instruct-q4_k_m-00001-of-00003.gguf",
         "chat_template": "chatml",
+        "released": "2024-09",
+        "legacy": True,
     },
     {
         "id": "qwen2.5-32b",
@@ -164,8 +185,10 @@ LOCAL_MODEL_CATALOG: List[Dict] = [
         "hf_repo": "Qwen/Qwen2.5-32B-Instruct-GGUF",
         "hf_filename": "qwen2.5-32b-instruct-q4_k_m-00001-of-00005.gguf",
         "chat_template": "chatml",
+        "released": "2024-09",
+        "legacy": True,
     },
-    # ── Qwen Coder (Official GGUF) ─────────────────────────────────────────
+    # ── Qwen 2.5 Coder (Official GGUF) — legacy ────────────────────────────
     {
         "id": "qwen2.5-coder-7b",
         "name": "Qwen 2.5 Coder 7B",
@@ -187,6 +210,8 @@ LOCAL_MODEL_CATALOG: List[Dict] = [
         "hf_repo": "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF",
         "hf_filename": "qwen2.5-coder-7b-instruct-q4_k_m.gguf",
         "chat_template": "chatml",
+        "released": "2024-09",
+        "legacy": True,
     },
     {
         "id": "qwen2.5-coder-14b",
@@ -209,6 +234,8 @@ LOCAL_MODEL_CATALOG: List[Dict] = [
         "hf_repo": "Qwen/Qwen2.5-Coder-14B-Instruct-GGUF",
         "hf_filename": "qwen2.5-coder-14b-instruct-q4_k_m-00001-of-00003.gguf",
         "chat_template": "chatml",
+        "released": "2024-11",
+        "legacy": True,
     },
     {
         "id": "qwen2.5-coder-32b",
@@ -231,8 +258,10 @@ LOCAL_MODEL_CATALOG: List[Dict] = [
         "hf_repo": "Qwen/Qwen2.5-Coder-32B-Instruct-GGUF",
         "hf_filename": "qwen2.5-coder-32b-instruct-q4_k_m-00001-of-00004.gguf",
         "chat_template": "chatml",
+        "released": "2024-11",
+        "legacy": True,
     },
-    # ── Google Gemma (Gemma 3 + Gemma 4) ──────────────────────────────────────
+    # ── Google Gemma 3 — legacy (superseded by Gemma 4) ───────────────────────
     {
         "id": "gemma3-1b",
         "name": "Gemma 3 1B",
@@ -254,6 +283,8 @@ LOCAL_MODEL_CATALOG: List[Dict] = [
         "hf_repo": "bartowski/google_gemma-3-1b-it-GGUF",
         "hf_filename": "google_gemma-3-1b-it-Q4_K_M.gguf",
         "chat_template": "gemma",
+        "released": "2025-03",
+        "legacy": True,
     },
     {
         "id": "gemma3-4b",
@@ -276,6 +307,8 @@ LOCAL_MODEL_CATALOG: List[Dict] = [
         "hf_repo": "google/gemma-3-4b-it-qat-q4_0-gguf",
         "hf_filename": "gemma-3-4b-it-qat-q4_0.gguf",
         "chat_template": "gemma",
+        "released": "2025-03",
+        "legacy": True,
     },
     {
         "id": "gemma3-12b",
@@ -298,6 +331,8 @@ LOCAL_MODEL_CATALOG: List[Dict] = [
         "hf_repo": "google/gemma-3-12b-it-qat-q4_0-gguf",
         "hf_filename": "gemma-3-12b-it-qat-q4_0.gguf",
         "chat_template": "gemma",
+        "released": "2025-03",
+        "legacy": True,
     },
     {
         "id": "gemma3-27b",
@@ -320,6 +355,8 @@ LOCAL_MODEL_CATALOG: List[Dict] = [
         "hf_repo": "google/gemma-3-27b-it-qat-q4_0-gguf",
         "hf_filename": "gemma-3-27b-it-qat-q4_0.gguf",
         "chat_template": "gemma",
+        "released": "2025-03",
+        "legacy": True,
     },
     # ── Google Gemma 4 (April 2026 — Frontier multimodal, tool calling, thinking) ──
     {
@@ -344,6 +381,7 @@ LOCAL_MODEL_CATALOG: List[Dict] = [
         "hf_repo": "bartowski/google_gemma-4-E2B-it-GGUF",
         "hf_filename": "google_gemma-4-E2B-it-Q4_K_M.gguf",
         "chat_template": "gemma4",
+        "released": "2026-04",
     },
     {
         "id": "gemma4-e4b",
@@ -367,6 +405,7 @@ LOCAL_MODEL_CATALOG: List[Dict] = [
         "hf_repo": "bartowski/google_gemma-4-E4B-it-GGUF",
         "hf_filename": "google_gemma-4-E4B-it-Q4_K_M.gguf",
         "chat_template": "gemma4",
+        "released": "2026-04",
     },
     {
         "id": "gemma4-26b-a4b",
@@ -390,6 +429,7 @@ LOCAL_MODEL_CATALOG: List[Dict] = [
         "hf_repo": "bartowski/google_gemma-4-26B-A4B-it-GGUF",
         "hf_filename": "google_gemma-4-26B-A4B-it-Q4_K_M.gguf",
         "chat_template": "gemma4",
+        "released": "2026-04",
     },
     {
         "id": "gemma4-31b",
@@ -413,8 +453,9 @@ LOCAL_MODEL_CATALOG: List[Dict] = [
         "hf_repo": "bartowski/google_gemma-4-31B-it-GGUF",
         "hf_filename": "google_gemma-4-31B-it-Q4_K_M.gguf",
         "chat_template": "gemma4",
+        "released": "2026-04",
     },
-    # ── Microsoft Phi-4 (Official GGUF) ─────────────────────────────────────
+    # ── Microsoft Phi-4 (Official GGUF) — legacy ────────────────────────────
     {
         "id": "phi4-14b",
         "name": "Phi-4 14B",
@@ -436,8 +477,10 @@ LOCAL_MODEL_CATALOG: List[Dict] = [
         "hf_repo": "microsoft/phi-4-gguf",
         "hf_filename": "phi-4-q4.gguf",
         "chat_template": "phi",
+        "released": "2024-12",
+        "legacy": True,
     },
-    # ── Meta Llama 3.2 (Community GGUF — bartowski) ─────────────────────────
+    # ── Meta Llama 3.2 (Community GGUF — bartowski) — legacy ────────────────
     {
         "id": "llama3.2-1b",
         "name": "Llama 3.2 1B",
@@ -459,6 +502,8 @@ LOCAL_MODEL_CATALOG: List[Dict] = [
         "hf_repo": "bartowski/Llama-3.2-1B-Instruct-GGUF",
         "hf_filename": "Llama-3.2-1B-Instruct-Q4_K_M.gguf",
         "chat_template": "llama3",
+        "released": "2024-09",
+        "legacy": True,
     },
     {
         "id": "llama3.2-3b",
@@ -481,8 +526,10 @@ LOCAL_MODEL_CATALOG: List[Dict] = [
         "hf_repo": "bartowski/Llama-3.2-3B-Instruct-GGUF",
         "hf_filename": "Llama-3.2-3B-Instruct-Q4_K_M.gguf",
         "chat_template": "llama3",
+        "released": "2024-09",
+        "legacy": True,
     },
-    # ── Meta Llama 3.1 (Community GGUF — bartowski) ─────────────────────────
+    # ── Meta Llama 3.1 (Community GGUF — bartowski) — legacy ────────────────
     {
         "id": "llama3.1-8b",
         "name": "Llama 3.1 8B",
@@ -504,6 +551,8 @@ LOCAL_MODEL_CATALOG: List[Dict] = [
         "hf_repo": "bartowski/Meta-Llama-3.1-8B-Instruct-GGUF",
         "hf_filename": "Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf",
         "chat_template": "llama3",
+        "released": "2024-07",
+        "legacy": True,
     },
     {
         "id": "llama3.1-70b",
@@ -526,8 +575,10 @@ LOCAL_MODEL_CATALOG: List[Dict] = [
         "hf_repo": "bartowski/Meta-Llama-3.1-70B-Instruct-GGUF",
         "hf_filename": "Meta-Llama-3.1-70B-Instruct-Q4_K_M.gguf",
         "chat_template": "llama3",
+        "released": "2024-07",
+        "legacy": True,
     },
-    # ── Mistral (Community GGUF — bartowski) ────────────────────────────────
+    # ── Mistral (Community GGUF — bartowski) — legacy, see Ministral 3 ──────
     {
         "id": "mistral-7b",
         "name": "Mistral 7B",
@@ -549,6 +600,8 @@ LOCAL_MODEL_CATALOG: List[Dict] = [
         "hf_repo": "bartowski/Mistral-7B-Instruct-v0.3-GGUF",
         "hf_filename": "Mistral-7B-Instruct-v0.3-Q4_K_M.gguf",
         "chat_template": "mistral",
+        "released": "2024-05",
+        "legacy": True,
     },
     {
         "id": "mistral-small-22b",
@@ -571,8 +624,10 @@ LOCAL_MODEL_CATALOG: List[Dict] = [
         "hf_repo": "bartowski/Mistral-Small-24B-Instruct-2501-GGUF",
         "hf_filename": "Mistral-Small-24B-Instruct-2501-Q4_K_M.gguf",
         "chat_template": "mistral",
+        "released": "2025-01",
+        "legacy": True,
     },
-    # ── DeepSeek R1 Distill (Community GGUF — bartowski) ────────────────────
+    # ── DeepSeek R1 Distill (Community GGUF — bartowski) — legacy ───────────
     {
         "id": "deepseek-r1-1.5b",
         "name": "DeepSeek R1 1.5B",
@@ -594,6 +649,8 @@ LOCAL_MODEL_CATALOG: List[Dict] = [
         "hf_repo": "bartowski/DeepSeek-R1-Distill-Qwen-1.5B-GGUF",
         "hf_filename": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
         "chat_template": "chatml",
+        "released": "2025-01",
+        "legacy": True,
     },
     {
         "id": "deepseek-r1-7b",
@@ -616,6 +673,8 @@ LOCAL_MODEL_CATALOG: List[Dict] = [
         "hf_repo": "bartowski/DeepSeek-R1-Distill-Qwen-7B-GGUF",
         "hf_filename": "DeepSeek-R1-Distill-Qwen-7B-Q4_K_M.gguf",
         "chat_template": "chatml",
+        "released": "2025-01",
+        "legacy": True,
     },
     {
         "id": "deepseek-r1-14b",
@@ -638,6 +697,8 @@ LOCAL_MODEL_CATALOG: List[Dict] = [
         "hf_repo": "bartowski/DeepSeek-R1-Distill-Qwen-14B-GGUF",
         "hf_filename": "DeepSeek-R1-Distill-Qwen-14B-Q4_K_M.gguf",
         "chat_template": "chatml",
+        "released": "2025-01",
+        "legacy": True,
     },
     {
         "id": "deepseek-r1-32b",
@@ -660,6 +721,8 @@ LOCAL_MODEL_CATALOG: List[Dict] = [
         "hf_repo": "bartowski/DeepSeek-R1-Distill-Qwen-32B-GGUF",
         "hf_filename": "DeepSeek-R1-Distill-Qwen-32B-Q4_K_M.gguf",
         "chat_template": "chatml",
+        "released": "2025-01",
+        "legacy": True,
     },
     {
         "id": "deepseek-r1-70b",
@@ -682,8 +745,10 @@ LOCAL_MODEL_CATALOG: List[Dict] = [
         "hf_repo": "bartowski/DeepSeek-R1-Distill-Llama-70B-GGUF",
         "hf_filename": "DeepSeek-R1-Distill-Llama-70B-Q4_K_M.gguf",
         "chat_template": "llama3",
+        "released": "2025-01",
+        "legacy": True,
     },
-    # ── Qwen 3 (Official GGUF — Thinking + Non-Thinking Dual Mode) ────────
+    # ── Qwen 3 (Thinking + Non-Thinking Dual Mode) — legacy ───────────────
     {
         "id": "qwen3-1.7b",
         "name": "Qwen 3 1.7B",
@@ -706,6 +771,8 @@ LOCAL_MODEL_CATALOG: List[Dict] = [
         "hf_repo": "unsloth/Qwen3-1.7B-GGUF",
         "hf_filename": "Qwen3-1.7B-Q4_K_M.gguf",
         "chat_template": "chatml",
+        "released": "2025-04",
+        "legacy": True,
     },
     {
         "id": "qwen3-4b",
@@ -729,6 +796,8 @@ LOCAL_MODEL_CATALOG: List[Dict] = [
         "hf_repo": "unsloth/Qwen3-4B-GGUF",
         "hf_filename": "Qwen3-4B-Q4_K_M.gguf",
         "chat_template": "chatml",
+        "released": "2025-04",
+        "legacy": True,
     },
     {
         "id": "qwen3-8b",
@@ -752,6 +821,8 @@ LOCAL_MODEL_CATALOG: List[Dict] = [
         "hf_repo": "unsloth/Qwen3-8B-GGUF",
         "hf_filename": "Qwen3-8B-Q4_K_M.gguf",
         "chat_template": "chatml",
+        "released": "2025-04",
+        "legacy": True,
     },
     {
         "id": "qwen3-14b",
@@ -775,6 +846,8 @@ LOCAL_MODEL_CATALOG: List[Dict] = [
         "hf_repo": "unsloth/Qwen3-14B-GGUF",
         "hf_filename": "Qwen3-14B-Q4_K_M.gguf",
         "chat_template": "chatml",
+        "released": "2025-04",
+        "legacy": True,
     },
     {
         "id": "qwen3-32b",
@@ -798,6 +871,8 @@ LOCAL_MODEL_CATALOG: List[Dict] = [
         "hf_repo": "unsloth/Qwen3-32B-GGUF",
         "hf_filename": "Qwen3-32B-Q4_K_M.gguf",
         "chat_template": "chatml",
+        "released": "2025-04",
+        "legacy": True,
     },
     {
         "id": "qwen3-30b-a3b",
@@ -821,8 +896,11 @@ LOCAL_MODEL_CATALOG: List[Dict] = [
         "hf_repo": "unsloth/Qwen3-30B-A3B-GGUF",
         "hf_filename": "Qwen3-30B-A3B-Q4_K_M.gguf",
         "chat_template": "chatml",
+        "released": "2025-04",
+        "legacy": True,
     },
-    # ── Qwen 3.5 (Latest — 256K context, Vision, Thinking, 201 languages) ─
+    # ── Qwen 3.5 (Feb 2026 — 256K context, Vision, Thinking, 201 languages) ─
+    # 27B / 35B-A3B are superseded by Qwen 3.8 27B / Qwen 3.6 35B-A3B below.
     {
         "id": "qwen3.5-0.8b",
         "name": "Qwen 3.5 0.8B",
@@ -845,6 +923,7 @@ LOCAL_MODEL_CATALOG: List[Dict] = [
         "hf_repo": "unsloth/Qwen3.5-0.8B-GGUF",
         "hf_filename": "Qwen3.5-0.8B-Q4_K_M.gguf",
         "chat_template": "chatml",
+        "released": "2026-02",
     },
     {
         "id": "qwen3.5-2b",
@@ -868,6 +947,7 @@ LOCAL_MODEL_CATALOG: List[Dict] = [
         "hf_repo": "unsloth/Qwen3.5-2B-GGUF",
         "hf_filename": "Qwen3.5-2B-Q4_K_M.gguf",
         "chat_template": "chatml",
+        "released": "2026-02",
     },
     {
         "id": "qwen3.5-4b",
@@ -891,6 +971,7 @@ LOCAL_MODEL_CATALOG: List[Dict] = [
         "hf_repo": "unsloth/Qwen3.5-4B-GGUF",
         "hf_filename": "Qwen3.5-4B-Q4_K_M.gguf",
         "chat_template": "chatml",
+        "released": "2026-02",
     },
     {
         "id": "qwen3.5-9b",
@@ -914,6 +995,7 @@ LOCAL_MODEL_CATALOG: List[Dict] = [
         "hf_repo": "unsloth/Qwen3.5-9B-GGUF",
         "hf_filename": "Qwen3.5-9B-Q4_K_M.gguf",
         "chat_template": "chatml",
+        "released": "2026-02",
     },
     {
         "id": "qwen3.5-27b",
@@ -937,6 +1019,8 @@ LOCAL_MODEL_CATALOG: List[Dict] = [
         "hf_repo": "unsloth/Qwen3.5-27B-GGUF",
         "hf_filename": "Qwen3.5-27B-Q4_K_M.gguf",
         "chat_template": "chatml",
+        "released": "2026-02",
+        "legacy": True,
     },
     {
         "id": "qwen3.5-35b-a3b",
@@ -949,7 +1033,7 @@ LOCAL_MODEL_CATALOG: List[Dict] = [
         "ram_required_gb": 22,
         "ram_recommended_gb": 28,
         "categories": ["general", "reasoning", "multilingual", "vision"],
-        "description": "THE MOONSHOT PICK. 35B brain, 3B speed. Thinking + vision + 256K context. Best for agentic crews.",
+        "description": "Previous-gen MoE: 35B brain, 3B speed. Thinking + vision + 256K context. Superseded by Qwen 3.6 35B-A3B.",
         "quantization": "Q4_K_M",
         "context_window": 262144,
         "supports_vision": True,
@@ -960,6 +1044,251 @@ LOCAL_MODEL_CATALOG: List[Dict] = [
         "hf_repo": "unsloth/Qwen3.5-35B-A3B-GGUF",
         "hf_filename": "Qwen3.5-35B-A3B-Q4_K_M.gguf",
         "chat_template": "chatml",
+        "released": "2026-02",
+        "legacy": True,
+    },
+    # ── Qwen 3.6 / 3.8 (Apr + Aug 2026 — agentic coding, thinking, 256K) ───
+    {
+        "id": "qwen3.6-35b-a3b",
+        "name": "Qwen 3.6 35B-A3B (MoE)",
+        "family": "qwen3.6",
+        "provider": "Qwen",
+        "parameter_size": "35B (3B active)",
+        "parameter_count": 35.0,
+        "size_gb": 22.3,
+        "ram_required_gb": 26,
+        "ram_recommended_gb": 32,
+        "categories": ["general", "reasoning", "coding", "multilingual"],
+        "description": "35B brain at 3B speed. Big agentic-coding upgrade over Qwen 3.5 with thinking mode and 256K context. Best MoE pick for crews.",
+        "quantization": "Q4_K_M",
+        "context_window": 262144,
+        "supports_vision": False,
+        "supports_tools": True,
+        "supports_thinking": True,
+        "quality_tier": "best",
+        "speed_tier": "fast",
+        "hf_repo": "bartowski/Qwen_Qwen3.6-35B-A3B-GGUF",
+        "hf_filename": "Qwen_Qwen3.6-35B-A3B-Q4_K_M.gguf",
+        "chat_template": "chatml",
+        "released": "2026-04",
+    },
+    {
+        "id": "qwen3.8-27b",
+        "name": "Qwen 3.8 27B",
+        "family": "qwen3.8",
+        "provider": "Qwen",
+        "parameter_size": "27B",
+        "parameter_count": 27.0,
+        "size_gb": 17.8,
+        "ram_required_gb": 22,
+        "ram_recommended_gb": 28,
+        "categories": ["general", "reasoning", "coding", "multilingual"],
+        "description": "Qwen's newest dense model. Hybrid attention keeps memory low; thinking mode, 256K context and strong coding. Best all-rounder for 32GB machines.",
+        "quantization": "Q4_K_M",
+        "context_window": 262144,
+        "supports_vision": False,
+        "supports_tools": True,
+        "supports_thinking": True,
+        "quality_tier": "best",
+        "speed_tier": "medium",
+        "hf_repo": "bartowski/Qwen3.8-27B-GGUF",
+        "hf_filename": "Qwen3.8-27B-Q4_K_M.gguf",
+        "chat_template": "chatml",
+        "released": "2026-08",
+    },
+    # ── Google Gemma 4 12B (June 2026 — fills the gap between E4B and 26B) ──
+    {
+        "id": "gemma4-12b",
+        "name": "Gemma 4 12B",
+        "family": "gemma4",
+        "provider": "Google",
+        "parameter_size": "12B",
+        "parameter_count": 12.0,
+        "size_gb": 7.7,
+        "ram_required_gb": 10,
+        "ram_recommended_gb": 12,
+        "categories": ["general", "reasoning", "multilingual"],
+        "description": "Gemma 4 for 16GB machines. Thinking mode and native tool calling with a big step up from E4B.",
+        "quantization": "Q4_K_M",
+        "context_window": 131072,
+        "supports_vision": False,
+        "supports_tools": True,
+        "supports_thinking": True,
+        "quality_tier": "great",
+        "speed_tier": "medium",
+        "hf_repo": "bartowski/gemma-4-12B-it-GGUF",
+        "hf_filename": "gemma-4-12B-it-Q4_K_M.gguf",
+        "chat_template": "gemma4",
+        "released": "2026-06",
+    },
+    # ── NVIDIA Nemotron 3.5 (Aug 2026 — hybrid Mamba-2 / MoE) ──────────────
+    {
+        "id": "nemotron3.5-lightning-30b",
+        "name": "Nemotron 3.5 Lightning 30B-A3B (MoE)",
+        "family": "nemotron",
+        "provider": "NVIDIA",
+        "parameter_size": "30B (3B active)",
+        "parameter_count": 30.0,
+        "size_gb": 25.5,
+        "ram_required_gb": 28,
+        "ram_recommended_gb": 32,
+        "categories": ["general", "reasoning", "coding"],
+        "description": "NVIDIA's hybrid Mamba-2 MoE reasoning model built for long-running agents. Very fast for its size, up to 1M context.",
+        "quantization": "Q4_K_M",
+        "context_window": 1048576,
+        "supports_vision": False,
+        "supports_tools": True,
+        "supports_thinking": True,
+        "quality_tier": "great",
+        "speed_tier": "fast",
+        "hf_repo": "bartowski/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-GGUF",
+        "hf_filename": "NVIDIA-Nemotron-3.5-Lightning-30B-A3B-Q4_K_M.gguf",
+        "chat_template": "chatml",
+        "released": "2026-08",
+    },
+    # ── Z.ai GLM (Jan 2026 — MoE built for local coding + agents) ──────────
+    {
+        "id": "glm4.7-flash",
+        "name": "GLM-4.7-Flash 30B-A3B (MoE)",
+        "family": "glm",
+        "provider": "Z.ai",
+        "parameter_size": "30B (3B active)",
+        "parameter_count": 30.0,
+        "size_gb": 18.5,
+        "ram_required_gb": 22,
+        "ram_recommended_gb": 28,
+        "categories": ["general", "reasoning", "coding"],
+        "description": "Z.ai's local-first MoE. Excellent at coding and tool-driven agent work with thinking mode and 200K context.",
+        "quantization": "Q4_K_M",
+        "context_window": 202752,
+        "supports_vision": False,
+        "supports_tools": True,
+        "supports_thinking": True,
+        "quality_tier": "great",
+        "speed_tier": "fast",
+        "hf_repo": "bartowski/zai-org_GLM-4.7-Flash-GGUF",
+        "hf_filename": "zai-org_GLM-4.7-Flash-Q4_K_M.gguf",
+        "chat_template": "glm4",
+        "released": "2026-01",
+    },
+    # ── IBM Granite 4.2 (Aug 2026 — enterprise reasoning, Apache 2.0) ──────
+    {
+        "id": "granite4.2-3b",
+        "name": "Granite 4.2 3B",
+        "family": "granite",
+        "provider": "IBM",
+        "parameter_size": "3B",
+        "parameter_count": 3.0,
+        "size_gb": 2.3,
+        "ram_required_gb": 4,
+        "ram_recommended_gb": 6,
+        "categories": ["general", "reasoning", "multilingual"],
+        "description": "IBM's compact enterprise model with built-in thinking and reliable tool calling. Great for business tasks on 8GB machines.",
+        "quantization": "Q4_K_M",
+        "context_window": 131072,
+        "supports_vision": False,
+        "supports_tools": True,
+        "supports_thinking": True,
+        "quality_tier": "good",
+        "speed_tier": "fast",
+        "hf_repo": "bartowski/granite-4.2-3b-GGUF",
+        "hf_filename": "granite-4.2-3b-Q4_K_M.gguf",
+        "chat_template": "granite",
+        "released": "2026-08",
+    },
+    {
+        "id": "granite4.2-8b",
+        "name": "Granite 4.2 8B",
+        "family": "granite",
+        "provider": "IBM",
+        "parameter_size": "8B",
+        "parameter_count": 8.0,
+        "size_gb": 5.5,
+        "ram_required_gb": 8,
+        "ram_recommended_gb": 10,
+        "categories": ["general", "reasoning", "coding", "multilingual"],
+        "description": "Enterprise-grade reasoning, tool calling and code generation. A dependable business assistant for 16GB machines.",
+        "quantization": "Q4_K_M",
+        "context_window": 131072,
+        "supports_vision": False,
+        "supports_tools": True,
+        "supports_thinking": True,
+        "quality_tier": "great",
+        "speed_tier": "fast",
+        "hf_repo": "bartowski/granite-4.2-8b-GGUF",
+        "hf_filename": "granite-4.2-8b-Q4_K_M.gguf",
+        "chat_template": "granite",
+        "released": "2026-08",
+    },
+    # ── Mistral Ministral 3 + Devstral Small 2 (Dec 2025, Apache 2.0) ──────
+    {
+        "id": "ministral3-8b",
+        "name": "Ministral 3 8B",
+        "family": "mistral",
+        "provider": "Mistral AI",
+        "parameter_size": "8B",
+        "parameter_count": 8.0,
+        "size_gb": 5.2,
+        "ram_required_gb": 8,
+        "ram_recommended_gb": 10,
+        "categories": ["general", "multilingual"],
+        "description": "Mistral's modern 8B. Fast, direct answers (no thinking delay) with strong European-language support.",
+        "quantization": "Q4_K_M",
+        "context_window": 262144,
+        "supports_vision": False,
+        "supports_tools": True,
+        "quality_tier": "good",
+        "speed_tier": "fast",
+        "hf_repo": "bartowski/mistralai_Ministral-3-8B-Instruct-2512-GGUF",
+        "hf_filename": "mistralai_Ministral-3-8B-Instruct-2512-Q4_K_M.gguf",
+        "chat_template": "mistral",
+        "released": "2025-12",
+    },
+    {
+        "id": "ministral3-14b",
+        "name": "Ministral 3 14B",
+        "family": "mistral",
+        "provider": "Mistral AI",
+        "parameter_size": "14B",
+        "parameter_count": 14.0,
+        "size_gb": 8.2,
+        "ram_required_gb": 12,
+        "ram_recommended_gb": 16,
+        "categories": ["general", "reasoning", "multilingual"],
+        "description": "The largest Ministral 3. Quick, non-thinking responses with solid reasoning and tool use. Great default for writing tasks.",
+        "quantization": "Q4_K_M",
+        "context_window": 262144,
+        "supports_vision": False,
+        "supports_tools": True,
+        "quality_tier": "great",
+        "speed_tier": "medium",
+        "hf_repo": "bartowski/mistralai_Ministral-3-14B-Instruct-2512-GGUF",
+        "hf_filename": "mistralai_Ministral-3-14B-Instruct-2512-Q4_K_M.gguf",
+        "chat_template": "mistral",
+        "released": "2025-12",
+    },
+    {
+        "id": "devstral-small2-24b",
+        "name": "Devstral Small 2 24B",
+        "family": "mistral",
+        "provider": "Mistral AI",
+        "parameter_size": "24B",
+        "parameter_count": 24.0,
+        "size_gb": 14.3,
+        "ram_required_gb": 18,
+        "ram_recommended_gb": 24,
+        "categories": ["coding"],
+        "description": "Mistral's agentic coding model. Built for multi-file edits and tool-driven workflows — a strong pick for Coder mode.",
+        "quantization": "Q4_K_M",
+        "context_window": 262144,
+        "supports_vision": False,
+        "supports_tools": True,
+        "quality_tier": "great",
+        "speed_tier": "medium",
+        "hf_repo": "bartowski/mistralai_Devstral-Small-2-24B-Instruct-2512-GGUF",
+        "hf_filename": "mistralai_Devstral-Small-2-24B-Instruct-2512-Q4_K_M.gguf",
+        "chat_template": "mistral",
+        "released": "2025-12",
     },
 ]
 
@@ -972,11 +1301,24 @@ _CATALOG_BY_ID: Dict[str, Dict] = {m["id"]: m for m in LOCAL_MODEL_CATALOG}
 RAM_CAP_GB = 64
 
 
+def _release_ordinal(model: Dict) -> int:
+    """Map ``released`` (``YYYY-MM``) to a sortable month count; 0 if unknown."""
+    try:
+        year, month = model.get("released", "").split("-")
+        return int(year) * 12 + int(month)
+    except ValueError:
+        return 0
+
+
 def get_catalog(
     max_ram_gb: Optional[int] = None,
     category: Optional[str] = None,
 ) -> List[Dict]:
-    """Return catalog entries, optionally filtered by RAM budget and category."""
+    """Return catalog entries, optionally filtered by RAM budget and category.
+
+    Current-generation models come first (newest release first, smallest
+    first within a release month); legacy entries follow in the same order.
+    """
     cap = min(max_ram_gb, RAM_CAP_GB) if max_ram_gb else RAM_CAP_GB
     results = []
     for m in LOCAL_MODEL_CATALOG:
@@ -985,6 +1327,13 @@ def get_catalog(
         if category and category not in m["categories"]:
             continue
         results.append(m)
+    results.sort(
+        key=lambda m: (
+            bool(m.get("legacy", False)),
+            -_release_ordinal(m),
+            m["parameter_count"],
+        ),
+    )
     return results
 
 
@@ -996,8 +1345,9 @@ def get_model(model_id: str) -> Optional[Dict]:
 def get_recommended(system_ram_gb: int, limit: int = 3) -> List[Dict]:
     """Pick the best models that fit comfortably in the user's RAM.
 
-    Prioritises models flagged ``recommended: True`` (Gemma family),
-    then sorts by quality tier and parameter count.
+    Legacy entries are only used when nothing current fits. Within each
+    group, models flagged ``recommended: True`` come first, then higher
+    quality tier, newer release, and larger parameter count.
     """
     cap = min(system_ram_gb, RAM_CAP_GB)
     candidates = [
@@ -1007,8 +1357,10 @@ def get_recommended(system_ram_gb: int, limit: int = 3) -> List[Dict]:
     tier_order = {t: i for i, t in enumerate(QUALITY_TIERS)}
     candidates.sort(
         key=lambda m: (
+            bool(m.get("legacy", False)),       # current generation first
             -int(m.get("recommended", False)),   # recommended first
             -tier_order.get(m["quality_tier"], 0),
+            -_release_ordinal(m),
             -m["parameter_count"],
         ),
     )

@@ -58,7 +58,9 @@ Jinja2>=3.1.0
 ollama>=0.4.0
 
 # Local GGUF model inference (bundled local AI)
-llama-cpp-python>=0.3.20
+# Keep the floor at a release whose vendored llama.cpp loads every
+# architecture in services/model_catalog.py (0.3.36: Aug-2026 Granite/Qwen/Nemotron).
+llama-cpp-python>=0.3.36
 onnxruntime>=1.17.0
 huggingface-hub>=0.20.0
 tqdm>=4.66.0

@@ -39,12 +39,12 @@ interface WizardData {
 }
 
 const LOCAL_MODELS = [
-  { id: "gemma3-1b", name: "Gemma 3 1B", maker: "Google", size: "756 MB", ram: "2 GB", tag: "Starter", url: "https://huggingface.co/bartowski/google_gemma-3-1b-it-GGUF" },
-  { id: "qwen2.5-3b", name: "Qwen 2.5 3B", maker: "Alibaba", size: "2 GB", ram: "4 GB", tag: "Good", url: "https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF" },
-  { id: "qwen2.5-7b", name: "Qwen 2.5 7B", maker: "Alibaba", size: "4.7 GB", ram: "6 GB", tag: "Recommended", url: "https://huggingface.co/Qwen/Qwen2.5-7B-Instruct-GGUF" },
-  { id: "qwen2.5-14b", name: "Qwen 2.5 14B", maker: "Alibaba", size: "9 GB", ram: "10 GB", tag: "Great", url: "https://huggingface.co/Qwen/Qwen2.5-14B-Instruct-GGUF" },
-  { id: "mistral-small-22b", name: "Mistral Small 22B", maker: "Mistral", size: "13.5 GB", ram: "15 GB", tag: "Powerful", url: "https://huggingface.co/bartowski/Mistral-Small-24B-Instruct-2501-GGUF" },
-  { id: "qwen2.5-32b", name: "Qwen 2.5 32B", maker: "Alibaba", size: "19.8 GB", ram: "22 GB", tag: "Best", url: "https://huggingface.co/Qwen/Qwen2.5-32B-Instruct-GGUF" },
+  { id: "qwen3.5-2b", name: "Qwen 3.5 2B", maker: "Alibaba", size: "1.3 GB", ram: "2 GB", tag: "Starter", url: "https://huggingface.co/unsloth/Qwen3.5-2B-GGUF" },
+  { id: "qwen3.5-4b", name: "Qwen 3.5 4B", maker: "Alibaba", size: "2.7 GB", ram: "4 GB", tag: "Good", url: "https://huggingface.co/unsloth/Qwen3.5-4B-GGUF" },
+  { id: "qwen3.5-9b", name: "Qwen 3.5 9B", maker: "Alibaba", size: "5.7 GB", ram: "8 GB", tag: "Recommended", url: "https://huggingface.co/unsloth/Qwen3.5-9B-GGUF" },
+  { id: "gemma4-12b", name: "Gemma 4 12B", maker: "Google", size: "7.7 GB", ram: "10 GB", tag: "Great", url: "https://huggingface.co/bartowski/gemma-4-12B-it-GGUF" },
+  { id: "qwen3.8-27b", name: "Qwen 3.8 27B", maker: "Alibaba", size: "17.8 GB", ram: "22 GB", tag: "Best", url: "https://huggingface.co/bartowski/Qwen3.8-27B-GGUF" },
+  { id: "qwen3.6-35b-a3b", name: "Qwen 3.6 35B-A3B", maker: "Alibaba", size: "22.3 GB", ram: "26 GB", tag: "Powerful", url: "https://huggingface.co/bartowski/Qwen_Qwen3.6-35B-A3B-GGUF" },
 ];
 
 const PROVIDERS = [
@@ -478,7 +478,7 @@ export default function WizardPage() {
     // Auto-select local provider on first render
     if (!data.provider) {
       update("provider", "local");
-      update("model", "qwen2.5-7b");
+      update("model", "qwen3.5-9b");
     }
 
     return (
@@ -509,7 +509,7 @@ export default function WizardPage() {
               onClick={() => {
                 if (!isLocal) {
                   update("provider", "local");
-                  update("model", "qwen2.5-7b");
+                  update("model", "qwen3.5-9b");
                   setTestResult(null);
                   setShowCloudProviders(false);
                 }

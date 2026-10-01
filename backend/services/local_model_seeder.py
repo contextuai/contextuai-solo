@@ -22,7 +22,7 @@ MODELS_DIR = os.getenv(
 
 # Vendor prefixes used by community quantisers (e.g. bartowski).
 # When matching filenames, we strip these so "gemma-4-..." matches "google_gemma-4-...".
-_VENDOR_PREFIXES = ("google_", "meta-llama_", "microsoft_", "qwen_", "mistralai_")
+_VENDOR_PREFIXES = ("google_", "meta-llama_", "microsoft_", "qwen_", "mistralai_", "zai-org_")
 
 
 def _strip_vendor_prefix(filename: str) -> str:

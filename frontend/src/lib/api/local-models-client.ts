@@ -41,6 +41,10 @@ export interface CatalogModel {
   hf_repo: string;
   hf_filename: string;
   chat_template: string;
+  /** Release month, `YYYY-MM`. */
+  released?: string;
+  /** Superseded by a newer generation in the catalog (sorted last, never recommended). */
+  legacy?: boolean;
   installed: boolean;
   is_recommended?: boolean;
 }

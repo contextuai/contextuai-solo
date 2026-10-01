@@ -71,7 +71,9 @@ The backend was ported from MongoDB. A compatibility layer preserves the Motor A
 
 ### Local AI Models (`backend/routers/local_models.py`)
 GGUF models downloaded from HuggingFace, stored in `~/.contextuai-solo/models/`. Inference via llama-cpp-python, with automatic GPU offload (Apple Metal / NVIDIA CUDA / Vulkan) when the installed build supports it, falling back to CPU. Offload is gated by `llama_cpp.llama_supports_gpu_offload()` and tunable via the `LOCAL_MODEL_GPU_LAYERS` env var (`auto` (default) / `0` to force CPU / `<N>` layers); the loaded model stays resident in RAM across messages and only reloads on a model swap.
-- 41 curated GGUF models (Gemma 4, Qwen 3/3.5, DeepSeek R1, Llama 3, Mistral, Phi-4, etc.) from 0.5B to 70B
+- 51 curated GGUF models (`services/model_catalog.py`), 0.5B to 70B: 18 current-generation (Qwen 3.5 small / 3.6 / 3.8, Gemma 4, Nemotron 3.5 Lightning, Granite 4.2, GLM-4.7-Flash, Ministral 3, Devstral Small 2) plus 33 entries flagged `legacy: True` (Qwen 2.5/3, Gemma 3, Llama 3, DeepSeek R1 distills, Phi-4, …) that stay resolvable for existing downloads but sort last and are never recommended. Each entry has `released: "YYYY-MM"`; the Model Hub lists newest first and badges new/legacy models
+- Run `python scripts/verify_model_catalog.py` (from `backend/`) after editing the catalog — it checks every pinned `hf_repo`/`hf_filename` against the Hub. If a pinned file disappears upstream, `model_manager._resolve_repo_filename` falls back to a same-quant file and saves it under the catalog filename
+- Harmony-envelope models (gpt-oss, Meta Muse Glimmer) are deliberately absent: `think_tag_parser.py` only handles `<think>` and Gemma 4 channel markup
 - Download: `POST /api/v1/local-models/{model_id}/download` (SSE progress)
 - Sync to DB: `POST /api/v1/local-models/sync` (registers downloaded models in the `models` collection)
 - Models appear in chat dropdown after sync
