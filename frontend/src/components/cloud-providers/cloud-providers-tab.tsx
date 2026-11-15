@@ -63,6 +63,17 @@ const CATALOG: readonly CatalogProvider[] = [
       { key: "aws_region", label: "Region", placeholder: "us-east-1", secret: false },
     ],
   },
+  {
+    type: "huggingface",
+    name: "HuggingFace Hub",
+    tagline: "Authenticated GGUF downloads & higher rate limits",
+    portalUrl: "https://huggingface.co/settings/tokens",
+    portalLabel: "huggingface.co/settings/tokens",
+    brand: "#eab308",
+    fields: [
+      { key: "api_key", label: "Access Token", placeholder: "hf_...", secret: true },
+    ],
+  },
 ] as const;
 
 // ---------------------------------------------------------------------------

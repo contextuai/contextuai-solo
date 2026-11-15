@@ -72,6 +72,12 @@ class Settings:
         "http://localhost:3000,http://localhost:1420,http://127.0.0.1:18741"
     ))
 
+    # Edition Configuration ("lite" = Vesper, "solo" = ContextuAI Solo)
+    edition: str = field(default_factory=lambda: os.getenv(
+        "CONTEXTUAI_EDITION",
+        "solo"
+    ).strip().lower())
+
     # JWT/Auth Configuration (if needed)
     secret_key: str = field(default_factory=lambda: os.getenv(
         "SECRET_KEY",
@@ -124,6 +130,23 @@ AWS_ACCESS_KEY_ID = settings.aws_access_key_id
 AWS_SECRET_ACCESS_KEY = settings.aws_secret_access_key
 ENVIRONMENT = settings.environment
 DEBUG = settings.debug
+EDITION = settings.edition
+
+
+def get_active_edition() -> str:
+    """Return the active runtime edition ('lite' or 'solo')."""
+    val = (os.getenv("CONTEXTUAI_EDITION", EDITION) or "solo").strip().lower()
+    return "lite" if val == "lite" else "solo"
+
+
+def set_active_edition(edition: str) -> str:
+    """Flip the active runtime edition in-place (e.g. 'lite' -> 'solo')."""
+    global EDITION
+    norm = "lite" if (edition or "").strip().lower() == "lite" else "solo"
+    EDITION = norm
+    settings.edition = norm
+    os.environ["CONTEXTUAI_EDITION"] = norm
+    return norm
 
 # ---------------------------------------------------------------------------
 # Personal Docs (folder-mapped RAG) — caps + scheduler tick

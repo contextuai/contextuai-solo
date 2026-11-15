@@ -17,6 +17,7 @@ import PersonasPage from "@/routes/personas";
 import AnalyticsPage from "@/routes/analytics";
 import ConnectionsPage from "@/routes/connections";
 import ModelsPage from "@/routes/models";
+import LocalServerPage from "@/routes/local-server";
 import SettingsPage from "@/routes/settings";
 import ApprovalsPage from "@/routes/approvals";
 import BlueprintsPage from "@/routes/blueprints";
@@ -175,6 +176,7 @@ export default function App() {
               <Route element={<RequireWizard><DesktopLayout /></RequireWizard>}>
                 <Route path="/" element={<ChatPage />} />
                 <Route path="/models" element={<ModelsPage />} />
+                <Route path="/server" element={<LocalServerPage />} />
                 <Route path="/personas" element={<PersonasPage />} />
                 <Route path="/agents" element={<AgentsPage />} />
                 <Route path="/agents/:id" element={<AgentsPage />} />

@@ -28,13 +28,19 @@ import {
   cancelDownload,
   deleteModel,
   syncLocalModels,
+  listHfRepoGgufFiles,
+  searchHfGgufModels,
+  importLocalGguf,
   type CatalogModel,
   type InstalledModel,
   type SystemInfo,
   type DiskUsage,
   type DownloadProgress,
+  type HardwareProfile,
+  type HfRepoFile,
+  type HfSearchModel,
 } from "@/lib/api/local-models-client";
-import { getApiBaseUrl } from "@/lib/transport";
+import { getApiBaseUrl, getSidecarToken } from "@/lib/transport";
 import { useBackendStatus } from "@/contexts/backend-status-context";
 import { BackendWaiting } from "@/components/backend-waiting";
 import { Dialog } from "@/components/ui/dialog";
@@ -172,7 +178,26 @@ function ModelCard({
         </span>
       </div>
 
-      {/* RAM + Action */}
+      {/* RAM + Fit Badge + Action */}
+      {model.fit && (
+        <div
+          className={cn(
+            "mb-2 px-2 py-1 rounded-md text-[11px] font-medium flex items-center justify-between",
+            model.fit.verdict === "fits_gpu" &&
+              "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300",
+            model.fit.verdict === "partial_offload" &&
+              "bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300",
+            model.fit.verdict === "wont_fit" &&
+              "bg-red-50 text-red-700 dark:bg-red-500/15 dark:text-red-300"
+          )}
+          title={model.fit.reason}
+        >
+          <span>{model.fit.badge_label}</span>
+          {model.fit.estimated_tps > 0 && (
+            <span className="tabular-nums opacity-80">~{model.fit.estimated_tps} tok/s</span>
+          )}
+        </div>
+      )}
       <div className="flex items-center justify-between mt-auto pt-2 border-t border-neutral-100 dark:border-neutral-800">
         <RamIndicator required={model.ram_required_gb} systemRam={systemRam} />
 
@@ -295,13 +320,68 @@ function InstalledRow({
   );
 }
 
-// ── Custom Model Input ───────────────────────────────────────────────────
+// ── Custom Model Input (Live HF Search + Auto-Quant File Picker + Disk Import) ──
 
 function CustomModelInput({ onDownload }: { onDownload: () => void }) {
   const [repo, setRepo] = useState("");
   const [filename, setFilename] = useState("");
+  const [repoFiles, setRepoFiles] = useState<HfRepoFile[]>([]);
+  const [loadingFiles, setLoadingFiles] = useState(false);
+  const [hfQuery, setHfQuery] = useState("");
+  const [hfResults, setHfResults] = useState<HfSearchModel[]>([]);
+  const [searchingHf, setSearchingHf] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+  const [localGgufPath, setLocalGgufPath] = useState("");
+  const [importingLocal, setImportingLocal] = useState(false);
+
+  const handleSearchHf = async () => {
+    setSearchingHf(true);
+    try {
+      const res = await searchHfGgufModels(hfQuery.trim(), true);
+      setHfResults(res.models || []);
+    } catch {
+      setHfResults([]);
+    } finally {
+      setSearchingHf(false);
+    }
+  };
+
+  const handleInspectRepo = async (targetRepo: string) => {
+    const clean = targetRepo.trim();
+    if (!clean) return;
+    setRepo(clean);
+    setLoadingFiles(true);
+    try {
+      const res = await listHfRepoGgufFiles(clean);
+      setRepoFiles(res.files || []);
+      if (res.recommended_filename) {
+        setFilename(res.recommended_filename);
+      } else if (res.files?.length > 0) {
+        setFilename(res.files[0].filename);
+      }
+    } catch {
+      setRepoFiles([]);
+    } finally {
+      setLoadingFiles(false);
+    }
+  };
+
+  const handleImportDisk = async () => {
+    if (!localGgufPath.trim()) return;
+    setImportingLocal(true);
+    setStatus("Importing local .gguf...");
+    try {
+      await importLocalGguf(localGgufPath.trim(), false);
+      setStatus("Imported local .gguf!");
+      setLocalGgufPath("");
+      onDownload();
+    } catch (err) {
+      setStatus(`Import error: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setImportingLocal(false);
+    }
+  };
 
   const handleCustomDownload = async () => {
     if (!repo.trim() || !filename.trim()) return;
@@ -310,9 +390,12 @@ function CustomModelInput({ onDownload }: { onDownload: () => void }) {
 
     try {
       const baseUrl = await getApiBaseUrl();
+      const token = await getSidecarToken();
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (token) headers["X-ContextuAI-Token"] = token;
       const response = await fetch(`${baseUrl}/local-models/download/custom`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({ hf_repo: repo.trim(), hf_filename: filename.trim() }),
       });
 
@@ -339,6 +422,7 @@ function CustomModelInput({ onDownload }: { onDownload: () => void }) {
                   setStatus(null);
                   setRepo("");
                   setFilename("");
+                  setRepoFiles([]);
                   onDownload();
                 }, 1000);
               } else if (parsed.status === "error") {
@@ -358,38 +442,131 @@ function CustomModelInput({ onDownload }: { onDownload: () => void }) {
   };
 
   return (
-    <div className="flex items-end gap-2">
-      <div className="flex-1">
-        <label className="block text-[11px] text-neutral-500 mb-1">HuggingFace Repo</label>
+    <div className="space-y-4">
+      {/* Live HuggingFace Hub Search */}
+      <div className="flex items-center gap-2">
         <input
           type="text"
-          value={repo}
-          onChange={(e) => setRepo(e.target.value)}
-          placeholder="e.g. Qwen/Qwen2.5-7B-Instruct-GGUF"
-          disabled={downloading}
-          className="w-full px-3 py-2 text-xs rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-primary-500/40"
+          value={hfQuery}
+          onChange={(e) => setHfQuery(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && handleSearchHf()}
+          placeholder="Search live HuggingFace GGUF repos (e.g. Qwen3, Llama-3.3, DeepSeek)..."
+          className="flex-1 px-3 py-2 text-xs rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white"
         />
+        <button
+          type="button"
+          onClick={handleSearchHf}
+          disabled={searchingHf}
+          className="px-3 py-2 text-xs font-medium rounded-lg border border-neutral-200 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+        >
+          {searchingHf ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Search HF Hub"}
+        </button>
       </div>
-      <div className="flex-1">
-        <label className="block text-[11px] text-neutral-500 mb-1">GGUF Filename</label>
-        <input
-          type="text"
-          value={filename}
-          onChange={(e) => setFilename(e.target.value)}
-          placeholder="e.g. qwen2.5-7b-instruct-q4_k_m.gguf"
-          disabled={downloading}
-          className="w-full px-3 py-2 text-xs rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-primary-500/40"
-        />
+
+      {hfResults.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {hfResults.slice(0, 8).map((r) => (
+            <button
+              key={r.repo_id}
+              type="button"
+              onClick={() => handleInspectRepo(r.repo_id)}
+              className="px-2.5 py-1 text-xs rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 hover:border-primary-500 text-neutral-800 dark:text-neutral-200"
+            >
+              {r.repo_id}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Repo + Auto-Quant File Picker */}
+      <div className="flex items-end gap-2">
+        <div className="flex-1">
+          <label className="block text-[11px] text-neutral-500 mb-1">HuggingFace Repo</label>
+          <div className="flex gap-1.5">
+            <input
+              type="text"
+              value={repo}
+              onChange={(e) => setRepo(e.target.value)}
+              onBlur={() => repo.includes("/") && repoFiles.length === 0 && handleInspectRepo(repo)}
+              placeholder="e.g. bartowski/Qwen2.5-7B-Instruct-GGUF"
+              disabled={downloading}
+              className="w-full px-3 py-2 text-xs rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-primary-500/40"
+            />
+            <button
+              type="button"
+              onClick={() => handleInspectRepo(repo)}
+              disabled={loadingFiles || !repo.trim()}
+              className="px-2.5 py-2 text-xs rounded-lg border border-neutral-200 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-800 whitespace-nowrap"
+            >
+              {loadingFiles ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "List Quants"}
+            </button>
+          </div>
+        </div>
+        <div className="flex-1">
+          <label className="block text-[11px] text-neutral-500 mb-1">
+            GGUF Quantization File {repoFiles.length > 0 && `(${repoFiles.length} available)`}
+          </label>
+          {repoFiles.length > 0 ? (
+            <select
+              value={filename}
+              onChange={(e) => setFilename(e.target.value)}
+              disabled={downloading}
+              className="w-full px-3 py-2 text-xs rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white"
+            >
+              {repoFiles.map((f) => (
+                <option key={f.filename} value={f.filename}>
+                  {f.is_recommended_quant ? "★ Recommended · " : ""}
+                  {f.filename} ({f.size_gb} GB · {f.fit.badge_label})
+                </option>
+              ))}
+            </select>
+          ) : (
+            <input
+              type="text"
+              value={filename}
+              onChange={(e) => setFilename(e.target.value)}
+              placeholder="e.g. Qwen2.5-7B-Instruct-Q4_K_M.gguf"
+              disabled={downloading}
+              className="w-full px-3 py-2 text-xs rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-primary-500/40"
+            />
+          )}
+        </div>
+        <button
+          onClick={handleCustomDownload}
+          disabled={downloading || !repo.trim() || !filename.trim()}
+          className="px-4 py-2 text-xs font-medium rounded-lg bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-100 transition-colors disabled:opacity-50"
+        >
+          {downloading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Pull"}
+        </button>
       </div>
-      <button
-        onClick={handleCustomDownload}
-        disabled={downloading || !repo.trim() || !filename.trim()}
-        className="px-4 py-2 text-xs font-medium rounded-lg bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-100 transition-colors disabled:opacity-50"
-      >
-        {downloading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Pull"}
-      </button>
+
+      {/* Import Local .gguf from Disk */}
+      <div className="pt-3 border-t border-neutral-200 dark:border-neutral-800 flex items-end gap-2">
+        <div className="flex-1">
+          <label className="block text-[11px] text-neutral-500 mb-1">
+            Import Existing <code className="font-mono">.gguf</code> File from Disk (Zero Re-Download)
+          </label>
+          <input
+            type="text"
+            value={localGgufPath}
+            onChange={(e) => setLocalGgufPath(e.target.value)}
+            placeholder="Absolute path to local .gguf file (e.g. C:\Models\qwen2.5-7b-q4_k_m.gguf)"
+            disabled={importingLocal}
+            className="w-full px-3 py-2 text-xs rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white"
+          />
+        </div>
+        <button
+          type="button"
+          onClick={handleImportDisk}
+          disabled={importingLocal || !localGgufPath.trim()}
+          className="px-4 py-2 text-xs font-medium rounded-lg border border-neutral-300 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-800 dark:text-neutral-200 disabled:opacity-50"
+        >
+          {importingLocal ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Import .gguf"}
+        </button>
+      </div>
+
       {status && (
-        <span className="text-[11px] text-neutral-500 ml-1 whitespace-nowrap">{status}</span>
+        <div className="text-[11px] text-neutral-500">{status}</div>
       )}
     </div>
   );
@@ -401,6 +578,8 @@ export default function ModelsPage() {
   const { status: backendStatus } = useBackendStatus();
   const [tab, setTab] = useState<Tab>("discover");
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
+  const [hardwareProfile, setHardwareProfile] = useState<HardwareProfile | null>(null);
+  const [bestModel, setBestModel] = useState<CatalogModel | null>(null);
   const [catalog, setCatalog] = useState<CatalogModel[]>([]);
   const [installed, setInstalled] = useState<InstalledModel[]>([]);
   const [diskUsage, setDiskUsage] = useState<DiskUsage | null>(null);
@@ -424,6 +603,8 @@ export default function ModelsPage() {
       ]);
       setSystemInfo(sysInfo);
       setCatalog(catalogRes.models);
+      setHardwareProfile(catalogRes.hardware_profile ?? null);
+      setBestModel(catalogRes.best_for_machine ?? null);
       setInstalled(installedRes.models);
       setDiskUsage(installedRes.disk_usage);
     } catch (err) {
@@ -707,6 +888,49 @@ export default function ModelsPage() {
                 ))}
               </div>
             </div>
+
+            {/* SPEC-27: Best Model for Your Machine Hero Banner */}
+            {bestModel && !search && !activeCategory && (
+              <div className="mb-6 p-4 rounded-xl border border-primary-200 dark:border-primary-800 bg-primary-50/60 dark:bg-primary-950/20 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                <div>
+                  <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-primary-600 dark:text-primary-400 mb-1">
+                    <Star className="w-3.5 h-3.5" />
+                    Best Model for Your Machine
+                    {hardwareProfile?.recommended_backend && (
+                      <span className="px-2 py-0.5 rounded-full bg-primary-100 dark:bg-primary-900/40 text-[10px]">
+                        {hardwareProfile.recommended_backend.toUpperCase()} Accelerated
+                      </span>
+                    )}
+                  </div>
+                  <h3 className="text-base font-bold text-neutral-900 dark:text-white">
+                    {bestModel.name} ({bestModel.parameter_size} · {bestModel.quantization})
+                  </h3>
+                  <p className="text-xs text-neutral-600 dark:text-neutral-400 mt-0.5">
+                    {bestModel.description} —{" "}
+                    <span className="font-medium">
+                      {bestModel.fit?.badge_label || `${bestModel.size_gb} GB`}
+                      {bestModel.fit?.estimated_tps ? ` · ~${bestModel.fit.estimated_tps} tok/s` : ""}
+                    </span>
+                  </p>
+                </div>
+                <div className="shrink-0">
+                  {bestModel.installed ? (
+                    <span className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300">
+                      <Check className="w-4 h-4" /> Ready on Disk
+                    </span>
+                  ) : (
+                    <button
+                      onClick={() => handleDownload(bestModel.id)}
+                      disabled={!!downloads[bestModel.id]}
+                      className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg bg-primary-500 hover:bg-primary-600 text-white transition-colors disabled:opacity-50"
+                    >
+                      <Download className="w-4 h-4" />
+                      {downloads[bestModel.id] ? "Downloading..." : `1-Click Download (${bestModel.size_gb} GB)`}
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Recommended section */}
             {recommendedModels.length > 0 && !search && !activeCategory && (

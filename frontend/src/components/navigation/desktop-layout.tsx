@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils";
 import DesktopSidebar from "./desktop-sidebar";
 import DesktopSidebarCoder from "./desktop-sidebar-coder";
 import { ModeToggle } from "@/components/shell/mode-toggle";
+import { PrivacyShield } from "@/components/privacy/privacy-shield";
 import { useMode } from "@/contexts/mode-context";
 
 export function DesktopLayout() {
@@ -14,12 +15,16 @@ export function DesktopLayout() {
           inner pages never push it out of view. */}
       <div
         className={cn(
-          "flex-shrink-0 flex items-center justify-center h-12 px-4",
+          "flex-shrink-0 flex items-center justify-between h-12 px-4",
           "bg-white dark:bg-neutral-900",
           "border-b border-neutral-200 dark:border-neutral-800"
         )}
       >
+        <div className="w-36" />
         <ModeToggle />
+        <div className="w-36 flex justify-end">
+          <PrivacyShield />
+        </div>
       </div>
 
       <div className="flex flex-1 min-h-0">

@@ -20,6 +20,29 @@ export interface ModelCategory {
   description: string;
 }
 
+export interface ModelFit {
+  verdict: "fits_gpu" | "partial_offload" | "wont_fit";
+  badge_label: string;
+  estimated_tps: number;
+  recommended_n_ctx: number;
+  reason: string;
+}
+
+export interface HardwareProfile {
+  os: string;
+  arch: string;
+  cpu_cores_physical: number;
+  cpu_cores_logical: number;
+  avx2: boolean;
+  total_ram_gb: number;
+  available_ram_gb: number;
+  gpu_vendor: string | null;
+  gpu_name: string | null;
+  gpu_vram_gb: number | null;
+  apple_unified_memory: boolean;
+  recommended_backend: string;
+}
+
 export interface CatalogModel {
   id: string;
   name: string;
@@ -43,6 +66,7 @@ export interface CatalogModel {
   chat_template: string;
   installed: boolean;
   is_recommended?: boolean;
+  fit?: ModelFit;
 }
 
 export interface InstalledModel {
@@ -97,6 +121,9 @@ export async function getCatalog(params?: {
   system_ram_gb: number;
   max_recommended_params: string;
   categories: ModelCategory[];
+  hardware_profile?: HardwareProfile;
+  best_for_machine?: CatalogModel | null;
+  recommended_model_id?: string | null;
 }> {
   const query = new URLSearchParams();
   if (params?.category) query.set("category", params.category);
@@ -109,7 +136,81 @@ export async function getCatalog(params?: {
     system_ram_gb: number;
     max_recommended_params: string;
     categories: ModelCategory[];
+    hardware_profile?: HardwareProfile;
+    best_for_machine?: CatalogModel | null;
+    recommended_model_id?: string | null;
   }>(path);
+  return data;
+}
+
+export async function getHardwareProfile(rescan = false): Promise<HardwareProfile> {
+  const { data } = await api.get<HardwareProfile>(
+    `${BASE}/hardware${rescan ? "?rescan=true" : ""}`
+  );
+  return data;
+}
+
+export interface HfSearchModel {
+  repo_id: string;
+  author: string;
+  name: string;
+  downloads: number;
+  likes: number;
+  verified_quantizer: boolean;
+}
+
+export interface HfRepoFile {
+  filename: string;
+  size_bytes: number;
+  size_gb: number;
+  quantization: string;
+  fit: ModelFit;
+  is_recommended_quant: boolean;
+  mmproj_filename?: string | null;
+}
+
+export async function searchHfGgufModels(
+  q = "",
+  verifiedOnly = true
+): Promise<{ models: HfSearchModel[] }> {
+  const params = new URLSearchParams({
+    q,
+    verified_only: String(verifiedOnly),
+  });
+  const { data } = await api.get<{ models: HfSearchModel[] }>(
+    `${BASE}/hf-search?${params.toString()}`
+  );
+  return data;
+}
+
+export async function listHfRepoGgufFiles(repoId: string): Promise<{
+  repo_id: string;
+  files: HfRepoFile[];
+  recommended_filename: string | null;
+  mmproj_files: { filename: string; size_gb: number }[];
+}> {
+  const params = new URLSearchParams({ repo_id: repoId });
+  const { data } = await api.get<{
+    repo_id: string;
+    files: HfRepoFile[];
+    recommended_filename: string | null;
+    mmproj_files: { filename: string; size_gb: number }[];
+  }>(`${BASE}/hf-repo-files?${params.toString()}`);
+  return data;
+}
+
+export async function importLocalGguf(
+  sourcePath: string,
+  copyFile = false
+): Promise<{ status: string; model: InstalledModel; synced: number }> {
+  const { data } = await api.post<{
+    status: string;
+    model: InstalledModel;
+    synced: number;
+  }>(`${BASE}/import`, {
+    source_path: sourcePath,
+    copy_file: copyFile,
+  });
   return data;
 }
 

@@ -11,8 +11,10 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import FastAPI
+import hmac
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 import database
 from database_factory import get_database_adapter, close_database_adapter
@@ -54,6 +56,8 @@ from routers.cloud_providers import router as cloud_providers_router
 from routers.coder_projects import router as coder_projects_router
 from routers.coder_roles import router as coder_roles_router
 from routers.coder_workflow import router as coder_workflow_router
+from routers.privacy import router as privacy_router
+import settings as app_settings
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -67,14 +71,58 @@ APP_START_TIME = time.time()
 
 app = FastAPI(title="ContextuAI Solo")
 
-# CORS — allow all origins (desktop app, no security risk)
+ALLOWED_CORS_ORIGINS = [
+    "http://tauri.localhost",
+    "https://tauri.localhost",
+    "tauri://localhost",
+    "http://localhost:1420",
+    "http://127.0.0.1:1420",
+    "http://localhost:3000",
+]
+
+# CORS — locked down to Tauri webview + local Vite dev server origins (SPEC-01)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+_PUBLIC_PATHS = {
+    "/",
+    "/health",
+    "/api/v1/health",
+    "/docs",
+    "/openapi.json",
+}
+
+
+@app.middleware("http")
+async def sidecar_token_middleware(request: Request, call_next):
+    """Require sidecar token on /api/v1/* when CONTEXTUAI_SIDECAR_TOKEN is set."""
+    expected_token = (os.getenv("CONTEXTUAI_SIDECAR_TOKEN") or "").strip()
+    if not expected_token or request.method == "OPTIONS":
+        return await call_next(request)
+
+    path = request.url.path
+    if path in _PUBLIC_PATHS or path.startswith("/v1/"):
+        return await call_next(request)
+
+    if path.startswith("/api/v1/"):
+        provided = (request.headers.get("X-ContextuAI-Token") or "").strip()
+        if not provided:
+            auth_header = (request.headers.get("Authorization") or "").strip()
+            if auth_header.lower().startswith("bearer "):
+                provided = auth_header[7:].strip()
+
+        if not provided or not hmac.compare_digest(provided, expected_token):
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "Unauthorized: invalid or missing sidecar token"},
+            )
+
+    return await call_next(request)
 
 # No rate-limiting middleware — single user
 # No CORS debug middleware — not needed
@@ -114,6 +162,7 @@ app.include_router(cloud_providers_router)
 app.include_router(coder_projects_router)
 app.include_router(coder_roles_router)
 app.include_router(coder_workflow_router)
+app.include_router(privacy_router)
 
 
 # ---------------------------------------------------------------------------
@@ -506,26 +555,31 @@ async def startup_event():
         scheduler = await get_scheduler_adapter()
         app.state.scheduler = scheduler
 
+        is_lite = app_settings.get_active_edition() == "lite"
+
         # Seed default persona types if empty
         await _seed_persona_types(proxy)
 
-        # Seed agent library (business agents, exclude engineering)
-        await _seed_agent_library(proxy)
+        if not is_lite:
+            # Seed agent library (business agents, exclude engineering)
+            await _seed_agent_library(proxy)
 
-        # Seed blueprint library
-        await _seed_blueprints(proxy)
+            # Seed blueprint library
+            await _seed_blueprints(proxy)
 
-        # Seed crew templates library
-        await _seed_crew_templates(proxy)
+            # Seed crew templates library
+            await _seed_crew_templates(proxy)
 
-        # Seed example crews (ready-to-run samples) for the desktop user
-        try:
-            from services.sample_crew_seeder import seed_sample_crews
-            n_samples = await seed_sample_crews(proxy)
-            if n_samples:
-                logger.info("Seeded %d sample crew(s)", n_samples)
-        except Exception:
-            logger.exception("Failed to seed sample crews")
+            # Seed example crews (ready-to-run samples) for the desktop user
+            try:
+                from services.sample_crew_seeder import seed_sample_crews
+                n_samples = await seed_sample_crews(proxy)
+                if n_samples:
+                    logger.info("Seeded %d sample crew(s)", n_samples)
+            except Exception:
+                logger.exception("Failed to seed sample crews")
+        else:
+            logger.info("Lite ('Vesper') edition active — skipping 113-agent & crew seeding for fast startup")
 
         # Seed model configs for any already-downloaded local GGUF models
         await _seed_local_models(proxy)
@@ -570,17 +624,18 @@ async def startup_event():
         except Exception:
             logger.exception("coder_workflow_mode migration failed; continuing startup")
 
-        # Start Reddit poller (runs only when a Reddit account is configured)
-        from services.reddit_poller import get_poller
+        if not is_lite:
+            # Start Reddit poller (runs only when a Reddit account is configured)
+            from services.reddit_poller import get_poller
 
-        app.state.reddit_poller = get_poller(proxy)
-        await app.state.reddit_poller.start()
+            app.state.reddit_poller = get_poller(proxy)
+            await app.state.reddit_poller.start()
 
-        # Start Twitter poller (runs only when a Twitter account is configured)
-        from services.twitter_poller import get_poller as get_twitter_poller
+            # Start Twitter poller (runs only when a Twitter account is configured)
+            from services.twitter_poller import get_poller as get_twitter_poller
 
-        app.state.twitter_poller = get_twitter_poller(proxy)
-        await app.state.twitter_poller.start()
+            app.state.twitter_poller = get_twitter_poller(proxy)
+            await app.state.twitter_poller.start()
 
         # Personal Docs scheduler — sweeps folder mappings on a fixed tick
         try:
@@ -706,6 +761,7 @@ def read_root():
 
 
 @app.get("/health")
+@app.get("/api/v1/health")
 def health_check():
     uptime_seconds = int(time.time() - APP_START_TIME)
     return {
@@ -765,3 +821,67 @@ async def reseed_data():
     except Exception as e:
         logger.exception("Reseed failed")
         return {"status": "error", "detail": str(e)}
+
+
+@app.get("/api/v1/desktop/edition")
+async def get_desktop_edition():
+    """Return current desktop edition ('lite' = Vesper, 'solo' = ContextuAI Solo) (SPEC-33)."""
+    edition = app_settings.get_active_edition()
+    is_lite = edition == "lite"
+    return {
+        "edition": edition,
+        "brand_name": "Vesper" if is_lite else "ContextuAI Solo",
+        "tagline": (
+            "Quiet, sovereign intelligence on your metal."
+            if is_lite
+            else "Your autonomous AI workforce on your desktop."
+        ),
+        "features": {
+            "crews_enabled": not is_lite,
+            "agents_library_enabled": not is_lite,
+            "channels_enabled": not is_lite,
+            "coder_enabled": not is_lite,
+            "local_models_enabled": True,
+            "folder_rag_enabled": True,
+            "local_server_enabled": True,
+            "privacy_shield_enabled": True,
+        },
+    }
+
+
+@app.post("/api/v1/desktop/unlock-solo")
+async def unlock_solo_edition():
+    """Graduate from Lite ('Vesper') to full ContextuAI Solo in one click (SPEC-33).
+
+    Flips the active edition to 'solo' and seeds the agent library, blueprints,
+    and crew templates if not already present, while preserving all downloaded
+    GGUF models and SQLite data.
+    """
+    previous = app_settings.get_active_edition()
+    current = app_settings.set_active_edition("solo")
+    seeded_agents = 0
+    seeded_blueprints = 0
+
+    db = getattr(app.state, "db", None)
+    if db is not None:
+        try:
+            await _seed_persona_types(db)
+            await _seed_agent_library(db)
+            await _seed_blueprints(db)
+            await _seed_crew_templates(db)
+            seeded_agents = await db["workspace_agents"].count_documents({})
+            seeded_blueprints = await db["blueprints"].count_documents({})
+        except Exception:
+            logger.exception("Non-fatal error seeding library during unlock-solo")
+
+    return {
+        "status": "unlocked",
+        "unlocked": True,
+        "previous_edition": previous,
+        "edition": current,
+        "brand_name": "ContextuAI Solo",
+        "agents_available": seeded_agents,
+        "blueprints_available": seeded_blueprints,
+        "agents_seeded": seeded_agents,
+        "blueprints_seeded": seeded_blueprints,
+    }
