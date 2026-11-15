@@ -94,6 +94,8 @@ class LocalModelService:
         self._loaded_model_id: Optional[str] = None
         self._loaded_n_ctx: Optional[int] = None
         self._loaded_n_gpu_layers: Optional[int] = None
+        self._loaded_mmproj_path: Optional[str] = None
+        self._benchmarks: Dict[str, Dict[str, Any]] = {}
         self._inference_lock = asyncio.Lock()
         logger.info(
             "LocalModelService initialized – models dir: %s, llama-cpp available: %s",
@@ -164,17 +166,85 @@ class LocalModelService:
             if os.path.isfile(path):
                 return path
 
-        # 4. Fallback — scan both directories for any .gguf file
+        # 4. Direct match by model_id or stem in MODELS_DIR
+        clean_id = str(model_id or "").lower()
+        if clean_id.startswith("local:"):
+            clean_id = clean_id[len("local:"):]
+        if clean_id.startswith("custom-"):
+            clean_id = clean_id[len("custom-"):]
+
         for search_dir in [MODELS_DIR, os.path.join(MODELS_DIR, "chat")]:
             if os.path.isdir(search_dir):
                 for fname in sorted(os.listdir(search_dir)):
-                    if fname.lower().endswith(".gguf"):
+                    if not fname.lower().endswith(".gguf") or "mmproj" in fname.lower():
+                        continue
+                    stem = os.path.splitext(fname)[0].lower()
+                    if clean_id and (
+                        fname.lower() == clean_id
+                        or stem == clean_id
+                        or stem.replace(" ", "-") == clean_id
+                    ):
+                        return os.path.join(search_dir, fname)
+
+        # 5. Fallback — scan both directories for any .gguf file
+        for search_dir in [MODELS_DIR, os.path.join(MODELS_DIR, "chat")]:
+            if os.path.isdir(search_dir):
+                for fname in sorted(os.listdir(search_dir)):
+                    if fname.lower().endswith(".gguf") and "mmproj" not in fname.lower():
                         return os.path.join(search_dir, fname)
 
         raise FileNotFoundError(
             f"No .gguf model files found in {MODELS_DIR}. "
             "Download a model from the Model Hub first."
         )
+
+    @staticmethod
+    def _find_mmproj_for_model(model_path: str) -> Optional[str]:
+        """Find a companion mmproj-*.gguf file in the same directory if present."""
+        try:
+            parent = pathlib.Path(model_path).parent
+            stem_prefix = pathlib.Path(model_path).stem.split("-")[0].lower()
+            candidates = sorted(parent.glob("*mmproj*.gguf"))
+            for c in candidates:
+                if stem_prefix and stem_prefix in c.name.lower():
+                    return str(c)
+            if candidates:
+                return str(candidates[0])
+        except Exception:
+            pass
+        return None
+
+    @staticmethod
+    def _compute_dynamic_n_ctx(file_size_gb: float, model_path: str = "") -> int:
+        """Determine dynamic context size via model_fit_engine and LOCAL_MODEL_MAX_CTX (SPEC-15)."""
+        env_override = (os.getenv("LOCAL_MODEL_MAX_CTX") or "").strip()
+        if env_override:
+            try:
+                return max(512, int(env_override))
+            except ValueError:
+                pass
+
+        try:
+            from services.model_fit_engine import classify_model_fit
+            from services.gguf_inspector import inspect_gguf_file
+
+            max_ctx = 32768
+            if model_path and os.path.isfile(model_path):
+                try:
+                    info = inspect_gguf_file(model_path)
+                    if info.get("context_length"):
+                        max_ctx = int(info["context_length"])
+                except Exception:
+                    pass
+
+            fit = classify_model_fit({
+                "size_gb": max(0.5, file_size_gb),
+                "ram_required_gb": max(1.0, round(file_size_gb * 1.25, 1)),
+                "context_window": max_ctx,
+            })
+            return int(fit.get("recommended_n_ctx") or 4096)
+        except Exception:
+            return 2048 if file_size_gb > 15 else 4096
 
     def _ensure_model(self, model_path: str) -> Any:
         """Lazy-load (or swap) the Llama model."""
@@ -197,19 +267,15 @@ class LocalModelService:
 
         logger.info("Loading GGUF model from %s …", model_path)
 
-        # Determine context size — smaller for very large models to save RAM
+        # Determine dynamic context size via model_fit_engine (SPEC-15)
         file_size_gb = os.path.getsize(model_path) / (1024 ** 3)
-        if file_size_gb > 15:
-            n_ctx = 2048
-            logger.info("Large model (%.1f GB) — using n_ctx=%d to save RAM", file_size_gb, n_ctx)
-        elif file_size_gb > 8:
-            n_ctx = 4096
-        else:
-            n_ctx = 4096
+        n_ctx = self._compute_dynamic_n_ctx(file_size_gb, model_path)
+        logger.info("Dynamic context sizing for %.1f GB model: n_ctx=%d", file_size_gb, n_ctx)
 
         n_threads = os.cpu_count() or 4
         n_batch = 1024 if file_size_gb < 10 else 512
         gpu_layers = _resolve_gpu_layers()
+        mmproj_path = self._find_mmproj_for_model(model_path)
 
         if gpu_layers != 0:
             logger.info(
@@ -218,11 +284,13 @@ class LocalModelService:
             )
 
         # Try progressively more conservative configs. The first attempt uses
-        # the GPU (when available); subsequent attempts fall back to CPU and
-        # then to a minimal context so a single bad config never hard-fails.
+        # the GPU (when available) and dynamic n_ctx; subsequent attempts fall
+        # back to 4096 CPU and then 512 CPU so a single bad config never hard-fails.
         attempts = [(n_ctx, n_batch, gpu_layers)]
         if gpu_layers != 0:
             attempts.append((n_ctx, n_batch, 0))  # GPU OOM / driver issue → CPU
+        if n_ctx > 4096:
+            attempts.append((4096, 512, 0))
         if n_ctx > 512:
             attempts.append((512, 512, 0))  # last resort: tiny CPU context
 
@@ -278,9 +346,10 @@ class LocalModelService:
             ) from last_err
 
         self._loaded_model_path = model_path
+        self._loaded_mmproj_path = mmproj_path
         logger.info(
-            "Model loaded successfully: %s (%.1f GB, n_ctx=%d, n_gpu_layers=%d)",
-            model_path, file_size_gb, self._loaded_n_ctx, self._loaded_n_gpu_layers,
+            "Model loaded successfully: %s (%.1f GB, n_ctx=%d, n_gpu_layers=%d, mmproj=%s)",
+            model_path, file_size_gb, self._loaded_n_ctx, self._loaded_n_gpu_layers, bool(mmproj_path),
         )
         return self._model
 
@@ -306,6 +375,7 @@ class LocalModelService:
             self._loaded_model_id = None
             self._loaded_n_ctx = None
             self._loaded_n_gpu_layers = None
+            self._loaded_mmproj_path = None
             gc.collect()
             logger.info("Model unloaded and memory released: %s", model_path)
 
@@ -329,11 +399,73 @@ class LocalModelService:
             "model_id": self._loaded_model_id,
             "n_ctx": self._loaded_n_ctx,
             "n_gpu_layers": self._loaded_n_gpu_layers,
+            "mmproj_path": self._loaded_mmproj_path,
+            "supports_vision": bool(self._loaded_mmproj_path),
             "gpu_offload_supported": gpu_supported,
             "gpu_active": bool(self._loaded_n_gpu_layers),
             "llama_cpp_available": LLAMA_CPP_AVAILABLE,
             "models_dir": MODELS_DIR,
+            "last_benchmark": self._benchmarks.get(self._loaded_model_id or ""),
         }
+
+    async def preload_model(
+        self, model_id: str, model_config: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """Preload ``model_id`` into memory on the dedicated llama executor (SPEC-09)."""
+        import time as _time
+        t0 = _time.monotonic()
+        if not model_config:
+            from services.model_catalog import get_model
+            entry = get_model(model_id)
+            if entry:
+                model_config = {
+                    "model_metadata": {
+                        "runtime": "llama-cpp",
+                        "hf_filename": entry.get("hf_filename"),
+                    }
+                }
+        model_path = self._resolve_model_path(model_id, model_config)
+        loop = asyncio.get_event_loop()
+        async with self._inference_lock:
+            await loop.run_in_executor(_LLAMA_EXECUTOR, self._ensure_model, model_path)
+            self._loaded_model_id = model_id
+        load_ms = int((_time.monotonic() - t0) * 1000)
+        status = self.get_status()
+        status["load_time_ms"] = load_ms
+        return status
+
+    async def benchmark_model(
+        self, model_id: str, model_config: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """Run a short 32-token generation benchmark on ``model_id`` and return tok/s (SPEC-15)."""
+        import time as _time
+        status = await self.preload_model(model_id, model_config)
+        t0 = _time.monotonic()
+        res = await self.call_model(
+            prompt="Write a one-sentence summary of local AI privacy.",
+            model_id=model_id,
+            max_tokens=32,
+            temperature=0.1,
+            stream=False,
+            model_config=model_config,
+        )
+        elapsed_s = max(0.001, _time.monotonic() - t0)
+        tokens_used = res.get("tokens_used") or {}
+        out_tokens = int(tokens_used.get("output_tokens") or 0)
+        if out_tokens <= 0:
+            content = res.get("content") or ""
+            out_tokens = max(1, len(content.split()))
+        tps = round(out_tokens / elapsed_s, 1)
+        bench = {
+            "model_id": model_id,
+            "tokens_generated": out_tokens,
+            "elapsed_ms": int(elapsed_s * 1000),
+            "tokens_per_second": tps,
+            "n_ctx": status.get("n_ctx"),
+            "gpu_active": status.get("gpu_active"),
+        }
+        self._benchmarks[model_id] = bench
+        return bench
 
     def list_downloaded_models(self) -> List[Dict[str, Any]]:
         """Scan ``MODELS_DIR/chat/`` for .gguf files and return metadata."""
