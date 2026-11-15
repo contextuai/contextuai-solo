@@ -33,11 +33,12 @@ interface NavItem {
   icon: React.ElementType;
 }
 
-// Vesper (Lite Edition) — 5 focused, zero-bloat GGUF workstation surfaces (SPEC-33)
+// Vesper (Lite Edition) — 6 focused, zero-bloat GGUF workstation surfaces (SPEC-33)
 const liteNavItems: NavItem[] = [
   { label: "Chat", path: "/", icon: MessageSquare },
   { label: "Model Hub", path: "/models", icon: Cpu },
   { label: "Local Docs", path: "/knowledge", icon: Library },
+  { label: "Connectors & MCP", path: "/personas", icon: Plug },
   { label: "Local Server", path: "/server", icon: Server },
   { label: "Settings", path: "/settings", icon: Settings },
 ];

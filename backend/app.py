@@ -843,6 +843,7 @@ async def get_desktop_edition():
             "coder_enabled": not is_lite,
             "local_models_enabled": True,
             "folder_rag_enabled": True,
+            "connectors_mcp_enabled": True,
             "local_server_enabled": True,
             "privacy_shield_enabled": True,
         },
