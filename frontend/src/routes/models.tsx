@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import {
   Download,
@@ -19,11 +20,19 @@ import {
   Eye,
   AlertTriangle,
   RefreshCw,
+  Zap,
+  Gauge,
+  ArrowRight,
 } from "lucide-react";
 import {
   getCatalog,
   getInstalledModels,
   getSystemInfo,
+  getHardwareProfile,
+  getLoadedModel,
+  preloadLocalModel,
+  benchmarkLocalModel,
+  refreshModelCatalog,
   downloadModel,
   cancelDownload,
   deleteModel,
@@ -70,6 +79,14 @@ const SPEED_LABELS: Record<string, string> = {
   slow: "Slow",
 };
 
+const QUANT_TOOLTIPS: Record<string, string> = {
+  Q4_K_M: "Q4_K_M — Sweet-spot 4-bit quantization: ~99% of FP16 quality at 1/3 the RAM/VRAM.",
+  Q4_K_S: "Q4_K_S — Compact 4-bit quantization for tighter RAM/VRAM budgets.",
+  Q5_K_M: "Q5_K_M — High-precision 5-bit quantization with minimal perplexity loss.",
+  Q6_K: "Q6_K — Near-lossless 6-bit quantization for high-VRAM machines.",
+  Q8_0: "Q8_0 — Maximum 8-bit GGUF precision, virtually indistinguishable from original weights.",
+};
+
 type Tab = "discover" | "installed" | "cloud";
 
 // ── RAM indicator ────────────────────────────────────────────────────────
@@ -101,6 +118,7 @@ function ModelCard({
   progress,
   onDownload,
   onCancel,
+  onChat,
 }: {
   model: CatalogModel;
   systemRam: number;
@@ -108,8 +126,12 @@ function ModelCard({
   progress?: DownloadProgress;
   onDownload: (id: string) => void;
   onCancel: (id: string) => void;
+  onChat: (id: string) => void;
 }) {
   const percent = progress?.percent ?? 0;
+  const quantTip =
+    QUANT_TOOLTIPS[model.quantization] ||
+    `${model.quantization} — GGUF quantized weights optimized for local inference.`;
 
   return (
     <div
@@ -132,8 +154,18 @@ function ModelCard({
           <h3 className="text-sm font-semibold text-neutral-900 dark:text-white">
             {model.name}
           </h3>
-          <p className="text-[11px] text-neutral-500">
-            {model.provider} · {model.parameter_size} · {model.size_gb} GB download
+          <p className="text-[11px] text-neutral-500 flex items-center gap-1 flex-wrap">
+            <span>
+              {model.provider} · {model.parameter_size} · {model.size_gb} GB
+            </span>
+            {model.quantization && (
+              <span
+                title={quantTip}
+                className="px-1.5 py-0.2 rounded bg-neutral-100 dark:bg-neutral-800 text-[10px] font-mono text-neutral-600 dark:text-neutral-400 cursor-help border border-neutral-200/70 dark:border-neutral-700"
+              >
+                {model.quantization}
+              </span>
+            )}
           </p>
         </div>
         <span className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded", QUALITY_COLORS[model.quality_tier])}>
@@ -202,9 +234,18 @@ function ModelCard({
         <RamIndicator required={model.ram_required_gb} systemRam={systemRam} />
 
         {model.installed ? (
-          <span className="inline-flex items-center gap-1 text-xs font-medium text-green-600 dark:text-green-400">
-            <Check className="w-3.5 h-3.5" /> Installed
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center gap-1 text-xs font-medium text-green-600 dark:text-green-400">
+              <Check className="w-3.5 h-3.5" /> Installed
+            </span>
+            <button
+              type="button"
+              onClick={() => onChat(model.id)}
+              className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg bg-primary-50 dark:bg-primary-500/15 text-primary-600 dark:text-primary-400 hover:bg-primary-100 dark:hover:bg-primary-500/25 transition-colors"
+            >
+              Chat <ArrowRight className="w-3 h-3" />
+            </button>
+          </div>
         ) : downloading ? (
           <div className="flex items-center gap-2">
             {progress?.status === "error" ? (
@@ -273,29 +314,93 @@ function ModelCard({
 function InstalledRow({
   model,
   deleting,
+  isLoaded,
+  preloading,
+  benchmarking,
+  benchmarkTps,
+  onPreload,
+  onBenchmark,
+  onChat,
   onDelete,
 }: {
   model: InstalledModel;
   deleting: boolean;
+  isLoaded: boolean;
+  preloading: boolean;
+  benchmarking: boolean;
+  benchmarkTps?: number;
+  onPreload: (id: string) => void;
+  onBenchmark: (id: string) => void;
+  onChat: (id: string) => void;
   onDelete: (id: string) => void;
 }) {
   return (
-    <div className="flex items-center justify-between p-4 bg-white dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-800">
-      <div className="flex items-center gap-3">
-        <div className="p-2 rounded-lg bg-green-100 dark:bg-green-500/20">
+    <div className="flex flex-wrap items-center justify-between gap-3 p-4 bg-white dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-800">
+      <div className="flex items-center gap-3 min-w-0">
+        <div className="p-2 rounded-lg bg-green-100 dark:bg-green-500/20 shrink-0">
           <Check className="w-4 h-4 text-green-600 dark:text-green-400" />
         </div>
-        <div>
-          <h4 className="text-sm font-semibold text-neutral-900 dark:text-white">
-            {model.name}
-          </h4>
-          <p className="text-[11px] text-neutral-500">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h4 className="text-sm font-semibold text-neutral-900 dark:text-white truncate">
+              {model.name}
+            </h4>
+            {isLoaded && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                Warm in RAM
+              </span>
+            )}
+            {benchmarkTps !== undefined && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-primary-100 text-primary-700 dark:bg-primary-500/20 dark:text-primary-300 tabular-nums">
+                <Gauge className="w-3 h-3" />
+                {benchmarkTps.toFixed(1)} tok/s
+              </span>
+            )}
+          </div>
+          <p className="text-[11px] text-neutral-500 truncate">
             {model.provider} · {model.parameter_size} · {model.size_gb} GB on disk
           </p>
         </div>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
+        <button
+          type="button"
+          onClick={() => onChat(model.id)}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-primary-500 hover:bg-primary-600 text-white transition-colors"
+        >
+          <MessageSquare className="w-3.5 h-3.5" />
+          Open in Chat
+        </button>
+        <button
+          type="button"
+          onClick={() => onPreload(model.id)}
+          disabled={preloading || isLoaded}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-neutral-200 dark:border-neutral-700 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors disabled:opacity-50"
+          title="Preload GGUF weights into RAM/VRAM for instant first-token response"
+        >
+          {preloading ? (
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          ) : (
+            <Zap className="w-3.5 h-3.5 text-amber-500" />
+          )}
+          {isLoaded ? "Loaded" : "Preload"}
+        </button>
+        <button
+          type="button"
+          onClick={() => onBenchmark(model.id)}
+          disabled={benchmarking}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-neutral-200 dark:border-neutral-700 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors disabled:opacity-50"
+          title="Run 64-token speed benchmark on your hardware"
+        >
+          {benchmarking ? (
+            <Loader2 className="w-3.5 h-3.5 animate-spin text-primary-500" />
+          ) : (
+            <Gauge className="w-3.5 h-3.5 text-primary-500" />
+          )}
+          {benchmarking ? "Benchmarking..." : "Benchmark"}
+        </button>
         {model.hf_repo && (
           <a
             href={`https://huggingface.co/${model.hf_repo}`}
@@ -575,6 +680,7 @@ function CustomModelInput({ onDownload }: { onDownload: () => void }) {
 // ── Main Page ────────────────────────────────────────────────────────────
 
 export default function ModelsPage() {
+  const navigate = useNavigate();
   const { status: backendStatus } = useBackendStatus();
   const [tab, setTab] = useState<Tab>("discover");
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
@@ -583,6 +689,12 @@ export default function ModelsPage() {
   const [catalog, setCatalog] = useState<CatalogModel[]>([]);
   const [installed, setInstalled] = useState<InstalledModel[]>([]);
   const [diskUsage, setDiskUsage] = useState<DiskUsage | null>(null);
+  const [loadedModelId, setLoadedModelId] = useState<string | null>(null);
+  const [preloadingId, setPreloadingId] = useState<string | null>(null);
+  const [benchmarkingId, setBenchmarkingId] = useState<string | null>(null);
+  const [benchmarks, setBenchmarks] = useState<Record<string, number>>({});
+  const [rescanningHw, setRescanningHw] = useState(false);
+  const [wontFitGuardModel, setWontFitGuardModel] = useState<CatalogModel | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
@@ -596,10 +708,11 @@ export default function ModelsPage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [sysInfo, catalogRes, installedRes] = await Promise.all([
+      const [sysInfo, catalogRes, installedRes, loadedRes] = await Promise.all([
         getSystemInfo(),
         getCatalog(),
         getInstalledModels(),
+        getLoadedModel().catch(() => ({ loaded: false, model_id: undefined })),
       ]);
       setSystemInfo(sysInfo);
       setCatalog(catalogRes.models);
@@ -607,6 +720,7 @@ export default function ModelsPage() {
       setBestModel(catalogRes.best_for_machine ?? null);
       setInstalled(installedRes.models);
       setDiskUsage(installedRes.disk_usage);
+      setLoadedModelId(loadedRes.model_id ?? null);
     } catch (err) {
       console.error("Failed to load model data:", err);
     } finally {
@@ -617,6 +731,66 @@ export default function ModelsPage() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  const handleRescanHardware = async () => {
+    setRescanningHw(true);
+    try {
+      const hw = await getHardwareProfile(true);
+      setHardwareProfile(hw);
+      await refreshModelCatalog().catch(() => {});
+      await loadData();
+    } catch {
+      // ignore
+    } finally {
+      setRescanningHw(false);
+    }
+  };
+
+  const handlePreload = async (modelId: string) => {
+    setPreloadingId(modelId);
+    try {
+      const res = await preloadLocalModel(modelId);
+      setLoadedModelId(res.model_id ?? modelId);
+    } catch (err) {
+      setErrorModal({
+        title: "Preload Notice",
+        message:
+          err instanceof Error
+            ? err.message
+            : "Could not preload model into memory.",
+      });
+    } finally {
+      setPreloadingId(null);
+    }
+  };
+
+  const handleBenchmark = async (modelId: string) => {
+    setBenchmarkingId(modelId);
+    try {
+      const res = await benchmarkLocalModel(modelId);
+      if (typeof res.tokens_per_second === "number") {
+        setBenchmarks((prev) => ({ ...prev, [modelId]: res.tokens_per_second }));
+      }
+      setLoadedModelId(res.model_id || modelId);
+    } catch (err) {
+      setErrorModal({
+        title: "Benchmark Notice",
+        message:
+          err instanceof Error
+            ? err.message
+            : "Could not complete speed benchmark.",
+      });
+    } finally {
+      setBenchmarkingId(null);
+    }
+  };
+
+  const handleOpenInChat = useCallback(
+    (modelId: string) => {
+      navigate(`/?model=${encodeURIComponent(modelId)}`);
+    },
+    [navigate]
+  );
 
   // ── Download handler ───────────────────────────────────────────────────
 
@@ -707,6 +881,18 @@ export default function ModelsPage() {
     }
   }, [loadData]);
 
+  const requestDownload = useCallback(
+    (modelId: string) => {
+      const target = catalog.find((m) => m.id === modelId);
+      if (target?.fit?.verdict === "wont_fit") {
+        setWontFitGuardModel(target);
+        return;
+      }
+      void handleDownload(modelId);
+    },
+    [catalog, handleDownload]
+  );
+
   // ── Filter catalog ─────────────────────────────────────────────────────
 
   const filteredCatalog = catalog.filter((m) => {
@@ -757,97 +943,143 @@ export default function ModelsPage() {
   }
 
   return (
-    <div className="flex flex-col h-full bg-neutral-50 dark:bg-[#1a1b1a]">
-      {/* Header */}
-      <div className="px-6 pt-6 pb-4 border-b border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900">
+    <div className="flex flex-col h-full">
+      {/* M3 Header */}
+      <div className="px-6 pt-6 pb-4 border-b border-neutral-200/75 dark:border-neutral-800/90 bg-white/80 dark:bg-neutral-900/75 backdrop-blur-md">
         <div className="flex items-center justify-between mb-4">
-          <div>
-            <h1 className="text-xl font-bold text-neutral-900 dark:text-white">
-              Model Hub
-            </h1>
-            <p className="text-sm text-neutral-500 dark:text-neutral-400">
-              Download and manage local AI models
-            </p>
+          <div className="flex items-center gap-3.5">
+            <div className="flex items-center justify-center w-11 h-11 rounded-2xl bg-primary-500/12 text-primary-600 dark:text-primary-400 border border-primary-500/20">
+              <Cpu className="w-5 h-5" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold tracking-tight text-neutral-900 dark:text-white">
+                Model Hub
+              </h1>
+              <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400">
+                Download, inspect, and benchmark local GGUF models tailored to your hardware
+              </p>
+            </div>
           </div>
           <button
             onClick={loadData}
-            className="p-2 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-medium border border-neutral-200/80 dark:border-neutral-700/80 bg-white/80 dark:bg-neutral-800/80 hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors"
             title="Refresh"
           >
-            <RefreshCw className="w-4 h-4 text-neutral-500" />
+            <RefreshCw className="w-3.5 h-3.5 text-neutral-500" />
+            <span className="hidden sm:inline text-neutral-600 dark:text-neutral-300">Refresh</span>
           </button>
         </div>
 
-        {/* System info banner */}
+        {/* M3 Hardware X-Ray Tonal Hero Card (SPEC-27) */}
         {systemInfo && (
-          <div className="flex items-center gap-4 p-3 rounded-xl bg-neutral-50 dark:bg-neutral-800 mb-4">
-            <div className="flex items-center gap-2">
-              <Cpu className="w-4 h-4 text-primary-500" />
-              <span className="text-sm font-medium text-neutral-900 dark:text-white">
-                {systemInfo.total_ram_gb} GB RAM
-              </span>
-              <span className="text-xs text-neutral-500">
-                — models up to {systemInfo.max_recommended_params} recommended
-              </span>
+          <div className="flex flex-wrap items-center gap-3 p-4 rounded-2xl m3-card-tonal mb-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-xl bg-primary-500/15 text-primary-600 dark:text-primary-400">
+                <Cpu className="w-4 h-4" />
+              </div>
+              <div>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-xs font-bold uppercase tracking-wider text-primary-700 dark:text-primary-300">
+                    Hardware X-Ray
+                  </span>
+                  {hardwareProfile?.recommended_backend && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase bg-primary-500/15 text-primary-700 dark:text-primary-300">
+                      {hardwareProfile.recommended_backend} Engine
+                    </span>
+                  )}
+                  {hardwareProfile?.avx2 && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-white/80 dark:bg-neutral-900/70 text-neutral-600 dark:text-neutral-300 border border-neutral-200/70 dark:border-neutral-700">
+                      AVX2
+                    </span>
+                  )}
+                </div>
+                <div className="text-xs text-neutral-600 dark:text-neutral-300 mt-0.5 flex items-center gap-2 flex-wrap">
+                  <span className="font-semibold text-neutral-900 dark:text-white">
+                    {systemInfo.total_ram_gb} GB RAM
+                  </span>
+                  {hardwareProfile?.cpu_cores_physical && (
+                    <span>· {hardwareProfile.cpu_cores_physical}C/{hardwareProfile.cpu_cores_logical}T CPU</span>
+                  )}
+                  <span>· Up to {systemInfo.max_recommended_params} params recommended</span>
+                </div>
+              </div>
             </div>
-            {systemInfo.gpu && (
-              <div className="flex items-center gap-1.5 text-xs text-neutral-500">
-                <HardDrive className="w-3.5 h-3.5" />
-                {systemInfo.gpu}
-                {systemInfo.gpu_vram_gb && ` (${systemInfo.gpu_vram_gb} GB)`}
+            {(hardwareProfile?.gpu_name || systemInfo.gpu) && (
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/90 dark:bg-neutral-900/80 border border-neutral-200/80 dark:border-neutral-700 text-xs text-neutral-700 dark:text-neutral-300">
+                <Zap className="w-3.5 h-3.5 text-primary-500" />
+                <span className="font-medium">{hardwareProfile?.gpu_name || systemInfo.gpu}</span>
+                {(hardwareProfile?.gpu_vram_gb || systemInfo.gpu_vram_gb) && (
+                  <span className="text-neutral-500">
+                    ({hardwareProfile?.gpu_vram_gb ?? systemInfo.gpu_vram_gb} GB VRAM)
+                  </span>
+                )}
               </div>
             )}
-            {diskUsage && (
-              <div className="ml-auto flex items-center gap-1.5 text-xs text-neutral-500">
-                <HardDrive className="w-3.5 h-3.5" />
-                {diskUsage.models_gb} GB used · {diskUsage.disk_free_gb} GB free
-              </div>
-            )}
+            <div className="ml-auto flex items-center gap-2.5">
+              {diskUsage && (
+                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/70 dark:bg-neutral-900/60 text-xs text-neutral-600 dark:text-neutral-300">
+                  <HardDrive className="w-3.5 h-3.5 text-primary-500" />
+                  {diskUsage.models_gb} GB used · {diskUsage.disk_free_gb} GB free
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={handleRescanHardware}
+                disabled={rescanningHw}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-primary-500/15 hover:bg-primary-500/25 text-primary-700 dark:text-primary-300 transition-colors"
+                title="Rescan GPU/RAM & sync OTA catalog"
+              >
+                <RefreshCw className={cn("w-3 h-3", rescanningHw && "animate-spin")} />
+                Rescan HW
+              </button>
+            </div>
           </div>
         )}
 
-        {/* Tabs */}
-        <div className="flex items-center gap-1">
-          <button
-            onClick={() => setTab("discover")}
-            className={cn(
-              "px-4 py-2 text-sm font-medium rounded-lg transition-colors",
-              tab === "discover"
-                ? "bg-primary-50 dark:bg-primary-500/10 text-primary-600 dark:text-primary-400"
-                : "text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
-            )}
-          >
-            Discover
-          </button>
-          <button
-            onClick={() => setTab("installed")}
-            className={cn(
-              "px-4 py-2 text-sm font-medium rounded-lg transition-colors flex items-center gap-2",
-              tab === "installed"
-                ? "bg-primary-50 dark:bg-primary-500/10 text-primary-600 dark:text-primary-400"
-                : "text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
-            )}
-          >
-            Installed
-            {installed.length > 0 && (
-              <span className="px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400">
-                {installed.length}
-              </span>
-            )}
-          </button>
-          <button
-            onClick={() => setTab("cloud")}
-            className={cn(
-              "px-4 py-2 text-sm font-medium rounded-lg transition-colors flex items-center gap-2",
-              tab === "cloud"
-                ? "bg-primary-50 dark:bg-primary-500/10 text-primary-600 dark:text-primary-400"
-                : "text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
-            )}
-          >
-            Cloud
-          </button>
+        {/* M3 Segmented Tabs */}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="inline-flex gap-1 p-1 rounded-2xl bg-neutral-100/80 dark:bg-neutral-950/70 border border-neutral-200/70 dark:border-neutral-800">
+            <button
+              onClick={() => setTab("discover")}
+              className={cn(
+                "px-4 py-1.5 text-sm font-medium rounded-xl transition-all",
+                tab === "discover"
+                  ? "bg-primary-500/15 text-primary-700 dark:text-primary-300 shadow-sm ring-1 ring-primary-500/25"
+                  : "text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-200"
+              )}
+            >
+              Discover
+            </button>
+            <button
+              onClick={() => setTab("installed")}
+              className={cn(
+                "px-4 py-1.5 text-sm font-medium rounded-xl transition-all flex items-center gap-2",
+                tab === "installed"
+                  ? "bg-primary-500/15 text-primary-700 dark:text-primary-300 shadow-sm ring-1 ring-primary-500/25"
+                  : "text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-200"
+              )}
+            >
+              Installed
+              {installed.length > 0 && (
+                <span className="px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-primary-500 text-white">
+                  {installed.length}
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => setTab("cloud")}
+              className={cn(
+                "px-4 py-1.5 text-sm font-medium rounded-xl transition-all flex items-center gap-2",
+                tab === "cloud"
+                  ? "bg-primary-500/15 text-primary-700 dark:text-primary-300 shadow-sm ring-1 ring-primary-500/25"
+                  : "text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-200"
+              )}
+            >
+              Cloud
+            </button>
+          </div>
           {activeDownloadCount > 0 && (
-            <span className="ml-2 px-2 py-1 text-[10px] font-bold rounded-full bg-primary-100 text-primary-700 dark:bg-primary-500/20 dark:text-primary-400 animate-pulse">
+            <span className="ml-2 px-2.5 py-1 text-[11px] font-bold rounded-full bg-primary-500/15 text-primary-700 dark:text-primary-300 animate-pulse">
               {activeDownloadCount} downloading
             </span>
           )}
@@ -860,15 +1092,15 @@ export default function ModelsPage() {
         {tab === "discover" && (
           <>
             {/* Search + Filters */}
-            <div className="flex items-center gap-3 mb-6">
-              <div className="relative flex-1 max-w-md">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
+            <div className="flex flex-wrap items-center gap-3 mb-6">
+              <div className="relative flex-1 min-w-[220px] max-w-md">
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
                 <input
                   type="text"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Search models..."
-                  className="w-full pl-9 pr-4 py-2 text-sm rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-primary-500/40"
+                  className="w-full pl-10 pr-4 py-2 text-sm rounded-full border border-neutral-200/80 dark:border-neutral-700/80 bg-white/90 dark:bg-neutral-900/90 text-neutral-900 dark:text-white placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-primary-500/40"
                 />
               </div>
               <div className="flex items-center gap-1.5 overflow-x-auto">
@@ -947,8 +1179,9 @@ export default function ModelsPage() {
                       systemRam={systemInfo?.total_ram_gb ?? 8}
                       downloading={!!downloads[m.id]}
                       progress={downloads[m.id]}
-                      onDownload={handleDownload}
+                      onDownload={requestDownload}
                       onCancel={handleCancel}
+                      onChat={handleOpenInChat}
                     />
                   ))}
                 </div>
@@ -973,8 +1206,9 @@ export default function ModelsPage() {
                       systemRam={systemInfo?.total_ram_gb ?? 8}
                       downloading={!!downloads[m.id]}
                       progress={downloads[m.id]}
-                      onDownload={handleDownload}
+                      onDownload={requestDownload}
                       onCancel={handleCancel}
+                      onChat={handleOpenInChat}
                     />
                   ))}
                 </div>
@@ -1065,6 +1299,17 @@ export default function ModelsPage() {
                     key={m.id}
                     model={m}
                     deleting={deletingId === m.id}
+                    isLoaded={
+                      !!loadedModelId &&
+                      (loadedModelId === m.id ||
+                        loadedModelId === m.id.replace(/^local:/, ""))
+                    }
+                    preloading={preloadingId === m.id}
+                    benchmarking={benchmarkingId === m.id}
+                    benchmarkTps={benchmarks[m.id]}
+                    onPreload={handlePreload}
+                    onBenchmark={handleBenchmark}
+                    onChat={handleOpenInChat}
                     onDelete={handleDelete}
                   />
                 ))}
@@ -1076,6 +1321,76 @@ export default function ModelsPage() {
         {/* ── Cloud Tab ─────────────────────────────────────────────────── */}
         {tab === "cloud" && <CloudProvidersTab />}
       </div>
+
+      {/* Won't Fit Hardware Guardrail Modal (SPEC-27) */}
+      <Dialog
+        open={!!wontFitGuardModel}
+        onClose={() => setWontFitGuardModel(null)}
+        title="Hardware Memory Guardrail"
+        actions={
+          <div className="flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setWontFitGuardModel(null)}
+              className="px-4 py-2 text-xs font-medium rounded-lg border border-neutral-200 dark:border-neutral-700 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+            >
+              Cancel
+            </button>
+            {bestModel && !bestModel.installed && (
+              <button
+                type="button"
+                onClick={() => {
+                  const recId = bestModel.id;
+                  setWontFitGuardModel(null);
+                  void handleDownload(recId);
+                }}
+                className="px-4 py-2 text-xs font-semibold rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white"
+              >
+                Download Recommended ({bestModel.name})
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                if (wontFitGuardModel) {
+                  const id = wontFitGuardModel.id;
+                  setWontFitGuardModel(null);
+                  void handleDownload(id);
+                }
+              }}
+              className="px-4 py-2 text-xs font-medium rounded-lg bg-amber-500 hover:bg-amber-600 text-white"
+            >
+              Download Anyway
+            </button>
+          </div>
+        }
+      >
+        {wontFitGuardModel && (
+          <div className="space-y-3 text-sm text-neutral-700 dark:text-neutral-300">
+            <div className="flex items-start gap-3 p-3 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-red-700 dark:text-red-300 text-xs">
+              <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />
+              <div>
+                <div className="font-semibold">
+                  {wontFitGuardModel.name} requires ~{wontFitGuardModel.ram_required_gb} GB memory
+                </div>
+                <div className="mt-0.5">
+                  {wontFitGuardModel.fit?.reason ||
+                    `Your system has ${systemInfo?.total_ram_gb ?? 8} GB total RAM. Loading this model may cause heavy swap thrashing or out-of-memory errors.`}
+                </div>
+              </div>
+            </div>
+            {bestModel && (
+              <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                For optimal speed on your machine, Hardware X-Ray recommends{" "}
+                <strong className="text-neutral-900 dark:text-white">
+                  {bestModel.name} ({bestModel.size_gb} GB)
+                </strong>
+                .
+              </p>
+            )}
+          </div>
+        )}
+      </Dialog>
 
       {/* Error modal */}
       <Dialog

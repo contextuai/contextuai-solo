@@ -105,9 +105,9 @@ export default function CrewDetailPage() {
   // always collect an objective first.
   const handleStartRun = () => setRunDialogOpen(true);
 
-  const handleRunSubmit = async (taskInput: string) => {
+  const handleRunSubmit = async (taskInput: string, dryRun = false) => {
     if (!id) return;
-    const run = await crewsApi.startRun(id, taskInput);
+    const run = await crewsApi.startRun(id, taskInput, {}, dryRun);
     setRunDialogOpen(false);
     setActiveRunView({ crewId: id, runId: run.run_id });
     handleRefresh();
@@ -703,9 +703,10 @@ function RunCrewDialog({
   crewDescription?: string | null;
   isAutonomous: boolean;
   onClose: () => void;
-  onSubmit: (taskInput: string) => Promise<void>;
+  onSubmit: (taskInput: string, dryRun: boolean) => Promise<void>;
 }) {
   const [task, setTask] = useState("");
+  const [dryRun, setDryRun] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -717,7 +718,7 @@ function RunCrewDialog({
     setSubmitting(true);
     setError(null);
     try {
-      await onSubmit(task);
+      await onSubmit(task, dryRun);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to start run");
       setSubmitting(false);
@@ -777,6 +778,26 @@ function RunCrewDialog({
               crew uses this as the objective for every agent in the pipeline.
             </p>
           </div>
+
+          {/* SPEC-10: Dry-Run Sandbox Mode Toggle */}
+          <label className="flex items-start gap-3 p-3 rounded-xl border border-amber-500/25 bg-amber-500/5 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={dryRun}
+              onChange={(e) => setDryRun(e.target.checked)}
+              className="mt-0.5 rounded border-amber-500/40 text-amber-600 focus:ring-amber-500"
+            />
+            <div className="text-xs">
+              <div className="font-semibold text-amber-800 dark:text-amber-300 flex items-center gap-1.5">
+                <Shield className="w-3.5 h-3.5 text-amber-500" />
+                Dry-Run Sandbox Mode (Zero External Side Effects)
+              </div>
+              <p className="text-neutral-500 dark:text-neutral-400 mt-0.5">
+                Executes all reasoning steps normally, but intercepts outbound channel dispatches (Slack, Email, Telegram, Webhooks) into an inspectable preview log.
+              </p>
+            </div>
+          </label>
+
           {error && (
             <p className="text-xs text-red-500 dark:text-red-400">{error}</p>
           )}
@@ -794,14 +815,23 @@ function RunCrewDialog({
           <button
             onClick={handleSubmit}
             disabled={submitting}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary-500 text-white hover:bg-primary-600 transition-colors text-sm font-medium disabled:opacity-60"
+            className={cn(
+              "flex items-center gap-2 px-4 py-2 rounded-lg text-white transition-colors text-sm font-medium disabled:opacity-60",
+              dryRun
+                ? "bg-amber-600 hover:bg-amber-700"
+                : "bg-primary-500 hover:bg-primary-600"
+            )}
           >
             {submitting ? (
               <Loader2 className="w-4 h-4 animate-spin" />
             ) : (
               <Play className="w-4 h-4" />
             )}
-            {submitting ? "Starting…" : "Run Crew"}
+            {submitting
+              ? "Starting…"
+              : dryRun
+                ? "Start Dry-Run Sandbox"
+                : "Run Crew"}
           </button>
         </div>
       </div>

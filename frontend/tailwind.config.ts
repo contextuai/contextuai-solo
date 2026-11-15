@@ -1,48 +1,66 @@
 import type { Config } from "tailwindcss";
 
-const themeColors = {
-  primary: {
-    50: '#FFF4ED', 100: '#FFE6D5', 200: '#FFCAA5', 300: '#FFA366',
-    400: '#FF7A33', 500: '#FF4700', 600: '#E63900', 700: '#CC3300',
-    800: '#B32D00', 900: '#992600', 950: '#801F00',
-  },
-  secondary: {
-    50: '#F0F9FF', 100: '#E0F2FE', 200: '#BAE6FD', 300: '#7DD3FC',
-    400: '#38BDF8', 500: '#0EA5E9', 600: '#0284C7', 700: '#0369A1',
-    800: '#075985', 900: '#0C4A6E',
-  },
-  neutral: {
-    50: '#FAFAFA', 100: '#F5F5F5', 200: '#E5E5E5', 300: '#D4D4D4',
-    400: '#A3A3A3', 500: '#737373', 600: '#525252', 700: '#404040',
-    800: '#262626', 900: '#171717',
-  },
-  dark: {
-    50: '#FAFAFA', 100: '#F4F4F5', 200: '#E4E4E7', 300: '#D4D4D8',
-    400: '#A1A1AA', 500: '#71717A', 600: '#52525B', 700: '#3F3F46',
-    800: '#27272A', 900: '#18181B', 950: '#09090B',
-  },
+const m3Primary = {
+  50: "rgb(var(--m3-primary-50) / <alpha-value>)",
+  100: "rgb(var(--m3-primary-100) / <alpha-value>)",
+  200: "rgb(var(--m3-primary-200) / <alpha-value>)",
+  300: "rgb(var(--m3-primary-300) / <alpha-value>)",
+  400: "rgb(var(--m3-primary-400) / <alpha-value>)",
+  500: "rgb(var(--m3-primary-500) / <alpha-value>)",
+  600: "rgb(var(--m3-primary-600) / <alpha-value>)",
+  700: "rgb(var(--m3-primary-700) / <alpha-value>)",
+  800: "rgb(var(--m3-primary-800) / <alpha-value>)",
+  900: "rgb(var(--m3-primary-900) / <alpha-value>)",
+  950: "rgb(var(--m3-primary-950) / <alpha-value>)",
+};
+
+const m3Neutral = {
+  50: "rgb(var(--m3-neutral-50) / <alpha-value>)",
+  100: "rgb(var(--m3-neutral-100) / <alpha-value>)",
+  200: "rgb(var(--m3-neutral-200) / <alpha-value>)",
+  300: "rgb(var(--m3-neutral-300) / <alpha-value>)",
+  400: "rgb(var(--m3-neutral-400) / <alpha-value>)",
+  500: "rgb(var(--m3-neutral-500) / <alpha-value>)",
+  600: "rgb(var(--m3-neutral-600) / <alpha-value>)",
+  700: "rgb(var(--m3-neutral-700) / <alpha-value>)",
+  800: "rgb(var(--m3-neutral-800) / <alpha-value>)",
+  900: "rgb(var(--m3-neutral-900) / <alpha-value>)",
+  950: "rgb(var(--m3-neutral-950) / <alpha-value>)",
+};
+
+const secondaryColors = {
+  50: "#F0F9FF",
+  100: "#E0F2FE",
+  200: "#BAE6FD",
+  300: "#7DD3FC",
+  400: "#38BDF8",
+  500: "#0EA5E9",
+  600: "#0284C7",
+  700: "#0369A1",
+  800: "#075985",
+  900: "#0C4A6E",
 };
 
 export default {
   content: ["./index.html", "./src/**/*.{js,ts,jsx,tsx}"],
-  darkMode: 'class',
+  darkMode: "class",
   theme: {
     extend: {
       colors: {
-        primary: themeColors.primary,
-        secondary: themeColors.secondary,
-        neutral: themeColors.neutral,
-        dark: themeColors.dark,
-        success: '#10B981',
-        warning: '#F59E0B',
-        error: '#EF4444',
-        info: '#3B82F6',
+        primary: m3Primary,
+        secondary: secondaryColors,
+        neutral: m3Neutral,
+        dark: m3Neutral,
+        success: "#10B981",
+        warning: "#F59E0B",
+        error: "#EF4444",
+        info: "#3B82F6",
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif'],
-        mono: ['JetBrains Mono', 'Fira Code', 'monospace'],
+        sans: ["Inter", "-apple-system", "BlinkMacSystemFont", "Segoe UI", "system-ui", "sans-serif"],
+        mono: ["JetBrains Mono", "Fira Code", "Consolas", "monospace"],
       },
     },
   },
-  plugins: [require('@tailwindcss/typography')],
+  plugins: [require("@tailwindcss/typography")],
 } satisfies Config;

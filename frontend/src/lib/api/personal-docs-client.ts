@@ -142,6 +142,26 @@ export async function syncFolder(sourceId: string): Promise<{ jobId: string }> {
   return { jobId: data.job_id };
 }
 
+export interface FolderStaleness {
+  source_id: string;
+  is_stale: boolean;
+  changed_files_count: number;
+  new_files: number;
+  updated_files: number;
+  removed_files: number;
+  last_sync_at: string | null;
+  error?: string;
+}
+
+export async function getFolderStaleness(
+  sourceId: string,
+): Promise<FolderStaleness> {
+  const { data } = await api.get<FolderStaleness>(
+    `/personal-docs/folders/${sourceId}/staleness`,
+  );
+  return data;
+}
+
 // ---------------------------------------------------------------------------
 // Jobs
 // ---------------------------------------------------------------------------

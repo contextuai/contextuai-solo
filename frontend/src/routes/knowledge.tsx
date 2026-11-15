@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   BookOpen,
   Database,
   FileText,
   Loader2,
+  MessageSquare,
   Plus,
   Search,
   Trash2,
@@ -15,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { FoldersTab } from "@/components/knowledge/folders-tab";
+import { useEdition } from "@/config/edition";
 import { cn } from "@/lib/utils";
 import {
   createKnowledgeBase,
@@ -68,6 +71,7 @@ function StatusPill({ status }: { status: KbDocument["status"] }) {
 }
 
 export default function KnowledgePage() {
+  const { isLite } = useEdition();
   const [kbs, setKbs] = useState<KnowledgeBase[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loadingList, setLoadingList] = useState(true);
@@ -146,7 +150,7 @@ export default function KnowledgePage() {
           <div className="flex items-center gap-2">
             <BookOpen className="w-5 h-5 text-primary-500" />
             <h2 className="text-sm font-semibold text-neutral-900 dark:text-white">
-              Knowledge Bases
+              {isLite ? "Local Docs & RAG" : "Knowledge Bases"}
             </h2>
           </div>
           <Button
@@ -281,6 +285,7 @@ function KbDetail({
   onDelete: () => void;
 }) {
   const [tab, setTab] = useState<"docs" | "folders" | "query">("docs");
+  const navigate = useNavigate();
 
   return (
     <div className="flex flex-col h-full">
@@ -301,10 +306,21 @@ function KbDetail({
             {kb.embedding_model} ({kb.embedding_dim}-dim)
           </p>
         </div>
-        <Button variant="danger" size="sm" onClick={onDelete}>
-          <Trash2 className="w-3.5 h-3.5" />
-          Delete KB
-        </Button>
+        <div className="flex items-center gap-2 shrink-0">
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => navigate(`/?kb=${encodeURIComponent(kb.id)}`)}
+            title="Start a chat grounded in this Knowledge Base"
+          >
+            <MessageSquare className="w-3.5 h-3.5" />
+            Chat with KB
+          </Button>
+          <Button variant="danger" size="sm" onClick={onDelete}>
+            <Trash2 className="w-3.5 h-3.5" />
+            Delete KB
+          </Button>
+        </div>
       </div>
 
       {/* Tabs */}

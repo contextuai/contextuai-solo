@@ -39,15 +39,18 @@ export function FactRow({
   onEdit,
   onDelete,
   onTogglePin,
+  onApprove,
 }: {
   fact: MemoryFact;
   onEdit: () => void;
   onDelete: () => Promise<void> | void;
   onTogglePin: () => Promise<void> | void;
+  onApprove?: () => Promise<void> | void;
 }) {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [pinning, setPinning] = useState(false);
+  const [approving, setApproving] = useState(false);
 
   const sourceText =
     fact.origin === "user"
@@ -126,6 +129,24 @@ export function FactRow({
         </div>
       ) : (
         <div className="flex items-center gap-1 flex-shrink-0">
+          {fact.status === "review" && onApprove && (
+            <button
+              onClick={async () => {
+                setApproving(true);
+                try {
+                  await onApprove();
+                } finally {
+                  setApproving(false);
+                }
+              }}
+              disabled={approving}
+              className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/25 transition-colors mr-1"
+              title="Approve fact into active memory"
+            >
+              <Check className="w-3 h-3" />
+              Approve
+            </button>
+          )}
           <button
             onClick={handleTogglePin}
             disabled={pinning}

@@ -93,7 +93,7 @@ export default function ChatPage() {
     loadModels();
   }, [aiMode]);
 
-  // Keyboard shortcut: Ctrl/Cmd+N for new chat
+  // Keyboard shortcut: Ctrl/Cmd+N or M3 sidebar FAB for new chat
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "n") {
@@ -101,19 +101,40 @@ export default function ChatPage() {
         handleNewChat();
       }
     };
+    const handleNewChatEvent = () => handleNewChat();
     window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    window.addEventListener("contextuai:new-chat", handleNewChatEvent);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("contextuai:new-chat", handleNewChatEvent);
+    };
   }, []);
 
-  // Cross-mode handoff: pre-fill the chat input from `?prefill=...` and then
-  // strip the param so a refresh doesn't repopulate it.
+  // Cross-mode handoff: pre-fill the chat input from `?prefill=...`, `?kb=...`, or `?model=...`
+  // and then strip the params so a refresh doesn't repopulate them.
   useEffect(() => {
     try {
       const params = new URLSearchParams(window.location.search);
       const prefill = params.get("prefill");
+      const kbParam = params.get("kb");
+      const modelParam = params.get("model");
+      let changed = false;
       if (prefill) {
         setInput(prefill);
         params.delete("prefill");
+        changed = true;
+      }
+      if (kbParam) {
+        setSelectedKnowledgeBaseId(kbParam);
+        params.delete("kb");
+        changed = true;
+      }
+      if (modelParam) {
+        setSelectedModelId(modelParam.startsWith("local:") ? modelParam : `local:${modelParam}`);
+        params.delete("model");
+        changed = true;
+      }
+      if (changed) {
         const newSearch = params.toString();
         const newUrl =
           window.location.pathname +
@@ -414,6 +435,9 @@ export default function ChatPage() {
         <ChatHeader
           sessionTitle={sessionTitle}
           onRenameSession={handleRenameSession}
+          messages={messages}
+          draftInput={input}
+          selectedModel={models.find((m) => m.id === selectedModelId) ?? null}
         />
 
         <MessageList
@@ -422,6 +446,7 @@ export default function ChatPage() {
           streamingThinking={streamingThinking}
           isStreaming={isStreaming}
           noModel={modelsLoaded && !models.some((m) => m.enabled)}
+          onSelectStarterPrompt={(prompt) => setInput(prompt)}
         />
 
         <ChatInput

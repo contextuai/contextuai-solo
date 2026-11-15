@@ -4,11 +4,27 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ContextuAI Solo</title>
+  <script>
+    // Apply the saved theme before first paint so there is no color flash.
+    (function () {
+      try {
+        var t = localStorage.getItem('theme') || 'system';
+        var dark = t === 'dark' || (t === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        var root = document.documentElement;
+        root.classList.remove('light', 'dark');
+        root.classList.add(dark ? 'dark' : 'light');
+        var explicit = localStorage.getItem('contextuai-color-theme-explicit') === '1';
+        var stored = localStorage.getItem('contextuai-color-theme');
+        var edition = localStorage.getItem('contextuai.edition.unlocked');
+        root.dataset.colorTheme = explicit && stored ? stored : (edition === 'lite' ? 'sovereign-emerald' : (stored || 'solo-terracotta'));
+      } catch (e) {}
+    })();
+  </script>
 </head>
-<body class="bg-neutral-50 dark:bg-[#242523] text-neutral-900 dark:text-neutral-100">
+<body class="bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100">
   <!-- Splash screen shown instantly while backend starts -->
-  <div id="splash" style="display:flex;align-items:center;justify-content:center;height:100vh;width:100vw;background:#242523;flex-direction:column;gap:16px;font-family:system-ui,sans-serif;">
-    <div style="width:40px;height:40px;border:4px solid #3f3f46;border-top-color:#f97316;border-radius:50%;animation:spin 1s linear infinite;"></div>
+  <div id="splash" style="display:flex;align-items:center;justify-content:center;height:100vh;width:100vw;background:rgb(var(--m3-neutral-950));flex-direction:column;gap:16px;font-family:system-ui,sans-serif;">
+    <div style="width:40px;height:40px;border:4px solid rgb(var(--m3-neutral-700));border-top-color:rgb(var(--m3-primary-500));border-radius:50%;animation:spin 1s linear infinite;"></div>
     <p id="splash-status" style="color:#a1a1aa;font-size:14px;">Starting ContextuAI Solo...</p>
     <style>@keyframes spin{to{transform:rotate(360deg)}}</style>
     <script>

@@ -1,9 +1,10 @@
 import { useState, useCallback, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import { cn } from "@/lib/utils";
-import { useTheme } from "@/components/providers/theme-provider";
+import { useTheme, M3_COLOR_THEMES } from "@/components/providers/theme-provider";
 import { useSettings } from "@/hooks/use-settings";
 import { useAiMode } from "@/contexts/ai-mode-context";
+import { useEdition } from "@/config/edition";
 import { Tabs, Button, Input, Textarea, Select, Badge, Dialog, TagInput } from "@/components/ui";
 import { PROVIDER_GUIDES } from "@/data/provider-guides";
 import { ProviderCard } from "@/components/settings/provider-card";
@@ -542,7 +543,7 @@ function BrandVoiceTab() {
 // ─── Appearance Tab ─────────────────────────────────────────────────────────
 
 function AppearanceTab() {
-  const { theme, setTheme } = useTheme();
+  const { theme, setTheme, colorTheme, setColorTheme } = useTheme();
   const { settings, updateSettings } = useSettings();
 
   const themeOptions: { id: "light" | "dark" | "system"; label: string; icon: typeof Sun; desc: string }[] = [
@@ -660,18 +661,67 @@ function AppearanceTab() {
         </div>
       </div>
 
-      {/* Accent Color (disabled) */}
+      {/* Material Design 3 Tonal Palette & Accent Picker */}
       <div>
-        <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-3">
-          Accent Color
-        </label>
-        <div className="flex items-center gap-3 p-4 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900">
-          <div className="w-8 h-8 rounded-lg bg-primary-500 ring-2 ring-primary-500/20" />
+        <div className="flex items-center justify-between mb-3">
           <div>
-            <p className="text-sm font-medium text-neutral-900 dark:text-white">Brand Orange</p>
-            <p className="text-xs text-neutral-500 dark:text-neutral-400">#FF4700</p>
+            <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">
+              Material Design 3 Color & Surface Theme
+            </label>
+            <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
+              Applies M3 primary seed accents and matching warm/cool tonal surface containers across the workstation.
+            </p>
           </div>
-          <Badge variant="default" className="ml-auto">Coming soon</Badge>
+          <Badge variant="default" dot>
+            {M3_COLOR_THEMES.find((t) => t.id === colorTheme)?.name || "Warm Ember"}
+          </Badge>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {M3_COLOR_THEMES.map((item) => {
+            const active = colorTheme === item.id;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setColorTheme(item.id)}
+                className={cn(
+                  "flex items-center gap-3.5 p-4 rounded-2xl border-2 text-left transition-all",
+                  active
+                    ? "border-primary-500 bg-primary-50/70 dark:bg-primary-500/10"
+                    : "border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 hover:border-neutral-300 dark:hover:border-neutral-700"
+                )}
+              >
+                <div className="flex items-center -space-x-1.5 shrink-0">
+                  <span
+                    className="w-7 h-7 rounded-full border-2 border-white dark:border-neutral-900 shadow-sm"
+                    style={{ backgroundColor: item.primaryHex }}
+                  />
+                  <span
+                    className="w-6 h-6 rounded-full border-2 border-white dark:border-neutral-900 shadow-sm"
+                    style={{ backgroundColor: item.surfaceDarkHex }}
+                  />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-neutral-900 dark:text-white truncate">
+                      {item.name}
+                    </span>
+                    {item.badge && (
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-primary-500/15 text-primary-600 dark:text-primary-300">
+                        {item.badge}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400 truncate mt-0.5">
+                    {item.subtitle}
+                  </p>
+                </div>
+                {active && (
+                  <Check className="w-4 h-4 text-primary-500 shrink-0" />
+                )}
+              </button>
+            );
+          })}
         </div>
       </div>
     </div>
@@ -868,6 +918,7 @@ function DataExportTab() {
 // ─── About Tab ──────────────────────────────────────────────────────────────
 
 function AboutTab() {
+  const { isLite, unlockSolo, switchToLite, switching } = useEdition();
   const [checking, setChecking] = useState(false);
   const [upToDate, setUpToDate] = useState(false);
 
@@ -884,7 +935,7 @@ function AboutTab() {
       <div className="mb-6">
         <h3 className="text-lg font-semibold text-neutral-900 dark:text-white">About</h3>
         <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">
-          Application information and resources.
+          Application information, edition controls, and resources.
         </p>
       </div>
 
@@ -893,13 +944,51 @@ function AboutTab() {
         <div className="flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-primary-500 to-primary-600 mx-auto mb-4">
           <Settings className="w-7 h-7 text-white" />
         </div>
-        <h4 className="text-xl font-bold text-neutral-900 dark:text-white">
-          ContextuAI <span className="text-primary-500">Solo</span>
-        </h4>
-        <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">Version 1.0.0</p>
-        <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-0.5">
-          Your personal AI business assistant
-        </p>
+        {isLite ? (
+          <>
+            <h4 className="text-xl font-bold text-neutral-900 dark:text-white">
+              Vesper <span className="text-primary-500">by ContextuAI</span>
+            </h4>
+            <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">
+              Lite Edition &middot; Version 2027.1 (MIT Open-Source)
+            </p>
+            <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-0.5">
+              Zero-Config Private Local AI Workstation &middot; Shared <code className="font-mono">~/.contextuai-solo/</code> storage
+            </p>
+            <div className="mt-4">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => void unlockSolo()}
+                disabled={switching}
+              >
+                {switching ? "Switching..." : "Unlock Full ContextuAI Solo"}
+              </Button>
+            </div>
+          </>
+        ) : (
+          <>
+            <h4 className="text-xl font-bold text-neutral-900 dark:text-white">
+              ContextuAI <span className="text-primary-500">Solo</span>
+            </h4>
+            <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">
+              Full Solo Workstation &middot; Version 2027.1
+            </p>
+            <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-0.5">
+              Your personal AI workstation with multi-agent crews, persistent memory, and local GGUF engine
+            </p>
+            <div className="mt-4">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => void switchToLite()}
+                disabled={switching}
+              >
+                {switching ? "Switching..." : "Switch to Vesper Lite View"}
+              </Button>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Check for Updates */}
@@ -949,7 +1038,7 @@ function AboutTab() {
       <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 p-5">
         <h4 className="text-sm font-semibold text-neutral-900 dark:text-white mb-3">Built with</h4>
         <div className="flex flex-wrap gap-2">
-          {["Tauri", "React", "FastAPI", "SQLite", "Tailwind CSS", "TypeScript"].map((tech) => (
+          {["Tauri", "React", "FastAPI", "SQLite", "llama-cpp-python", "Tailwind CSS", "TypeScript"].map((tech) => (
             <Badge key={tech} variant="default">{tech}</Badge>
           ))}
         </div>
@@ -957,7 +1046,9 @@ function AboutTab() {
 
       {/* License */}
       <p className="text-xs text-neutral-400 dark:text-neutral-500 text-center">
-        ContextuAI Solo is proprietary software. All rights reserved.
+        {isLite
+          ? "Vesper by ContextuAI (Lite Edition) is open-source software released under the MIT License."
+          : "ContextuAI Solo is proprietary software. Vesper Lite core is MIT licensed."}
       </p>
     </div>
   );
@@ -996,7 +1087,7 @@ export default function SettingsPage() {
   return (
     <div className="min-h-full">
       {/* Header */}
-      <div className="sticky top-0 z-10 bg-neutral-50/80 dark:bg-[#242523]/80 backdrop-blur-xl border-b border-neutral-200 dark:border-neutral-800">
+      <div className="sticky top-0 z-10 bg-neutral-50/80 dark:bg-neutral-950/80 backdrop-blur-xl border-b border-neutral-200 dark:border-neutral-800">
         <div className="max-w-4xl mx-auto px-6 pt-6 pb-4">
           <div className="flex items-center gap-3 mb-5">
             <div

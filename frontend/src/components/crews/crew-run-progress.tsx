@@ -147,9 +147,16 @@ export function CrewRunProgress({ crewId, runId, onClose }: CrewRunProgressProps
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-200 dark:border-neutral-800">
           <div>
-            <h2 className="text-lg font-semibold text-neutral-900 dark:text-white">
-              Run Progress
-            </h2>
+            <div className="flex items-center gap-2">
+              <h2 className="text-lg font-semibold text-neutral-900 dark:text-white">
+                Run Progress
+              </h2>
+              {run.dry_run && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/25">
+                  Dry-Run Sandbox
+                </span>
+              )}
+            </div>
             <p className="text-xs text-neutral-500 dark:text-neutral-400">
               {run.run_id.slice(0, 12)}...
             </p>
@@ -269,6 +276,18 @@ export function CrewRunProgress({ crewId, runId, onClose }: CrewRunProgressProps
           {run.error && (
             <div className="p-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 text-sm">
               {run.error}
+            </div>
+          )}
+
+          {/* SPEC-10: Dry-Run Outbound Previews */}
+          {run.outbound_previews && run.outbound_previews.length > 0 && (
+            <div className="p-4 rounded-xl bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800">
+              <h4 className="text-sm font-medium text-amber-800 dark:text-amber-300 mb-2">
+                Intercepted Outbound Channel Previews ({run.outbound_previews.length})
+              </h4>
+              <pre className="text-xs text-amber-700 dark:text-amber-400 overflow-x-auto whitespace-pre-wrap">
+                {JSON.stringify(run.outbound_previews, null, 2)}
+              </pre>
             </div>
           )}
 

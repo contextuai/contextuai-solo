@@ -121,6 +121,7 @@ export async function getCatalog(params?: {
   system_ram_gb: number;
   max_recommended_params: string;
   categories: ModelCategory[];
+  hardware?: HardwareProfile;
   hardware_profile?: HardwareProfile;
   best_for_machine?: CatalogModel | null;
   recommended_model_id?: string | null;
@@ -136,11 +137,15 @@ export async function getCatalog(params?: {
     system_ram_gb: number;
     max_recommended_params: string;
     categories: ModelCategory[];
+    hardware?: HardwareProfile;
     hardware_profile?: HardwareProfile;
     best_for_machine?: CatalogModel | null;
     recommended_model_id?: string | null;
   }>(path);
-  return data;
+  return {
+    ...data,
+    hardware_profile: data.hardware_profile ?? data.hardware,
+  };
 }
 
 export async function getHardwareProfile(rescan = false): Promise<HardwareProfile> {
@@ -170,11 +175,11 @@ export interface HfRepoFile {
 }
 
 export async function searchHfGgufModels(
-  q = "",
+  query = "",
   verifiedOnly = true
 ): Promise<{ models: HfSearchModel[] }> {
   const params = new URLSearchParams({
-    q,
+    query,
     verified_only: String(verifiedOnly),
   });
   const { data } = await api.get<{ models: HfSearchModel[] }>(
@@ -333,5 +338,53 @@ export async function cancelDownload(
 /** Sync downloaded models into the DB so they appear in the chat dropdown. */
 export async function syncLocalModels(): Promise<{ synced: number }> {
   const { data } = await api.post<{ synced: number }>("/local-models/sync");
+  return data;
+}
+
+export interface BenchmarkResult {
+  model_id: string;
+  tokens_generated?: number;
+  elapsed_seconds?: number;
+  tokens_per_second: number;
+  context_window?: number;
+  gpu_offload?: boolean;
+}
+
+/** Preload a local GGUF model into RAM/VRAM so first-token latency is instant (SPEC-09). */
+export async function preloadLocalModel(
+  modelId: string
+): Promise<{ status?: string; model_id?: string; context_window?: number }> {
+  const clean = modelId.replace(/^local:/, "");
+  const { data } = await api.post<{
+    status?: string;
+    model_id?: string;
+    context_window?: number;
+  }>(`${BASE}/${encodeURIComponent(clean)}/preload`, {});
+  return data;
+}
+
+/** Run a quick 64-token warmup + speed benchmark on a local GGUF model (SPEC-15). */
+export async function benchmarkLocalModel(
+  modelId: string
+): Promise<BenchmarkResult> {
+  const clean = modelId.replace(/^local:/, "");
+  const { data } = await api.post<BenchmarkResult>(
+    `${BASE}/${encodeURIComponent(clean)}/benchmark`,
+    {}
+  );
+  return data;
+}
+
+/** Refresh curated catalog from OTA manifest cache (SPEC-34). */
+export async function refreshModelCatalog(): Promise<{
+  status?: string;
+  total_models?: number;
+  new_models?: number;
+}> {
+  const { data } = await api.post<{
+    status?: string;
+    total_models?: number;
+    new_models?: number;
+  }>(`${BASE}/catalog/refresh`, {});
   return data;
 }

@@ -10,3 +10,4 @@ export type { BadgeVariant } from "./badge";
 export { Tabs } from "./tabs";
 export { Dialog } from "./dialog";
 export { TagInput } from "./tag-input";
+export { M3Card, M3PageHeader, M3StatTile, M3EmptyState } from "./m3";

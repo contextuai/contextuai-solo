@@ -1,7 +1,12 @@
-import { Folder, Pause, Play, RefreshCw, Trash2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { AlertTriangle, CheckCircle2, Folder, Pause, Play, RefreshCw, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import type { FolderSource } from "@/lib/api/personal-docs-client";
+import {
+  getFolderStaleness,
+  type FolderSource,
+  type FolderStaleness,
+} from "@/lib/api/personal-docs-client";
 
 export function FolderRow({
   source,
@@ -14,13 +19,46 @@ export function FolderRow({
   onTogglePause: () => void;
   onDelete: () => void;
 }) {
+  const [staleness, setStaleness] = useState<FolderStaleness | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    getFolderStaleness(source.id)
+      .then((res) => {
+        if (mounted) setStaleness(res);
+      })
+      .catch(() => {});
+    return () => {
+      mounted = false;
+    };
+  }, [source.id, source.last_sync_at]);
+
   return (
     <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-neutral-200 dark:border-neutral-800">
       <div className="flex items-start gap-3 min-w-0">
         <Folder className="h-4 w-4 text-neutral-500 shrink-0 mt-1" />
         <div className="min-w-0">
-          <div className="text-sm font-medium text-neutral-900 dark:text-white truncate">
-            {source.label}
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-neutral-900 dark:text-white truncate">
+              {source.label}
+            </span>
+            {staleness && !staleness.is_stale && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                <CheckCircle2 className="w-3 h-3" />
+                Up to date
+              </span>
+            )}
+            {staleness && staleness.is_stale && (
+              <button
+                type="button"
+                onClick={onSync}
+                title="Click to sync changed files now"
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-500/15 text-amber-700 dark:text-amber-400 hover:bg-amber-500/25 transition-colors"
+              >
+                <AlertTriangle className="w-3 h-3" />
+                Stale · {staleness.changed_files_count} file{staleness.changed_files_count === 1 ? "" : "s"} changed (Sync)
+              </button>
+            )}
           </div>
           <div
             className="text-xs text-neutral-500 dark:text-neutral-400 truncate"

@@ -32,13 +32,22 @@ function loadSettings(): AppSettings {
 }
 
 export function useSettings() {
-  const [settings, setSettings] = useState<AppSettings>(loadSettings);
+  const [settings, setSettings] = useState<AppSettings>(() => {
+    const loaded = loadSettings();
+    if (typeof document !== "undefined") {
+      document.documentElement.dataset.fontSize = loaded.font_size || "medium";
+    }
+    return loaded;
+  });
   const [saving, setSaving] = useState(false);
 
   const updateSettings = useCallback((partial: Partial<AppSettings>) => {
     setSettings((prev) => {
       const next = { ...prev, ...partial };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      if (partial.font_size && typeof document !== "undefined") {
+        document.documentElement.dataset.fontSize = partial.font_size;
+      }
       return next;
     });
   }, []);

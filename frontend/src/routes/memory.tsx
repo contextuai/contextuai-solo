@@ -118,6 +118,11 @@ export default function MemoryPage() {
     setFacts((prev) => prev.map((f) => (f.id === updated.id ? updated : f)));
   }
 
+  async function handleApproveFact(fact: MemoryFact) {
+    const updated = await updateFact(fact.id, { status: "active" });
+    setFacts((prev) => prev.map((f) => (f.id === updated.id ? updated : f)));
+  }
+
   async function handleExport() {
     setExporting(true);
     try {
@@ -324,6 +329,7 @@ export default function MemoryPage() {
                   }}
                   onDelete={() => handleDelete(fact)}
                   onTogglePin={() => handleTogglePin(fact)}
+                  onApprove={() => handleApproveFact(fact)}
                 />
               ))}
             </ul>

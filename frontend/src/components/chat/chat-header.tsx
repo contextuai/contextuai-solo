@@ -2,15 +2,24 @@ import { useState, useRef, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { Sun, Moon, Pencil } from "lucide-react";
 import { useTheme } from "@/components/providers/theme-provider";
+import { ContextMeter } from "./context-meter";
+import type { ChatMessage } from "@/types/chat";
+import type { ModelConfig } from "@/lib/api/models-client";
 
 interface ChatHeaderProps {
   sessionTitle: string;
   onRenameSession: (title: string) => void;
+  messages?: ChatMessage[];
+  draftInput?: string;
+  selectedModel?: ModelConfig | null;
 }
 
 export default function ChatHeader({
   sessionTitle,
   onRenameSession,
+  messages = [],
+  draftInput = "",
+  selectedModel = null,
 }: ChatHeaderProps) {
   const { resolvedTheme, setTheme } = useTheme();
   const [isEditing, setIsEditing] = useState(false);
@@ -39,7 +48,7 @@ export default function ChatHeader({
   };
 
   return (
-    <div className="flex items-center justify-between h-12 px-4 border-b border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900">
+    <div className="flex items-center justify-between h-12 px-4 border-b border-neutral-200/75 dark:border-neutral-800/90 bg-white/75 dark:bg-neutral-900/75 backdrop-blur-md">
       {/* Left: Title */}
       <div className="flex items-center gap-2 min-w-0 flex-shrink">
         {isEditing ? (
@@ -72,22 +81,29 @@ export default function ChatHeader({
         )}
       </div>
 
-      {/* Right: Theme toggle */}
-      <button
-        onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
-        className={cn(
-          "p-2 rounded-lg transition-colors",
-          "hover:bg-neutral-100 dark:hover:bg-neutral-800",
-          "text-neutral-500 dark:text-neutral-400"
-        )}
-        title={`Switch to ${resolvedTheme === "dark" ? "light" : "dark"} mode`}
-      >
-        {resolvedTheme === "dark" ? (
-          <Sun className="w-4 h-4" />
-        ) : (
-          <Moon className="w-4 h-4" />
-        )}
-      </button>
+      {/* Right: Context Meter + Theme toggle */}
+      <div className="flex items-center gap-2.5">
+        <ContextMeter
+          messages={messages}
+          draftInput={draftInput}
+          selectedModel={selectedModel}
+        />
+        <button
+          onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
+          className={cn(
+            "p-2 rounded-lg transition-colors",
+            "hover:bg-neutral-100 dark:hover:bg-neutral-800",
+            "text-neutral-500 dark:text-neutral-400"
+          )}
+          title={`Switch to ${resolvedTheme === "dark" ? "light" : "dark"} mode`}
+        >
+          {resolvedTheme === "dark" ? (
+            <Sun className="w-4 h-4" />
+          ) : (
+            <Moon className="w-4 h-4" />
+          )}
+        </button>
+      </div>
     </div>
   );
 }

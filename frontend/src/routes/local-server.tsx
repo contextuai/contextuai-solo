@@ -44,6 +44,13 @@ export default function LocalServerPage() {
   const [activeSnippet, setActiveSnippet] = useState<"continue" | "cursor" | "claude_mcp" | "python" | "curl">("continue");
   const [pingResult, setPingResult] = useState<string | null>(null);
   const [pinging, setPinging] = useState(false);
+  const [testPrompt, setTestPrompt] = useState("Reply in one sentence: confirm that the local /v1 OpenAI server is operational.");
+  const [testingChat, setTestingChat] = useState(false);
+  const [testChatOutput, setTestChatOutput] = useState<{
+    reply: string;
+    latencyMs: number;
+    model: string;
+  } | null>(null);
 
   const fetchStats = useCallback(async () => {
     try {
@@ -84,6 +91,51 @@ export default function LocalServerPage() {
       setPingResult(`Failed: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setPinging(false);
+    }
+  };
+
+  const runLiveChatCompletionTest = async () => {
+    if (!testPrompt.trim()) return;
+    setTestingChat(true);
+    setTestChatOutput(null);
+    const t0 = performance.now();
+    try {
+      const resp = await fetch(`${baseUrl}/chat/completions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: modelId,
+          messages: [{ role: "user", content: testPrompt.trim() }],
+          max_tokens: 128,
+        }),
+      });
+      const json = await resp.json();
+      const latencyMs = Math.round(performance.now() - t0);
+      if (!resp.ok) {
+        setTestChatOutput({
+          reply: `HTTP ${resp.status}: ${json?.detail || JSON.stringify(json)}`,
+          latencyMs,
+          model: modelId,
+        });
+      } else {
+        const content =
+          json?.choices?.[0]?.message?.content ||
+          JSON.stringify(json, null, 2);
+        setTestChatOutput({
+          reply: content,
+          latencyMs,
+          model: json?.model || modelId,
+        });
+      }
+      fetchStats();
+    } catch (err) {
+      setTestChatOutput({
+        reply: `Request error: ${err instanceof Error ? err.message : String(err)}`,
+        latencyMs: Math.round(performance.now() - t0),
+        model: modelId,
+      });
+    } finally {
+      setTestingChat(false);
     }
   };
 
@@ -149,121 +201,128 @@ export default function LocalServerPage() {
   };
 
   return (
-    <div className="flex flex-col h-full bg-neutral-50 dark:bg-[#1a1b1a] overflow-y-auto p-6 space-y-6">
-      {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold text-neutral-900 dark:text-white flex items-center gap-2">
-            <Server className="w-5 h-5 text-primary-500" />
-            Local OpenAI <code className="text-base font-mono">/v1</code> & MCP Server
-          </h1>
-          <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-0.5">
-            Turns your machine into a drop-in local OpenAI API (<code className="font-mono text-xs">/v1/chat/completions</code> & Fill-in-the-Middle <code className="font-mono text-xs">/v1/completions</code>) so external coding tools like <strong>Cursor</strong>, <strong>Continue.dev</strong>, <strong>Aider</strong>, <strong>Claude Code</strong>, or your own Python scripts can use your downloaded GGUF models for free.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={testV1ModelsEndpoint}
-            disabled={pinging}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20"
-          >
-            <Play className="w-3.5 h-3.5" />
-            {pinging ? "Testing /v1/models..." : "Test /v1/models Live"}
-          </button>
-          <button
-            type="button"
-            onClick={fetchStats}
-            className="p-2 rounded-lg border border-neutral-200 dark:border-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-800"
-            title="Refresh server stats"
-          >
-            <RefreshCw className="w-4 h-4 text-neutral-500" />
-          </button>
-        </div>
-      </div>
-
-      {pingResult && (
-        <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/25 text-xs font-medium text-emerald-700 dark:text-emerald-300">
-          <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
-          <span>{pingResult}</span>
-        </div>
-      )}
-
-      {/* Status Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="p-4 rounded-xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800">
-          <div className="text-xs text-neutral-500 mb-1">Local OpenAI Base URL</div>
-          <div className="font-mono text-sm font-semibold text-neutral-900 dark:text-white flex items-center justify-between">
-            <span>{baseUrl}</span>
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-              Listening
-            </span>
-          </div>
-          {loadedObj?.models_dir && (
-            <div className="text-[11px] text-neutral-400 mt-1.5 truncate" title={loadedObj.models_dir}>
-              Models Dir: {loadedObj.models_dir}
+    <div className="flex flex-col h-full overflow-y-auto">
+      {/* M3 Page Header */}
+      <header className="px-6 pt-6 pb-4 border-b border-neutral-200/75 dark:border-neutral-800/90 bg-white/80 dark:bg-neutral-900/75 backdrop-blur-md">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3.5">
+            <div className="flex items-center justify-center w-11 h-11 rounded-2xl bg-primary-500/12 text-primary-600 dark:text-primary-400 border border-primary-500/20 shrink-0">
+              <Server className="w-5 h-5" />
             </div>
-          )}
+            <div>
+              <h1 className="text-xl font-bold tracking-tight text-neutral-900 dark:text-white flex items-center gap-2">
+                Local OpenAI <code className="text-base font-mono text-primary-600 dark:text-primary-400">/v1</code> & MCP Server
+              </h1>
+              <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400 mt-0.5">
+                Drop-in local <code className="font-mono text-xs">/v1/chat/completions</code> & Fill-in-the-Middle <code className="font-mono text-xs">/v1/completions</code> for Cursor, Continue.dev, Aider, Claude Code & Python SDKs.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={testV1ModelsEndpoint}
+              disabled={pinging}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-semibold bg-primary-500/15 text-primary-700 dark:text-primary-300 border border-primary-500/25 hover:bg-primary-500/25 transition-colors"
+            >
+              <Play className="w-3.5 h-3.5" />
+              {pinging ? "Testing /v1/models..." : "Test /v1/models Live"}
+            </button>
+            <button
+              type="button"
+              onClick={fetchStats}
+              className="p-2 rounded-full border border-neutral-200/80 dark:border-neutral-700/80 bg-white/80 dark:bg-neutral-800/80 hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors"
+              title="Refresh server stats"
+            >
+              <RefreshCw className="w-4 h-4 text-neutral-500" />
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <div className="p-6 space-y-6">
+        {pingResult && (
+          <div className="flex items-center gap-2 px-4 py-2.5 rounded-2xl m3-card-tonal text-xs font-medium text-primary-700 dark:text-primary-300">
+            <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+            <span>{pingResult}</span>
+          </div>
+        )}
+
+        {/* M3 Status Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="p-4 m3-card">
+            <div className="text-xs font-medium text-neutral-500 mb-1">Local OpenAI Base URL</div>
+            <div className="font-mono text-sm font-semibold text-neutral-900 dark:text-white flex items-center justify-between">
+              <span>{baseUrl}</span>
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-primary-500/15 text-primary-700 dark:text-primary-300">
+                Listening
+              </span>
+            </div>
+            {loadedObj?.models_dir && (
+              <div className="text-[11px] text-neutral-400 mt-1.5 truncate" title={loadedObj.models_dir}>
+                Models Dir: {loadedObj.models_dir}
+              </div>
+            )}
+          </div>
+
+          <div className="p-4 m3-card">
+            <div className="text-xs font-medium text-neutral-500 mb-1 flex items-center gap-1">
+              <Cpu className="w-3.5 h-3.5 text-primary-500" /> Active Loaded GGUF Model
+            </div>
+            <div className="text-sm font-semibold text-neutral-900 dark:text-white">
+              {activeModelName || "On-demand (loads automatically on first request)"}
+            </div>
+            <div className="text-[11px] text-neutral-400 mt-1.5">
+              llama-cpp-python: {loadedObj?.llama_cpp_available ? "Installed & Ready" : "Not detected"}
+            </div>
+          </div>
+
+          <div className="p-4 m3-card">
+            <div className="text-xs font-medium text-neutral-500 mb-1">Active Context Window</div>
+            <div className="text-sm font-semibold text-neutral-900 dark:text-white">
+              {activeContextWindow
+                ? `${activeContextWindow.toLocaleString()} tokens`
+                : "Dynamic (Auto-sized by Hardware Fit Engine)"}
+            </div>
+            <div className="text-[11px] text-neutral-400 mt-1.5">
+              Supports Chat, Tool Calling (GBNF) & FIM Code Completion
+            </div>
+          </div>
         </div>
 
-        <div className="p-4 rounded-xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800">
-          <div className="text-xs text-neutral-500 mb-1 flex items-center gap-1">
-            <Cpu className="w-3.5 h-3.5" /> Active Loaded GGUF Model
+        {/* IDE & SDK Snippets */}
+        <div className="p-5 m3-card">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+            <h2 className="text-sm font-semibold text-neutral-900 dark:text-white flex items-center gap-2">
+              <Code2 className="w-4 h-4 text-primary-500" />
+              1-Click IDE & SDK Configuration Snippets
+            </h2>
+            <div className="inline-flex flex-wrap items-center gap-1 p-1 rounded-2xl bg-neutral-100/80 dark:bg-neutral-950/70 border border-neutral-200/70 dark:border-neutral-800">
+              {(["continue", "cursor", "claude_mcp", "python", "curl"] as const).map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => setActiveSnippet(k)}
+                  className={cn(
+                    "px-3 py-1 rounded-xl text-xs font-medium transition-all",
+                    activeSnippet === k
+                      ? "bg-primary-500/15 text-primary-700 dark:text-primary-300 shadow-sm ring-1 ring-primary-500/25"
+                      : "text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-200"
+                  )}
+                >
+                  {k === "continue"
+                    ? "Continue.dev"
+                    : k === "cursor"
+                      ? "Cursor / Aider"
+                      : k === "claude_mcp"
+                        ? "Claude / MCP"
+                        : k === "python"
+                          ? "Python SDK"
+                          : "cURL"}
+                </button>
+              ))}
+            </div>
           </div>
-          <div className="text-sm font-semibold text-neutral-900 dark:text-white">
-            {activeModelName || "On-demand (loads automatically on first request)"}
-          </div>
-          <div className="text-[11px] text-neutral-400 mt-1.5">
-            llama-cpp-python: {loadedObj?.llama_cpp_available ? "Installed & Ready" : "Not detected"}
-          </div>
-        </div>
-
-        <div className="p-4 rounded-xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800">
-          <div className="text-xs text-neutral-500 mb-1">Active Context Window</div>
-          <div className="text-sm font-semibold text-neutral-900 dark:text-white">
-            {activeContextWindow
-              ? `${activeContextWindow.toLocaleString()} tokens`
-              : "Dynamic (Auto-sized by Hardware Fit Engine)"}
-          </div>
-          <div className="text-[11px] text-neutral-400 mt-1.5">
-            Supports Chat, Tool Calling (GBNF) & FIM Code Completion
-          </div>
-        </div>
-      </div>
-
-      {/* IDE & SDK Snippets */}
-      <div className="p-5 rounded-xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800">
-        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-          <h2 className="text-sm font-semibold text-neutral-900 dark:text-white flex items-center gap-2">
-            <Code2 className="w-4 h-4 text-primary-500" />
-            1-Click IDE & SDK Configuration Snippets
-          </h2>
-          <div className="flex flex-wrap items-center gap-1">
-            {(["continue", "cursor", "claude_mcp", "python", "curl"] as const).map((k) => (
-              <button
-                key={k}
-                type="button"
-                onClick={() => setActiveSnippet(k)}
-                className={cn(
-                  "px-2.5 py-1 rounded-lg text-xs font-medium transition-colors",
-                  activeSnippet === k
-                    ? "bg-primary-500 text-white"
-                    : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400"
-                )}
-              >
-                {k === "continue"
-                  ? "Continue.dev"
-                  : k === "cursor"
-                    ? "Cursor / Aider"
-                    : k === "claude_mcp"
-                      ? "Claude / MCP"
-                      : k === "python"
-                        ? "Python SDK"
-                        : "cURL"}
-              </button>
-            ))}
-          </div>
-        </div>
         <div className="text-xs text-neutral-500 dark:text-neutral-400 mb-2">
           {snippets[activeSnippet].label}
         </div>
@@ -289,14 +348,59 @@ export default function LocalServerPage() {
         </div>
       </div>
 
+      {/* Interactive /v1 Live Inference Playground */}
+      <div className="p-5 rounded-xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-neutral-900 dark:text-white flex items-center gap-2">
+            <Play className="w-4 h-4 text-emerald-500" />
+            Interactive <code className="font-mono text-xs">/v1/chat/completions</code> Sandbox
+          </h2>
+          <span className="text-[11px] font-mono text-neutral-400">
+            Target: {modelId}
+          </span>
+        </div>
+        <div className="flex flex-col sm:flex-row gap-2">
+          <input
+            type="text"
+            value={testPrompt}
+            onChange={(e) => setTestPrompt(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") runLiveChatCompletionTest();
+            }}
+            placeholder="Send a test prompt to /v1/chat/completions..."
+            className="flex-1 px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-xs text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500/40"
+          />
+          <button
+            type="button"
+            onClick={runLiveChatCompletionTest}
+            disabled={testingChat || !testPrompt.trim()}
+            className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium bg-primary-500 hover:bg-primary-600 text-white disabled:opacity-50 transition-colors"
+          >
+            <Play className="w-3.5 h-3.5" />
+            {testingChat ? "Running..." : "Send /v1 Request"}
+          </button>
+        </div>
+        {testChatOutput && (
+          <div className="p-3.5 rounded-xl bg-neutral-950 text-neutral-100 text-xs font-mono space-y-1.5">
+            <div className="flex items-center justify-between text-[11px] text-neutral-400 border-b border-neutral-800 pb-1.5">
+              <span>Model: {testChatOutput.model}</span>
+              <span className="text-emerald-400">{testChatOutput.latencyMs} ms</span>
+            </div>
+            <div className="whitespace-pre-wrap leading-relaxed text-neutral-200">
+              {testChatOutput.reply}
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Live Request Log */}
-      <div className="p-5 rounded-xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800">
+      <div className="p-5 m3-card">
         <h2 className="text-sm font-semibold text-neutral-900 dark:text-white flex items-center gap-2 mb-3">
           <Terminal className="w-4 h-4 text-primary-500" />
           Live <code className="font-mono text-xs">/v1</code> Request Telemetry Stream
         </h2>
         {!stats?.recent_requests || stats.recent_requests.length === 0 ? (
-          <div className="text-center py-8 text-xs text-neutral-500 border border-dashed border-neutral-200 dark:border-neutral-800 rounded-xl">
+          <div className="text-center py-8 text-xs text-neutral-500 border border-dashed border-neutral-200 dark:border-neutral-800 rounded-2xl">
             No <code className="font-mono">/v1</code> inference requests recorded yet. Connect Cursor, Continue.dev, or run the cURL snippet above to watch real-time token/sec speed and latency here.
           </div>
         ) : (
@@ -320,6 +424,7 @@ export default function LocalServerPage() {
             ))}
           </div>
         )}
+      </div>
       </div>
     </div>
   );
