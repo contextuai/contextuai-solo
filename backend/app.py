@@ -885,3 +885,16 @@ async def unlock_solo_edition():
         "agents_seeded": seeded_agents,
         "blueprints_seeded": seeded_blueprints,
     }
+
+
+@app.post("/api/v1/desktop/switch-lite")
+async def switch_to_lite_edition():
+    """Switch active desktop edition to Lite ('Vesper') mode (SPEC-33)."""
+    previous = app_settings.get_active_edition()
+    current = app_settings.set_active_edition("lite")
+    return {
+        "status": "switched",
+        "previous_edition": previous,
+        "edition": current,
+        "brand_name": "Vesper",
+    }
