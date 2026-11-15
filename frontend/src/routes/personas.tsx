@@ -376,28 +376,28 @@ export default function PersonasPage() {
         </div>
       </div>
 
-      {/* Search + categories */}
-      <div className="flex items-center gap-3 mb-6">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
+      {/* Search + M3 Filter Chips */}
+      <div className="flex flex-wrap items-center gap-3 mb-6">
+        <div className="relative flex-1 min-w-[220px] max-w-sm">
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search connectors..."
-            className="w-full pl-10 pr-4 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-sm text-neutral-900 dark:text-neutral-100 placeholder-neutral-400 focus:outline-none focus:ring-2 focus:ring-primary-500/50"
+            className="w-full pl-10 pr-4 py-2 rounded-full border border-neutral-200/80 dark:border-neutral-700/80 bg-white/90 dark:bg-neutral-900/90 text-sm text-neutral-900 dark:text-neutral-100 placeholder-neutral-400 focus:outline-none focus:ring-2 focus:ring-primary-500/40"
           />
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex flex-wrap items-center gap-1.5">
           {PERSONA_CATEGORIES.map((cat) => (
             <button
               key={cat}
               onClick={() => setActiveCategory(cat)}
               className={cn(
-                "px-3 py-1.5 rounded-lg text-xs font-medium transition-colors",
+                "px-3.5 py-1.5 rounded-full text-xs font-medium transition-all",
                 activeCategory === cat
-                  ? "bg-primary-500 text-white"
-                  : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                  ? "bg-primary-500/15 text-primary-700 dark:text-primary-300 ring-1 ring-primary-500/30 font-semibold"
+                  : "bg-white/80 dark:bg-neutral-900/70 border border-neutral-200/80 dark:border-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
               )}
             >
               {cat}
@@ -412,13 +412,13 @@ export default function PersonasPage() {
           {[1, 2, 3].map((i) => (
             <div
               key={i}
-              className="h-40 rounded-xl bg-neutral-100 dark:bg-neutral-800 animate-pulse"
+              className="h-40 rounded-2xl bg-neutral-100 dark:bg-neutral-800 animate-pulse"
             />
           ))}
         </div>
       ) : filtered.length === 0 ? (
-        <div className="text-center py-16">
-          <Sparkles className="w-12 h-12 text-neutral-300 dark:text-neutral-600 mx-auto mb-4" />
+        <div className="text-center py-16 m3-card">
+          <Sparkles className="w-12 h-12 text-primary-400/70 mx-auto mb-4" />
           <h3 className="text-lg font-semibold text-neutral-700 dark:text-neutral-300 mb-1">
             {personas.length === 0 ? "No connectors yet" : "No matches"}
           </h3>
@@ -430,7 +430,7 @@ export default function PersonasPage() {
           {personas.length === 0 && (
             <button
               onClick={openCreate}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white rounded-lg text-sm font-medium transition-colors"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white rounded-full text-sm font-medium transition-all active:scale-[0.98]"
             >
               <Plus className="w-4 h-4" />
               Create Connector
@@ -444,7 +444,7 @@ export default function PersonasPage() {
             return (
               <div
                 key={persona.id}
-                className="bg-white dark:bg-neutral-800 rounded-xl border border-neutral-200 dark:border-neutral-700 p-5 hover:shadow-md transition-shadow group"
+                className="m3-card p-5 hover:shadow-md hover:border-primary-500/35 transition-all group"
               >
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex items-center gap-3">

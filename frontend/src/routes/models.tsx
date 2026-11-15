@@ -298,7 +298,7 @@ function ModelCard({
         ) : (
           <button
             onClick={() => onDownload(model.id)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-primary-500 hover:bg-primary-600 text-white transition-colors"
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium rounded-full bg-primary-500 hover:bg-primary-600 text-white shadow-sm shadow-primary-500/25 transition-all active:scale-[0.98]"
           >
             <Download className="w-3.5 h-3.5" />
             Download
@@ -1123,7 +1123,7 @@ export default function ModelsPage() {
 
             {/* SPEC-27: Best Model for Your Machine Hero Banner */}
             {bestModel && !search && !activeCategory && (
-              <div className="mb-6 p-4 rounded-xl border border-primary-200 dark:border-primary-800 bg-primary-50/60 dark:bg-primary-950/20 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+              <div className="mb-6 p-4 m3-card-tonal flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                 <div>
                   <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-primary-600 dark:text-primary-400 mb-1">
                     <Star className="w-3.5 h-3.5" />
