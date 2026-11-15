@@ -236,7 +236,7 @@ class ModelManager:
     # ── Download ────────────────────────────────────────────────────────────
 
     async def download_model(
-        self, model_id: str
+        self, model_id: str, hf_token: Optional[str] = None
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Download a GGUF model from HuggingFace. Yields SSE progress dicts."""
         from .model_catalog import get_model
@@ -263,6 +263,15 @@ class ModelManager:
             }
             return
 
+        try:
+            from services.net_guard import assert_egress_allowed
+            assert_egress_allowed(f"https://huggingface.co/{repo_id}", "model_download")
+        except ImportError:
+            pass
+        except Exception as exc:
+            yield {"status": "error", "detail": str(exc)}
+            return
+
         if model_id in self._active_downloads:
             yield {"status": "error", "detail": "This model is already downloading."}
             return
@@ -286,6 +295,9 @@ class ModelManager:
         preflight_url = f"https://huggingface.co/api/models/{repo_id}"
         try:
             req = urllib.request.Request(preflight_url, method="HEAD")
+            effective_token = hf_token or os.getenv("HF_TOKEN") or os.getenv("HUGGING_FACE_HUB_TOKEN")
+            if effective_token:
+                req.add_header("Authorization", f"Bearer {effective_token}")
             urllib.request.urlopen(req, timeout=15)
             logger.info("Pre-flight OK for %s", model_id)
         except urllib.error.HTTPError:
@@ -322,7 +334,9 @@ class ModelManager:
         }
 
         try:
-            async for event in self._run_and_stream(repo_id, filename, model_id, dest_path):
+            async for event in self._run_and_stream(
+                repo_id, filename, model_id, dest_path, hf_token=hf_token
+            ):
                 yield event
         except Exception as exc:
             logger.exception("Download failed: %s", model_id)
@@ -344,7 +358,12 @@ class ModelManager:
         return re.sub(r'-\d{5}-of-\d{5}\.gguf$', '-*-of-*.gguf', filename)
 
     async def _run_and_stream(
-        self, repo_id: str, filename: str, model_id: str, dest_path: str
+        self,
+        repo_id: str,
+        filename: str,
+        model_id: str,
+        dest_path: str,
+        hf_token: Optional[str] = None,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Run the blocking downloader in a thread and yield its progress events."""
         import queue as _queue
@@ -354,7 +373,7 @@ class ModelManager:
         download_future = loop.run_in_executor(
             None,
             self._download_files,
-            repo_id, filename, model_id, progress_queue,
+            repo_id, filename, model_id, progress_queue, hf_token,
         )
         # The worker checks the cancel flag between chunks, so it always
         # terminates; clear its slot whenever it does (including after the
@@ -393,7 +412,12 @@ class ModelManager:
             }
 
     def _download_files(
-        self, repo_id: str, filename: str, model_id: str, progress_queue
+        self,
+        repo_id: str,
+        filename: str,
+        model_id: str,
+        progress_queue,
+        hf_token: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Blocking download via plain HTTPS GET from huggingface.co (runs in thread).
 
@@ -406,6 +430,14 @@ class ModelManager:
         from urllib.parse import quote
 
         try:
+            try:
+                from services.net_guard import assert_egress_allowed, record_egress
+                assert_egress_allowed(f"https://huggingface.co/{repo_id}", "model_download")
+            except ImportError:
+                record_egress = None
+            except Exception as exc:
+                return {"error": str(exc)}
+
             if self._is_sharded_filename(filename):
                 m = re.search(r"-(\d{5})-of-(\d{5})\.gguf$", filename)
                 total_shards = int(m.group(2))
@@ -417,8 +449,22 @@ class ModelManager:
             else:
                 filenames = [filename]
 
+            # Check if catalog entry specifies a paired multimodal projector (mmproj)
+            try:
+                from .model_catalog import get_model
+                entry = get_model(model_id)
+                mmproj_fn = entry.get("mmproj_filename") if entry else None
+                if mmproj_fn and mmproj_fn not in filenames:
+                    filenames.append(mmproj_fn)
+            except Exception:
+                pass
+
             session = requests.Session()
-            token = os.getenv("HF_TOKEN") or os.getenv("HUGGING_FACE_HUB_TOKEN")
+            token = (
+                (hf_token or "").strip()
+                or os.getenv("HF_TOKEN")
+                or os.getenv("HUGGING_FACE_HUB_TOKEN")
+            )
             if token:
                 session.headers["Authorization"] = f"Bearer {token}"
 
@@ -549,10 +595,10 @@ class ModelManager:
         """Map an HTTP status from HuggingFace to an actionable message."""
         if status in (401, 403):
             return (
-                "This model is gated on HuggingFace and requires accepting its "
-                "license. Visit the model page on huggingface.co, accept the "
-                "license, then set the HF_TOKEN environment variable to a "
-                f"HuggingFace access token and restart the app. ({context})"
+                "This model is gated on HuggingFace and requires authentication. "
+                "Visit the model page on huggingface.co, accept the license, then "
+                "add your HuggingFace access token in Settings → AI Providers "
+                f"(or set HF_TOKEN). ({context})"
             )
         if status == 404:
             return (
@@ -561,9 +607,9 @@ class ModelManager:
             )
         if status == 429:
             return (
-                "HuggingFace is rate-limiting downloads from your network. Wait a "
-                "few minutes and try again, or set the HF_TOKEN environment "
-                "variable to a free HuggingFace access token for higher limits."
+                "HuggingFace is rate-limiting anonymous downloads from your network. "
+                "Add a free HuggingFace access token in Settings → AI Providers "
+                "(or set HF_TOKEN) for higher download limits."
             )
         if status >= 500:
             return f"HuggingFace server error (HTTP {status}). Try again in a few minutes."
@@ -650,10 +696,10 @@ class ModelManager:
             "disk_total_gb": round(disk.total / (1024 ** 3), 1),
         }
 
-    # ── Custom model download ───────────────────────────────────────────────
+    # ── Custom model download & local import ────────────────────────────────
 
     async def download_custom(
-        self, hf_repo: str, hf_filename: str
+        self, hf_repo: str, hf_filename: str, hf_token: Optional[str] = None
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Download any GGUF file from HuggingFace by repo + filename."""
         dest_path = os.path.join(self.models_dir, hf_filename)
@@ -661,6 +707,15 @@ class ModelManager:
         if os.path.isfile(dest_path):
             size = os.path.getsize(dest_path)
             yield {"status": "done", "path": dest_path, "completed": size, "total": size, "percent": 100.0}
+            return
+
+        try:
+            from services.net_guard import assert_egress_allowed
+            assert_egress_allowed(f"https://huggingface.co/{hf_repo}", "model_download")
+        except ImportError:
+            pass
+        except Exception as exc:
+            yield {"status": "error", "detail": str(exc)}
             return
 
         model_id = f"custom:{hf_repo}/{hf_filename}"
@@ -672,10 +727,72 @@ class ModelManager:
         yield {"status": "starting", "repo": hf_repo, "filename": hf_filename, "completed": 0, "total": 0, "percent": 0.0}
 
         try:
-            async for event in self._run_and_stream(hf_repo, hf_filename, model_id, dest_path):
+            async for event in self._run_and_stream(
+                hf_repo, hf_filename, model_id, dest_path, hf_token=hf_token
+            ):
                 yield event
         except Exception as exc:
             yield {"status": "error", "detail": str(exc)}
+
+    def import_local_gguf(
+        self, source_path: str, copy_file: bool = False
+    ) -> Dict[str, Any]:
+        """Import an existing local .gguf file into the models directory (SPEC-08).
+
+        Validates that the file exists, has a ``.gguf`` extension, and starts with
+        the ``GGUF`` magic bytes. Attempts a symlink/hardlink by default (unless
+        ``copy_file=True``), falling back to ``shutil.copy2`` on Windows when
+        symlinks are not permitted.
+        """
+        if not source_path or not isinstance(source_path, str):
+            raise ValueError("source_path is required")
+
+        src = Path(source_path).expanduser().resolve()
+        if not src.is_file():
+            raise FileNotFoundError(f"GGUF file not found: {source_path}")
+
+        if src.suffix.lower() != ".gguf":
+            raise ValueError(f"File must have a .gguf extension (got {src.name!r})")
+
+        with open(src, "rb") as fh:
+            magic = fh.read(4)
+        if magic != b"GGUF":
+            raise ValueError(
+                f"File {src.name!r} is not a valid GGUF binary (invalid magic header)"
+            )
+
+        Path(self.models_dir).mkdir(parents=True, exist_ok=True)
+        dest = Path(self.models_dir) / src.name
+        method = "existing"
+
+        if dest.resolve() != src:
+            if dest.exists() or dest.is_symlink():
+                dest.unlink()
+            if copy_file:
+                shutil.copy2(src, dest)
+                method = "copied"
+            else:
+                try:
+                    os.symlink(src, dest)
+                    method = "symlinked"
+                except OSError:
+                    try:
+                        os.link(src, dest)
+                        method = "hardlinked"
+                    except OSError:
+                        shutil.copy2(src, dest)
+                        method = "copied"
+
+        size_bytes = dest.stat().st_size
+        stem = dest.stem.lower().replace(" ", "-")
+        return {
+            "status": "imported",
+            "id": f"local:custom-{stem}",
+            "filename": dest.name,
+            "path": str(dest),
+            "size_gb": round(size_bytes / (1024 ** 3), 2),
+            "method": method,
+        }
 
 
 # ── Singleton ───────────────────────────────────────────────────────────────

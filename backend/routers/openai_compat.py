@@ -37,14 +37,53 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from collections import deque
+from pathlib import Path
+
 from database import get_database
-from services.local_model_service import local_model_service, LLAMA_CPP_AVAILABLE
+from services.local_model_service import (
+    local_model_service,
+    LLAMA_CPP_AVAILABLE,
+    _LLAMA_EXECUTOR,
+)
 from services.model_catalog import LOCAL_MODEL_CATALOG
 from services.think_tag_parser import parse_think_tags, StreamingThinkParser
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["openai-compat"])
+
+# Recent /v1 requests ring buffer for the Local Server (/server) live inspector
+_RECENT_V1_REQUESTS: deque = deque(maxlen=100)
+
+
+def record_v1_request(
+    endpoint: str,
+    model: str,
+    prompt_tokens: int = 0,
+    completion_tokens: int = 0,
+    latency_ms: int = 0,
+    status: str = "ok",
+) -> None:
+    tps = (
+        round(completion_tokens / max(latency_ms / 1000.0, 0.001), 1)
+        if completion_tokens > 0 and latency_ms > 0
+        else 0.0
+    )
+    _RECENT_V1_REQUESTS.appendleft({
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "endpoint": endpoint,
+        "model": model,
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "tps": tps,
+        "latency_ms": latency_ms,
+        "status": status,
+    })
+
+
+def get_recent_v1_requests() -> List[Dict[str, Any]]:
+    return list(_RECENT_V1_REQUESTS)
 
 # ── Cloud provider model catalogs (short curated lists) ─────────────────────
 # Mirrors the frontend settings.tsx provider model lists.
@@ -112,15 +151,56 @@ class CompletionRequest(BaseModel):
 # ── Model resolution ────────────────────────────────────────────────────────
 
 def _resolve_model(model_name: str) -> Optional[Dict]:
-    """Find a catalog entry by id, name fragment, or family+size pattern."""
+    """Find a catalog entry or installed custom GGUF by id, stem, or filename."""
     name_lower = model_name.lower().strip()
+    if name_lower.startswith("local:"):
+        name_lower = name_lower[len("local:"):].strip()
 
-    # Direct id match
+    # Direct id match in catalog
     for entry in LOCAL_MODEL_CATALOG:
         if entry["id"] == name_lower:
             return entry
 
-    # Fuzzy: match against id with/without dots, dashes
+    # Check installed models (including custom non-catalog GGUF files) before
+    # fuzzy/substring catalog matching so exact custom IDs/filenames win.
+    try:
+        from services.model_manager import model_manager
+        installed_list = model_manager.list_installed()
+    except Exception:
+        installed_list = []
+
+    stripped_custom = (
+        name_lower[len("custom-"):] if name_lower.startswith("custom-") else name_lower
+    )
+    for inst in installed_list:
+        inst_id = (inst.get("id") or "").lower()
+        inst_fn = (inst.get("filename") or "").lower()
+        inst_stem = Path(inst_fn).stem.lower() if inst_fn else ""
+        inst_slug = inst_stem.replace(" ", "-")
+        candidates = {
+            inst_id,
+            inst_fn,
+            inst_stem,
+            inst_slug,
+            f"custom-{inst_slug}",
+            f"custom-{inst_id}",
+        }
+        if name_lower in candidates or stripped_custom in candidates:
+            # If it's a catalog model, return the full catalog entry
+            for entry in LOCAL_MODEL_CATALOG:
+                if entry["id"] == inst_id:
+                    return entry
+            return {
+                "id": inst_id or inst_slug,
+                "name": inst.get("name") or inst_stem or model_name,
+                "family": inst.get("family", "custom"),
+                "provider": inst.get("provider", "Custom"),
+                "hf_filename": inst.get("filename"),
+                "gguf_path": inst.get("path"),
+                "is_custom": True,
+            }
+
+    # Fuzzy: match against catalog id with/without dots, dashes
     normalized = name_lower.replace("-", "").replace(".", "").replace(" ", "")
     for entry in LOCAL_MODEL_CATALOG:
         entry_norm = entry["id"].replace("-", "").replace(".", "").replace(" ", "")
@@ -208,7 +288,7 @@ def _build_fim_prompt(prompt: str, suffix: str, model_family: str) -> str:
 
 
 def _resolve_model_and_load(model_name: str):
-    """Resolve a model name to catalog entry + loaded Llama instance.
+    """Resolve a model name to catalog/custom entry + loaded Llama instance.
 
     Returns (llm, catalog_entry) or raises HTTPException.
     """
@@ -217,10 +297,15 @@ def _resolve_model_and_load(model_name: str):
 
     catalog_entry = _resolve_model(model_name)
     if not catalog_entry:
-        raise HTTPException(404, f"Model '{model_name}' not found in catalog")
+        raise HTTPException(404, f"Model '{model_name}' not found in catalog or installed models")
 
     from services.model_manager import model_manager
-    if not model_manager.is_installed(catalog_entry["id"]):
+    is_custom = bool(catalog_entry.get("is_custom"))
+    gguf_path = catalog_entry.get("gguf_path")
+
+    if is_custom and gguf_path and Path(gguf_path).is_file():
+        pass
+    elif not model_manager.is_installed(catalog_entry["id"]):
         raise HTTPException(
             404,
             f"Model '{catalog_entry['id']}' is in the catalog but not downloaded. "
@@ -230,7 +315,8 @@ def _resolve_model_and_load(model_name: str):
     model_config = {
         "model_metadata": {
             "runtime": "llama-cpp",
-            "hf_filename": catalog_entry["hf_filename"],
+            "hf_filename": catalog_entry.get("hf_filename"),
+            "gguf_path": gguf_path,
         }
     }
     model_path = local_model_service._resolve_model_path(catalog_entry["id"], model_config)
@@ -549,18 +635,20 @@ async def _sync_chat(
     model_id: str,
     include_thinking: bool = False,
 ) -> Dict[str, Any]:
-    """Non-streaming chat completion."""
+    """Non-streaming chat completion serialized via _inference_lock and _LLAMA_EXECUTOR."""
+    t0 = time.monotonic()
     loop = asyncio.get_event_loop()
-    response = await loop.run_in_executor(
-        None,
-        partial(
-            llm.create_chat_completion,
-            messages=messages,
-            max_tokens=req.max_tokens,
-            temperature=req.temperature,
-            top_p=req.top_p,
-        ),
-    )
+    async with local_model_service._inference_lock:
+        response = await loop.run_in_executor(
+            _LLAMA_EXECUTOR,
+            partial(
+                llm.create_chat_completion,
+                messages=messages,
+                max_tokens=req.max_tokens,
+                temperature=req.temperature,
+                top_p=req.top_p,
+            ),
+        )
 
     # llama-cpp-python returns OpenAI-format already, just patch ids
     response["id"] = completion_id
@@ -578,6 +666,14 @@ async def _sync_chat(
             if include_thinking and parsed.reasoning:
                 msg["reasoning"] = parsed.reasoning
 
+    usage = response.get("usage") or {}
+    record_v1_request(
+        endpoint="/v1/chat/completions",
+        model=model_id,
+        prompt_tokens=usage.get("prompt_tokens", 0),
+        completion_tokens=usage.get("completion_tokens", 0),
+        latency_ms=int((time.monotonic() - t0) * 1000),
+    )
     return response
 
 
@@ -590,73 +686,83 @@ async def _stream_chat(
     model_id: str,
     include_thinking: bool = False,
 ):
-    """Streaming chat completion as SSE."""
+    """Streaming chat completion as SSE serialized via _inference_lock and _LLAMA_EXECUTOR."""
+    t0 = time.monotonic()
     loop = asyncio.get_event_loop()
+    out_tokens = 0
 
-    stream_iter = await loop.run_in_executor(
-        None,
-        partial(
-            llm.create_chat_completion,
-            messages=messages,
-            max_tokens=req.max_tokens,
-            temperature=req.temperature,
-            top_p=req.top_p,
-            stream=True,
-        ),
+    async with local_model_service._inference_lock:
+        stream_iter = await loop.run_in_executor(
+            _LLAMA_EXECUTOR,
+            partial(
+                llm.create_chat_completion,
+                messages=messages,
+                max_tokens=req.max_tokens,
+                temperature=req.temperature,
+                top_p=req.top_p,
+                stream=True,
+            ),
+        )
+
+        think_parser = StreamingThinkParser()
+
+        def _next(it):
+            try:
+                return next(it)
+            except StopIteration:
+                return None
+
+        def _make_chunk(content: str = "", finish_reason=None):
+            return {
+                "id": completion_id,
+                "created": created,
+                "model": model_id,
+                "object": "chat.completion.chunk",
+                "choices": [{
+                    "index": 0,
+                    "delta": {"content": content} if content else {},
+                    "finish_reason": finish_reason,
+                }],
+            }
+
+        while True:
+            chunk = await loop.run_in_executor(_LLAMA_EXECUTOR, _next, stream_iter)
+            if chunk is None:
+                # Flush remaining buffer
+                for kind, seg in think_parser.finish():
+                    if kind == "content" and seg:
+                        yield f"data: {json.dumps(_make_chunk(seg))}\n\n"
+                    elif kind == "thinking" and seg and include_thinking:
+                        yield f"data: {json.dumps(_make_chunk(seg))}\n\n"
+                break
+
+            delta = chunk.get("choices", [{}])[0].get("delta", {})
+            text = delta.get("content") or ""
+            finish_reason = chunk.get("choices", [{}])[0].get("finish_reason")
+
+            if text:
+                out_tokens += 1
+                for kind, seg in think_parser.feed(text):
+                    if kind == "content" and seg:
+                        yield f"data: {json.dumps(_make_chunk(seg))}\n\n"
+                    elif kind == "thinking" and seg and include_thinking:
+                        yield f"data: {json.dumps(_make_chunk(seg))}\n\n"
+
+            if finish_reason:
+                for kind, seg in think_parser.finish():
+                    if kind == "content" and seg:
+                        yield f"data: {json.dumps(_make_chunk(seg))}\n\n"
+                    elif kind == "thinking" and seg and include_thinking:
+                        yield f"data: {json.dumps(_make_chunk(seg))}\n\n"
+                yield f"data: {json.dumps(_make_chunk(finish_reason=finish_reason))}\n\n"
+                break
+
+    record_v1_request(
+        endpoint="/v1/chat/completions",
+        model=model_id,
+        completion_tokens=out_tokens,
+        latency_ms=int((time.monotonic() - t0) * 1000),
     )
-
-    think_parser = StreamingThinkParser()
-
-    def _next(it):
-        try:
-            return next(it)
-        except StopIteration:
-            return None
-
-    def _make_chunk(content: str = "", finish_reason=None):
-        return {
-            "id": completion_id,
-            "created": created,
-            "model": model_id,
-            "object": "chat.completion.chunk",
-            "choices": [{
-                "index": 0,
-                "delta": {"content": content} if content else {},
-                "finish_reason": finish_reason,
-            }],
-        }
-
-    while True:
-        chunk = await loop.run_in_executor(None, _next, stream_iter)
-        if chunk is None:
-            # Flush remaining buffer
-            for kind, seg in think_parser.finish():
-                if kind == "content" and seg:
-                    yield f"data: {json.dumps(_make_chunk(seg))}\n\n"
-                elif kind == "thinking" and seg and include_thinking:
-                    yield f"data: {json.dumps(_make_chunk(seg))}\n\n"
-            break
-
-        delta = chunk.get("choices", [{}])[0].get("delta", {})
-        text = delta.get("content") or ""
-        finish_reason = chunk.get("choices", [{}])[0].get("finish_reason")
-
-        if text:
-            for kind, seg in think_parser.feed(text):
-                if kind == "content" and seg:
-                    yield f"data: {json.dumps(_make_chunk(seg))}\n\n"
-                elif kind == "thinking" and seg and include_thinking:
-                    yield f"data: {json.dumps(_make_chunk(seg))}\n\n"
-
-        if finish_reason:
-            for kind, seg in think_parser.finish():
-                if kind == "content" and seg:
-                    yield f"data: {json.dumps(_make_chunk(seg))}\n\n"
-                elif kind == "thinking" and seg and include_thinking:
-                    yield f"data: {json.dumps(_make_chunk(seg))}\n\n"
-            yield f"data: {json.dumps(_make_chunk(finish_reason=finish_reason))}\n\n"
-            break
-
     yield "data: [DONE]\n\n"
 
 
@@ -728,25 +834,36 @@ async def _sync_completion(
     model_id: str,
     stop: Optional[List[str]],
 ) -> Dict[str, Any]:
-    """Non-streaming text completion."""
+    """Non-streaming text completion serialized via _inference_lock and _LLAMA_EXECUTOR."""
+    t0 = time.monotonic()
     loop = asyncio.get_event_loop()
-    response = await loop.run_in_executor(
-        None,
-        partial(
-            llm.create_completion,
-            prompt=prompt,
-            max_tokens=req.max_tokens,
-            temperature=req.temperature,
-            top_p=req.top_p,
-            stop=stop,
-            echo=req.echo,
-        ),
-    )
+    async with local_model_service._inference_lock:
+        response = await loop.run_in_executor(
+            _LLAMA_EXECUTOR,
+            partial(
+                llm.create_completion,
+                prompt=prompt,
+                max_tokens=req.max_tokens,
+                temperature=req.temperature,
+                top_p=req.top_p,
+                stop=stop,
+                echo=req.echo,
+            ),
+        )
 
     # Normalize response to OpenAI format
     text = ""
     if "choices" in response and response["choices"]:
         text = response["choices"][0].get("text", "")
+
+    usage = response.get("usage", {})
+    record_v1_request(
+        endpoint="/v1/completions",
+        model=model_id,
+        prompt_tokens=usage.get("prompt_tokens", 0),
+        completion_tokens=usage.get("completion_tokens", 0),
+        latency_ms=int((time.monotonic() - t0) * 1000),
+    )
 
     return {
         "id": completion_id,
@@ -761,7 +878,7 @@ async def _sync_completion(
                 "finish_reason": response.get("choices", [{}])[0].get("finish_reason", "stop"),
             }
         ],
-        "usage": response.get("usage", {}),
+        "usage": usage,
     }
 
 
@@ -774,52 +891,63 @@ async def _stream_completion(
     model_id: str,
     stop: Optional[List[str]],
 ):
-    """Streaming text completion as SSE."""
+    """Streaming text completion as SSE serialized via _inference_lock and _LLAMA_EXECUTOR."""
+    t0 = time.monotonic()
     loop = asyncio.get_event_loop()
+    out_tokens = 0
 
-    stream_iter = await loop.run_in_executor(
-        None,
-        partial(
-            llm.create_completion,
-            prompt=prompt,
-            max_tokens=req.max_tokens,
-            temperature=req.temperature,
-            top_p=req.top_p,
-            stop=stop,
-            stream=True,
-        ),
+    async with local_model_service._inference_lock:
+        stream_iter = await loop.run_in_executor(
+            _LLAMA_EXECUTOR,
+            partial(
+                llm.create_completion,
+                prompt=prompt,
+                max_tokens=req.max_tokens,
+                temperature=req.temperature,
+                top_p=req.top_p,
+                stop=stop,
+                stream=True,
+            ),
+        )
+
+        def _next(it):
+            try:
+                return next(it)
+            except StopIteration:
+                return None
+
+        while True:
+            chunk = await loop.run_in_executor(_LLAMA_EXECUTOR, _next, stream_iter)
+            if chunk is None:
+                break
+
+            text = chunk.get("choices", [{}])[0].get("text", "")
+            finish_reason = chunk.get("choices", [{}])[0].get("finish_reason")
+            if text:
+                out_tokens += 1
+
+            data = {
+                "id": completion_id,
+                "object": "text_completion",
+                "created": created,
+                "model": model_id,
+                "choices": [
+                    {
+                        "text": text,
+                        "index": 0,
+                        "finish_reason": finish_reason,
+                    }
+                ],
+            }
+            yield f"data: {json.dumps(data)}\n\n"
+
+            if finish_reason:
+                break
+
+    record_v1_request(
+        endpoint="/v1/completions",
+        model=model_id,
+        completion_tokens=out_tokens,
+        latency_ms=int((time.monotonic() - t0) * 1000),
     )
-
-    def _next(it):
-        try:
-            return next(it)
-        except StopIteration:
-            return None
-
-    while True:
-        chunk = await loop.run_in_executor(None, _next, stream_iter)
-        if chunk is None:
-            break
-
-        text = chunk.get("choices", [{}])[0].get("text", "")
-        finish_reason = chunk.get("choices", [{}])[0].get("finish_reason")
-
-        data = {
-            "id": completion_id,
-            "object": "text_completion",
-            "created": created,
-            "model": model_id,
-            "choices": [
-                {
-                    "text": text,
-                    "index": 0,
-                    "finish_reason": finish_reason,
-                }
-            ],
-        }
-        yield f"data: {json.dumps(data)}\n\n"
-
-        if finish_reason:
-            break
-
     yield "data: [DONE]\n\n"

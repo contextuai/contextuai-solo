@@ -35,6 +35,27 @@ function extractDetail(data: unknown): string {
   return "Request failed";
 }
 
+let _cachedSidecarToken: string | null | undefined = undefined;
+
+export async function getSidecarToken(): Promise<string | null> {
+  if (_cachedSidecarToken !== undefined) {
+    return _cachedSidecarToken;
+  }
+  if (isTauri) {
+    try {
+      const { invoke } = await import("@tauri-apps/api/core");
+      const token = await invoke<string | null>("get_sidecar_token");
+      _cachedSidecarToken = token || null;
+      return _cachedSidecarToken;
+    } catch {
+      _cachedSidecarToken = null;
+      return null;
+    }
+  }
+  _cachedSidecarToken = null;
+  return null;
+}
+
 async function _singleApiRequest<T = unknown>(
   method: string,
   path: string,
@@ -59,12 +80,17 @@ async function _singleApiRequest<T = unknown>(
   } else {
     // Dev mode: direct HTTP to backend
     const url = `${DEV_API_URL}${path}`;
+    const token = await getSidecarToken();
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...options?.headers,
+    };
+    if (token) {
+      headers["X-ContextuAI-Token"] = token;
+    }
     const response = await fetch(url, {
       method,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
+      headers,
       body: body ? JSON.stringify(body) : undefined,
     });
     data = await response.json() as T;
@@ -148,13 +174,18 @@ export async function* streamRequest(
   // For streaming, always use fetch (even in Tauri, SSE goes through HTTP)
   const baseUrl = isTauri ? `http://127.0.0.1:${await getSidecarPort()}` : DEV_API_URL.replace("/api/v1", "");
   const fullUrl = `${baseUrl}/api/v1${path}`;
+  const token = await getSidecarToken();
+  const streamHeaders: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) {
+    streamHeaders["X-ContextuAI-Token"] = token;
+  }
 
   let response: Response | null = null;
   for (let attempt = 0; attempt < 5; attempt++) {
     try {
       response = await fetch(fullUrl, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: streamHeaders,
         body: JSON.stringify(body),
         signal,
       });

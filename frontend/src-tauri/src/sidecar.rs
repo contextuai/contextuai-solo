@@ -5,9 +5,17 @@ use tauri::{AppHandle, Manager};
 static SIDECAR_PORT: AtomicU16 = AtomicU16::new(18741);
 static SIDECAR_RUNNING: AtomicBool = AtomicBool::new(false);
 static SIDECAR_CHILD: Mutex<Option<std::process::Child>> = Mutex::new(None);
+static SIDECAR_TOKEN: Mutex<Option<String>> = Mutex::new(None);
 
 pub fn get_port() -> u16 {
     SIDECAR_PORT.load(Ordering::Relaxed)
+}
+
+pub fn get_token() -> Option<String> {
+    if let Ok(guard) = SIDECAR_TOKEN.lock() {
+        return guard.clone();
+    }
+    None
 }
 
 pub fn is_running() -> bool {
