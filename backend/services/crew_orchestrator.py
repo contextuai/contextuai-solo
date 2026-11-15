@@ -134,10 +134,11 @@ class CrewOrchestrator:
 
             # Publish to bound channels (outbound distribution)
             publish_results = []
+            is_dry_run = bool(run.get("dry_run", False))
             if final_output:
                 try:
                     publish_results = await self._publish_to_bound_channels(
-                        crew, final_output, run_id
+                        crew, final_output, run_id, dry_run=is_dry_run
                     )
                 except Exception as e:
                     logger.warning(f"Channel publish failed for run {run_id}: {e}")
@@ -147,6 +148,8 @@ class CrewOrchestrator:
                     await self.run_repo.update_run(run_id, {
                         "publish_results": publish_results,
                     })
+                    if final_run is not None:
+                        final_run["publish_results"] = publish_results
                 except Exception as e:
                     logger.warning(f"Failed to store publish results on run {run_id}: {e}")
 
@@ -1159,7 +1162,7 @@ class CrewOrchestrator:
         return summary
 
     async def _publish_to_bound_channels(
-        self, crew: Dict[str, Any], content: str, run_id: str
+        self, crew: Dict[str, Any], content: str, run_id: str, dry_run: bool = False
     ) -> List[Dict[str, Any]]:
         """
         Publish crew output.
@@ -1169,6 +1172,8 @@ class CrewOrchestrator:
         and honours the crew-level `approval_required` flag.
 
         Otherwise falls back to the legacy `channel_bindings[]` path.
+        When `dry_run=True`, captures outbound payloads as previews without
+        sending to live external channels or inserting into the approval queue.
         """
         try:
             from services.feature_flags import unified_crews_enabled
@@ -1178,13 +1183,39 @@ class CrewOrchestrator:
 
         connection_bindings = crew.get("connection_bindings") or []
         if unified and connection_bindings:
-            return await self._publish_via_connection_bindings(crew, content, run_id)
+            return await self._publish_via_connection_bindings(
+                crew, content, run_id, dry_run=dry_run
+            )
 
         bindings = crew.get("channel_bindings", [])
         if not bindings:
+            if dry_run:
+                return [{
+                    "channel_type": "preview",
+                    "status": "dry_run_preview",
+                    "dry_run": True,
+                    "preview_content": content,
+                    "title": f"Crew: {crew.get('name', 'Untitled')}",
+                }]
             return []
 
         publish_results: List[Dict[str, Any]] = []
+
+        if dry_run:
+            for binding in bindings:
+                if not binding.get("enabled", True):
+                    continue
+                channel_type = binding.get("channel_type")
+                if not channel_type:
+                    continue
+                publish_results.append({
+                    "channel_type": channel_type,
+                    "status": "dry_run_preview",
+                    "dry_run": True,
+                    "preview_content": content,
+                    "title": f"Crew: {crew.get('name', 'Untitled')}",
+                })
+            return publish_results
 
         from database import get_database
         from services.distribution_service import DistributionService
@@ -1288,7 +1319,7 @@ class CrewOrchestrator:
         return publish_results
 
     async def _publish_via_connection_bindings(
-        self, crew: Dict[str, Any], content: str, run_id: str
+        self, crew: Dict[str, Any], content: str, run_id: str, dry_run: bool = False
     ) -> List[Dict[str, Any]]:
         """Phase 3 outbound: publish via crew.connection_bindings (direction-aware).
 
@@ -1299,18 +1330,36 @@ class CrewOrchestrator:
         the crew) routes the output to the approval queue instead of
         publishing directly.
         """
+        publish_results: List[Dict[str, Any]] = []
+        platform_to_channel_type = {
+            "slack_webhook": "slack",
+        }
+
+        if dry_run:
+            for binding in (crew.get("connection_bindings") or []):
+                direction = (binding or {}).get("direction") or "both"
+                if direction not in ("outbound", "both"):
+                    continue
+                platform = binding.get("platform")
+                if not platform:
+                    continue
+                channel_type = platform_to_channel_type.get(platform, platform)
+                publish_results.append({
+                    "platform": platform,
+                    "channel_type": channel_type,
+                    "status": "dry_run_preview",
+                    "dry_run": True,
+                    "preview_content": content,
+                    "title": f"Crew: {crew.get('name', 'Untitled')}",
+                })
+            return publish_results
+
         from database import get_database
         from services.distribution_service import DistributionService
 
         db = await get_database()
         dist_svc = DistributionService(db)
-        publish_results: List[Dict[str, Any]] = []
         approval_required = bool(crew.get("approval_required"))
-
-        # `slack_webhook` is stored as `slack` in distribution_channels.
-        platform_to_channel_type = {
-            "slack_webhook": "slack",
-        }
 
         for binding in (crew.get("connection_bindings") or []):
             direction = (binding or {}).get("direction") or "both"

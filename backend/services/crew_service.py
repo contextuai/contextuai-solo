@@ -299,6 +299,7 @@ class CrewService:
             "agents": agent_states,
             "trigger_type": trigger_type,
             "trigger_source": trigger_source if trigger_source is not None else ("manual" if trigger_type == "manual" else None),
+            "dry_run": bool(getattr(request, "dry_run", False)),
         }
 
         run = await self.run_repo.create_run(crew_id, user_id, run_data)

@@ -261,6 +261,49 @@ class MemoryService:
             return ""
         return "\n".join(lines)
 
+    async def recall_for_prompt(
+        self,
+        query: str,
+        surface: str = "chat",
+        scopes: Optional[List[str]] = None,
+        top_k: int = DEFAULT_TOP_K,
+    ) -> str:
+        """Recall relevant memory facts and format as a prompt block (SPEC-14 PR-B).
+
+        Respects the master ``enabled`` kill-switch and per-surface toggle
+        (``chat_enabled``, ``crews_enabled``, ``channels_enabled``).
+        Falls back to active/pinned facts if the ONNX embedding model is not installed.
+        """
+        if not query or not query.strip():
+            return ""
+        settings = await self.get_settings()
+        if not settings.get("enabled", True):
+            return ""
+        surface_key = f"{surface}_enabled"
+        if surface_key in settings and not settings.get(surface_key, False):
+            return ""
+
+        target_scopes = scopes or ["global"]
+        facts = await self.search(
+            MemorySearchRequest(query=query, top_k=top_k, scopes=target_scopes)
+        )
+        if not facts:
+            # Fallback when ONNX embedding model is unavailable on disk:
+            # return pinned and active facts from the requested scopes.
+            all_facts = await self.memory_repo.list_by_scope(target_scopes, None)
+            active = [
+                self._normalize(f)
+                for f in all_facts
+                if f.get("status") == "active" or f.get("pinned")
+            ]
+            active.sort(
+                key=lambda f: (bool(f.get("pinned")), f.get("updated_at") or ""),
+                reverse=True,
+            )
+            facts = active[:top_k]
+
+        return self.format_memory_block(facts)
+
     # ------------------------------------------------------------------
     # Export
     # ------------------------------------------------------------------

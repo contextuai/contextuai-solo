@@ -71,6 +71,28 @@ async def _retrieve_kb_context(
         logging.getLogger(__name__).exception("KB context retrieval failed")
         return ""
 
+
+async def _retrieve_memory_context(crew: Dict[str, Any], query: str) -> str:
+    """Query Unified Memory Layer for global + crew-scoped facts (SPEC-14 PR-B)."""
+    if not query or not query.strip():
+        return ""
+    try:
+        from database import get_database
+        from repositories.memory_repository import MemoryRepository
+        from repositories.memory_settings_repository import MemorySettingsRepository
+        from services.memory_service import MemoryService
+
+        db = await get_database()
+        svc = MemoryService(MemoryRepository(db), MemorySettingsRepository(db))
+        scopes = ["global"]
+        crew_id = (crew or {}).get("id") or (crew or {}).get("_id")
+        if crew_id:
+            scopes.append(f"crew:{crew_id}")
+        return await svc.recall_for_prompt(query=query, surface="crews", scopes=scopes)
+    except Exception:
+        logging.getLogger(__name__).debug("Memory context retrieval skipped", exc_info=True)
+        return ""
+
 # Claude Agent SDK imports
 try:
     from claude_agent_sdk import (
@@ -174,6 +196,10 @@ class AgentRunner:
             logger.info(f"Running agent '{agent_name}' via local model: {self.model_id}")
 
             prompt = self.build_prompt(agent_blueprint, context)
+            crew_doc = context.get("crew") or {}
+            mem_block = await _retrieve_memory_context(crew_doc, prompt)
+            if mem_block:
+                prompt = f"{mem_block}\n\n{prompt}"
             # Prepend a note about local model limitations
             prompt = (
                 "[Local AI mode: text generation only — no tool use available]\n\n"
@@ -252,6 +278,15 @@ class AgentRunner:
                         if system_prompt
                         else kb_context
                     )
+
+            # Unified Memory Auto-Recall (SPEC-14 PR-B)
+            mem_block = await _retrieve_memory_context(crew_doc, prompt)
+            if mem_block:
+                system_prompt = (
+                    mem_block + "\n\n" + system_prompt
+                    if system_prompt
+                    else mem_block
+                )
 
             project_dir = os.path.join(self.work_dir, project_id)
             os.makedirs(project_dir, exist_ok=True)
