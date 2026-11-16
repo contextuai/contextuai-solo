@@ -29,6 +29,7 @@ import { useAiMode } from "@/contexts/ai-mode-context";
 import { useEdition } from "@/config/edition";
 import { UpgradeToSoloModal } from "@/components/shell/upgrade-to-solo-modal";
 import logoImg from "@/assets/logo.png";
+import vesperLogoImg from "@/assets/vesper-logo.png";
 
 interface NavItem {
   label: string;
@@ -106,7 +107,11 @@ export default function DesktopSidebar() {
       {/* Brand Header */}
       <div className="flex items-center h-16 px-4 border-b border-neutral-200 dark:border-neutral-800">
         <div className="flex items-center gap-3 min-w-0">
-          <img src={logoImg} alt="ContextuAI" className="flex-shrink-0 w-8 h-8 rounded-lg" />
+          <img
+            src={isLite ? vesperLogoImg : logoImg}
+            alt={isLite ? "Vesper" : "ContextuAI"}
+            className="flex-shrink-0 w-8 h-8 rounded-lg object-cover"
+          />
           {!collapsed && (
             <div className="flex flex-col min-w-0">
               <div className="flex items-center gap-1.5">

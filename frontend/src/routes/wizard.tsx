@@ -17,6 +17,7 @@ import {
   ExternalLink,
 } from "lucide-react";
 import logoImg from "@/assets/logo.png";
+import vesperLogoImg from "@/assets/vesper-logo.png";
 import { useAiMode } from "@/contexts/ai-mode-context";
 import { useEdition } from "@/config/edition";
 import {
@@ -361,7 +362,11 @@ export default function WizardPage() {
         <div className="w-full max-w-md text-center">
           {/* Logo */}
           <div className="flex items-center justify-center gap-3 mb-8">
-            <img src={logoImg} alt={brand.fullTitle} className="w-12 h-12 rounded-2xl shadow-lg shadow-primary-500/25" />
+            <img
+              src={isLite ? vesperLogoImg : logoImg}
+              alt={brand.fullTitle}
+              className="w-12 h-12 rounded-2xl shadow-lg shadow-primary-500/25 object-cover"
+            />
             <span className="text-2xl font-bold text-neutral-900 dark:text-white">
               {isLite ? (
                 <>
