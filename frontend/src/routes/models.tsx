@@ -23,6 +23,8 @@ import {
   Zap,
   Gauge,
   ArrowRight,
+  LayoutGrid,
+  List,
 } from "lucide-react";
 import {
   getCatalog,
@@ -294,6 +296,126 @@ function ModelCard({
                 </button>
               </>
             )}
+          </div>
+        ) : (
+          <button
+            onClick={() => onDownload(model.id)}
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium rounded-full bg-primary-500 hover:bg-primary-600 text-white shadow-sm shadow-primary-500/25 transition-all active:scale-[0.98]"
+          >
+            <Download className="w-3.5 h-3.5" />
+            Download
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ModelListRow({
+  model,
+  systemRam,
+  downloading,
+  progress,
+  onDownload,
+  onCancel,
+  onChat,
+}: {
+  model: CatalogModel;
+  systemRam: number;
+  downloading: boolean;
+  progress?: DownloadProgress;
+  onDownload: (id: string) => void;
+  onCancel: (id: string) => void;
+  onChat: (id: string) => void;
+}) {
+  const fit = model.fit;
+  const percent = progress?.percent ?? 0;
+  const fitBadgeClassMap: Record<string, string> = {
+    fits_gpu: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
+    fits_ram: "bg-sky-500/15 text-sky-700 dark:text-sky-300",
+    partial_offload: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
+    wont_fit: "bg-red-500/15 text-red-700 dark:text-red-300",
+  };
+  const fitBadgeClass = (fit?.verdict && fitBadgeClassMap[fit.verdict]) || "bg-sky-500/15 text-sky-700 dark:text-sky-300";
+
+  return (
+    <div className="m3-card px-4 py-3 flex flex-wrap items-center justify-between gap-3 hover:border-primary-500/35 transition-all">
+      <div className="flex items-center gap-3 min-w-0 flex-1">
+        <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-primary-500/12 text-primary-600 dark:text-primary-400 shrink-0">
+          <Cpu className="w-4 h-4" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm font-semibold text-neutral-900 dark:text-white truncate">
+              {model.name}
+            </span>
+            {model.is_recommended && (
+              <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase bg-primary-500/15 text-primary-700 dark:text-primary-300">
+                Recommended
+              </span>
+            )}
+            <span className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded", QUALITY_COLORS[model.quality_tier])}>
+              {model.quality_tier}
+            </span>
+            {fit && (
+              <span className={cn("inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium", fitBadgeClass)}>
+                {fit.badge_label}
+                {fit.estimated_tps ? ` · ~${fit.estimated_tps} tok/s` : ""}
+              </span>
+            )}
+          </div>
+          <div className="text-xs text-neutral-500 dark:text-neutral-400 flex items-center gap-2 flex-wrap mt-0.5">
+            <span>{model.provider}</span>
+            <span>·</span>
+            <span>{model.parameter_size}</span>
+            <span>·</span>
+            <span className="font-mono text-[11px]">{model.quantization}</span>
+            <span>·</span>
+            <span>{model.size_gb} GB</span>
+            <span>·</span>
+            <RamIndicator required={model.ram_required_gb} systemRam={systemRam} />
+          </div>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2 shrink-0">
+        {model.hf_repo && (
+          <a
+            href={`https://huggingface.co/${model.hf_repo}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="p-2 rounded-full text-neutral-400 hover:text-primary-500 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+            title="View on HuggingFace"
+          >
+            <ExternalLink className="w-3.5 h-3.5" />
+          </a>
+        )}
+        {model.installed ? (
+          <button
+            onClick={() => onChat(model.id)}
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium rounded-full bg-primary-500/15 text-primary-700 dark:text-primary-300 hover:bg-primary-500/25 transition-colors"
+          >
+            <Check className="w-3.5 h-3.5" />
+            Chat <ArrowRight className="w-3 h-3" />
+          </button>
+        ) : downloading ? (
+          <div className="flex items-center gap-2">
+            <div className="w-20 h-1.5 rounded-full bg-neutral-200 dark:bg-neutral-700 overflow-hidden">
+              <div
+                className="h-full rounded-full bg-primary-500 transition-all duration-300"
+                style={{ width: `${percent}%` }}
+              />
+            </div>
+            <span className="text-[11px] text-neutral-500 tabular-nums font-medium">
+              {Math.round(percent)}%
+            </span>
+            <button
+              onClick={() => onCancel(model.id)}
+              className="p-1 rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-800"
+              title="Cancel download"
+            >
+              <X className="w-3.5 h-3.5 text-neutral-400" />
+            </button>
           </div>
         ) : (
           <button
@@ -694,6 +816,22 @@ export default function ModelsPage() {
   const [benchmarkingId, setBenchmarkingId] = useState<string | null>(null);
   const [benchmarks, setBenchmarks] = useState<Record<string, number>>({});
   const [rescanningHw, setRescanningHw] = useState(false);
+  const [viewMode, setViewMode] = useState<"grid" | "list">(() => {
+    try {
+      const saved = localStorage.getItem("contextuai.models.viewMode");
+      return saved === "list" ? "list" : "grid";
+    } catch {
+      return "grid";
+    }
+  });
+  const setPersistedViewMode = (mode: "grid" | "list") => {
+    setViewMode(mode);
+    try {
+      localStorage.setItem("contextuai.models.viewMode", mode);
+    } catch {
+      // ignore
+    }
+  };
   const [wontFitGuardModel, setWontFitGuardModel] = useState<CatalogModel | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -1119,6 +1257,37 @@ export default function ModelsPage() {
                   </button>
                 ))}
               </div>
+              {/* M3 Grid / List View Toggle */}
+              <div className="ml-auto inline-flex items-center gap-0.5 p-1 rounded-full bg-neutral-100/90 dark:bg-neutral-900 border border-neutral-200/75 dark:border-neutral-800">
+                <button
+                  type="button"
+                  onClick={() => setPersistedViewMode("grid")}
+                  className={cn(
+                    "inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium transition-all",
+                    viewMode === "grid"
+                      ? "bg-primary-500/15 text-primary-700 dark:text-primary-300 shadow-sm"
+                      : "text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200"
+                  )}
+                  title="Card Grid View"
+                >
+                  <LayoutGrid className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Cards</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPersistedViewMode("list")}
+                  className={cn(
+                    "inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium transition-all",
+                    viewMode === "list"
+                      ? "bg-primary-500/15 text-primary-700 dark:text-primary-300 shadow-sm"
+                      : "text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200"
+                  )}
+                  title="Compact List View"
+                >
+                  <List className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">List</span>
+                </button>
+              </div>
             </div>
 
             {/* SPEC-27: Best Model for Your Machine Hero Banner */}
@@ -1171,19 +1340,32 @@ export default function ModelsPage() {
                   <Star className="w-4 h-4 text-primary-500" />
                   Recommended for You
                 </h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {recommendedModels.map((m) => (
-                    <ModelCard
-                      key={m.id}
-                      model={m}
-                      systemRam={systemInfo?.total_ram_gb ?? 8}
-                      downloading={!!downloads[m.id]}
-                      progress={downloads[m.id]}
-                      onDownload={requestDownload}
-                      onCancel={handleCancel}
-                      onChat={handleOpenInChat}
-                    />
-                  ))}
+                <div className={viewMode === "list" ? "space-y-2.5" : "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"}>
+                  {recommendedModels.map((m) =>
+                    viewMode === "list" ? (
+                      <ModelListRow
+                        key={m.id}
+                        model={m}
+                        systemRam={systemInfo?.total_ram_gb ?? 8}
+                        downloading={!!downloads[m.id]}
+                        progress={downloads[m.id]}
+                        onDownload={requestDownload}
+                        onCancel={handleCancel}
+                        onChat={handleOpenInChat}
+                      />
+                    ) : (
+                      <ModelCard
+                        key={m.id}
+                        model={m}
+                        systemRam={systemInfo?.total_ram_gb ?? 8}
+                        downloading={!!downloads[m.id]}
+                        progress={downloads[m.id]}
+                        onDownload={requestDownload}
+                        onCancel={handleCancel}
+                        onChat={handleOpenInChat}
+                      />
+                    )
+                  )}
                 </div>
               </div>
             )}
@@ -1198,19 +1380,32 @@ export default function ModelsPage() {
                   <p className="text-sm text-neutral-500">No models found matching your search.</p>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {(search || activeCategory ? filteredCatalog : otherModels).map((m) => (
-                    <ModelCard
-                      key={m.id}
-                      model={m}
-                      systemRam={systemInfo?.total_ram_gb ?? 8}
-                      downloading={!!downloads[m.id]}
-                      progress={downloads[m.id]}
-                      onDownload={requestDownload}
-                      onCancel={handleCancel}
-                      onChat={handleOpenInChat}
-                    />
-                  ))}
+                <div className={viewMode === "list" ? "space-y-2.5" : "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"}>
+                  {(search || activeCategory ? filteredCatalog : otherModels).map((m) =>
+                    viewMode === "list" ? (
+                      <ModelListRow
+                        key={m.id}
+                        model={m}
+                        systemRam={systemInfo?.total_ram_gb ?? 8}
+                        downloading={!!downloads[m.id]}
+                        progress={downloads[m.id]}
+                        onDownload={requestDownload}
+                        onCancel={handleCancel}
+                        onChat={handleOpenInChat}
+                      />
+                    ) : (
+                      <ModelCard
+                        key={m.id}
+                        model={m}
+                        systemRam={systemInfo?.total_ram_gb ?? 8}
+                        downloading={!!downloads[m.id]}
+                        progress={downloads[m.id]}
+                        onDownload={requestDownload}
+                        onCancel={handleCancel}
+                        onChat={handleOpenInChat}
+                      />
+                    )
+                  )}
                 </div>
               )}
             </div>

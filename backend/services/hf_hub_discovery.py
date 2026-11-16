@@ -41,6 +41,11 @@ DEFAULT_OTA_CACHE_PATH = os.getenv(
     "CATALOG_CACHE_PATH",
     os.path.join(os.path.expanduser("~"), ".contextuai-solo", "data", "catalog_cache.json"),
 )
+DEFAULT_OTA_CATALOG_URL = os.getenv(
+    "CATALOG_JSON_URL",
+    "https://raw.githubusercontent.com/contextuai/contextuai-solo/main/catalog/models.json",
+)
+DEFAULT_REPO_OTA_MANIFEST = Path(__file__).resolve().parents[2] / "catalog" / "models.json"
 
 # Preferred quant priority when multiple quants fit comfortably in GPU/RAM
 _QUANT_PREFERENCE = {
@@ -295,37 +300,46 @@ async def refresh_ota_catalog(
     remote_url: Optional[str] = None,
     cache_path: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Refresh the curated model catalog from a remote URL or local cache (SPEC-34)."""
+    """Refresh the curated model catalog from a remote JSON manifest or local cache (SPEC-34)."""
     from services import model_catalog
 
     target_cache = Path(cache_path or DEFAULT_OTA_CACHE_PATH)
     entries_loaded: List[Dict[str, Any]] = []
     source = "bundled"
+    candidate_url = (remote_url if remote_url is not None else DEFAULT_OTA_CATALOG_URL) or ""
 
-    if remote_url:
+    if candidate_url and not (remote_url is None and cache_path is not None):
         try:
-            from services.net_guard import assert_egress_allowed, record_egress
-            assert_egress_allowed(remote_url, "ota_catalog_sync")
-        except ImportError:
-            record_egress = None
+            try:
+                from services.net_guard import assert_egress_allowed, record_egress
+                assert_egress_allowed(candidate_url, "ota_catalog_sync")
+            except ImportError:
+                record_egress = None
 
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.get(remote_url)
-            resp.raise_for_status()
-            payload = resp.json()
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.get(candidate_url)
+                resp.raise_for_status()
+                payload = resp.json()
 
-        if record_egress:
-            record_egress(remote_url, "ota_catalog_sync", 0)
+            if record_egress:
+                record_egress(candidate_url, "ota_catalog_sync", 0)
 
-        entries_loaded = (
-            payload.get("models")
-            if isinstance(payload, dict) and "models" in payload
-            else (payload if isinstance(payload, list) else [])
-        )
-        target_cache.parent.mkdir(parents=True, exist_ok=True)
-        target_cache.write_text(json.dumps(entries_loaded, indent=2), encoding="utf-8")
-        source = "remote"
-    elif target_cache.is_file():
+            entries_loaded = (
+                payload.get("models")
+                if isinstance(payload, dict) and "models" in payload
+                else (payload if isinstance(payload, list) else [])
+            )
+            if entries_loaded:
+                target_cache.parent.mkdir(parents=True, exist_ok=True)
+                target_cache.write_text(json.dumps(entries_loaded, indent=2), encoding="utf-8")
+                source = "remote"
+        except Exception as exc:
+            # If caller explicitly requested a specific URL, raise; otherwise fall back cleanly
+            if remote_url is not None:
+                raise
+            logger.debug("Remote OTA catalog sync skipped (%s); falling back to local cache/manifest", exc)
+
+    if not entries_loaded and target_cache.is_file():
         try:
             raw = json.loads(target_cache.read_text(encoding="utf-8"))
             entries_loaded = (
@@ -333,9 +347,23 @@ async def refresh_ota_catalog(
                 if isinstance(raw, dict) and "models" in raw
                 else (raw if isinstance(raw, list) else [])
             )
-            source = "cache"
+            if entries_loaded:
+                source = "cache"
         except Exception as exc:
             logger.warning("Failed to read OTA catalog cache at %s: %s", target_cache, exc)
+
+    if not entries_loaded and DEFAULT_REPO_OTA_MANIFEST.is_file():
+        try:
+            raw = json.loads(DEFAULT_REPO_OTA_MANIFEST.read_text(encoding="utf-8"))
+            entries_loaded = (
+                raw.get("models")
+                if isinstance(raw, dict) and "models" in raw
+                else (raw if isinstance(raw, list) else [])
+            )
+            if entries_loaded:
+                source = "manifest"
+        except Exception as exc:
+            logger.warning("Failed to read bundled OTA manifest: %s", exc)
 
     merged_count = merge_catalog_entries(entries_loaded) if entries_loaded else 0
     return {
