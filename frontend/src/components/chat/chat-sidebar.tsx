@@ -8,7 +8,6 @@ import {
   Archive,
   MoreHorizontal,
   PanelLeftClose,
-  PanelLeft,
 } from "lucide-react";
 import type { ChatSession } from "@/types/chat";
 
@@ -64,39 +63,22 @@ export default function ChatSidebar({
   });
 
   if (collapsed) {
-    return (
-      <div className="flex flex-col items-center w-12 border-r border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 py-3 gap-2">
-        <button
-          onClick={onToggleCollapse}
-          className="p-2 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-500 dark:text-neutral-400"
-          title="Expand sidebar"
-        >
-          <PanelLeft className="w-4 h-4" />
-        </button>
-        <button
-          onClick={onNewChat}
-          className="p-2 rounded-lg hover:bg-primary-50 dark:hover:bg-primary-500/10 text-primary-500"
-          title="New chat"
-        >
-          <Plus className="w-4 h-4" />
-        </button>
-      </div>
-    );
+    return null;
   }
 
   return (
-    <div className="flex flex-col w-72 border-r border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900">
+    <div className="flex flex-col w-80 h-full border-r border-neutral-200/80 dark:border-neutral-800 bg-white/95 dark:bg-neutral-900/95 backdrop-blur-xl shadow-2xl">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-200 dark:border-neutral-800">
-        <h2 className="text-sm font-semibold text-neutral-900 dark:text-white">
-          Chats
+      <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-200/75 dark:border-neutral-800">
+        <h2 className="text-sm font-bold text-neutral-900 dark:text-white">
+          Chat History
         </h2>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1.5">
           <button
             onClick={onNewChat}
             className={cn(
-              "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium",
-              "bg-primary-500 hover:bg-primary-600 text-white transition-colors"
+              "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium",
+              "bg-primary-500 hover:bg-primary-600 text-white shadow-sm transition-all active:scale-[0.98]"
             )}
           >
             <Plus className="w-3.5 h-3.5" />
@@ -104,8 +86,8 @@ export default function ChatSidebar({
           </button>
           <button
             onClick={onToggleCollapse}
-            className="p-1.5 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-500 dark:text-neutral-400"
-            title="Collapse sidebar"
+            className="p-1.5 rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-500 dark:text-neutral-400"
+            title="Close chat history"
           >
             <PanelLeftClose className="w-4 h-4" />
           </button>

@@ -49,7 +49,7 @@ export default function ChatPage() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingContent, setStreamingContent] = useState("");
   const [streamingThinking, setStreamingThinking] = useState("");
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
   const [errorModal, setErrorModal] = useState<string | null>(null);
 
   // Abort controller for stopping stream
@@ -419,17 +419,34 @@ export default function ChatPage() {
   // ── Render ─────────────────────────────────────────────────────
 
   return (
-    <div className="flex h-full overflow-hidden">
-      <ChatSidebar
-        sessions={sessions}
-        activeSessionId={activeSessionId}
-        onSelectSession={handleSelectSession}
-        onNewChat={handleNewChat}
-        onDeleteSession={handleDeleteSession}
-        onArchiveSession={handleArchiveSession}
-        collapsed={sidebarCollapsed}
-        onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
-      />
+    <div className="relative flex h-full overflow-hidden">
+      {/* M3 Floating Chat History Drawer (collapsed by default for full-width chat) */}
+      {!sidebarCollapsed && (
+        <>
+          <div
+            className="fixed inset-0 z-20 bg-black/20 backdrop-blur-[1px]"
+            onClick={() => setSidebarCollapsed(true)}
+          />
+          <div className="absolute inset-y-0 left-0 z-30 h-full">
+            <ChatSidebar
+              sessions={sessions}
+              activeSessionId={activeSessionId}
+              onSelectSession={(id) => {
+                handleSelectSession(id);
+                setSidebarCollapsed(true);
+              }}
+              onNewChat={() => {
+                handleNewChat();
+                setSidebarCollapsed(true);
+              }}
+              onDeleteSession={handleDeleteSession}
+              onArchiveSession={handleArchiveSession}
+              collapsed={false}
+              onToggleCollapse={() => setSidebarCollapsed(true)}
+            />
+          </div>
+        </>
+      )}
 
       <div className="flex-1 flex flex-col min-w-0">
         <ChatHeader
@@ -438,6 +455,9 @@ export default function ChatPage() {
           messages={messages}
           draftInput={input}
           selectedModel={models.find((m) => m.id === selectedModelId) ?? null}
+          sessionsCount={sessions.length}
+          historyOpen={!sidebarCollapsed}
+          onToggleHistory={() => setSidebarCollapsed((c) => !c)}
         />
 
         <MessageList

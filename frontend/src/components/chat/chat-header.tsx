@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { cn } from "@/lib/utils";
-import { Sun, Moon, Pencil } from "lucide-react";
+import { Sun, Moon, Pencil, History } from "lucide-react";
 import { useTheme } from "@/components/providers/theme-provider";
 import { ContextMeter } from "./context-meter";
 import type { ChatMessage } from "@/types/chat";
@@ -12,6 +12,9 @@ interface ChatHeaderProps {
   messages?: ChatMessage[];
   draftInput?: string;
   selectedModel?: ModelConfig | null;
+  sessionsCount?: number;
+  historyOpen?: boolean;
+  onToggleHistory?: () => void;
 }
 
 export default function ChatHeader({
@@ -20,6 +23,9 @@ export default function ChatHeader({
   messages = [],
   draftInput = "",
   selectedModel = null,
+  sessionsCount = 0,
+  historyOpen = false,
+  onToggleHistory,
 }: ChatHeaderProps) {
   const { resolvedTheme, setTheme } = useTheme();
   const [isEditing, setIsEditing] = useState(false);
@@ -49,8 +55,29 @@ export default function ChatHeader({
 
   return (
     <div className="flex items-center justify-between h-12 px-4 border-b border-neutral-200/75 dark:border-neutral-800/90 bg-white/75 dark:bg-neutral-900/75 backdrop-blur-md">
-      {/* Left: Title */}
-      <div className="flex items-center gap-2 min-w-0 flex-shrink">
+      {/* Left: Chats History Drawer Trigger + Title */}
+      <div className="flex items-center gap-2.5 min-w-0 flex-shrink">
+        {onToggleHistory && (
+          <button
+            type="button"
+            onClick={onToggleHistory}
+            className={cn(
+              "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-all",
+              historyOpen
+                ? "bg-primary-500/15 text-primary-700 dark:text-primary-300 border-primary-500/30"
+                : "bg-white/80 dark:bg-neutral-800/80 text-neutral-600 dark:text-neutral-300 border-neutral-200/80 dark:border-neutral-700/80 hover:bg-neutral-100 dark:hover:bg-neutral-700"
+            )}
+            title="Toggle Chat History"
+          >
+            <History className="w-3.5 h-3.5 text-primary-500" />
+            <span>Chats</span>
+            {sessionsCount > 0 && (
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] font-semibold bg-neutral-200/80 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-200 tabular-nums">
+                {sessionsCount}
+              </span>
+            )}
+          </button>
+        )}
         {isEditing ? (
           <input
             ref={inputRef}
