@@ -98,6 +98,11 @@ pub async fn start_sidecar(app_handle: &AppHandle) -> Result<(), String> {
         cmd.args(["--port", &port.to_string(), "--host", "127.0.0.1"])
             .current_dir(&sidecar_dir);
 
+        // If built as Vesper (Lite Edition), propagate CONTEXTUAI_EDITION=lite to the sidecar
+        if app_handle.config().identifier == "com.contextuai.vesper" {
+            cmd.env("CONTEXTUAI_EDITION", "lite");
+        }
+
         // Models live at ~/.contextuai-solo/models/ — same path on every OS,
         // matches the docs (README, CLAUDE.md, SETUP-GUIDE) and the dev-mode
         // Python default. Pre-create the dir so first-run downloads succeed.
