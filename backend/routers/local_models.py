@@ -94,6 +94,18 @@ async def get_hardware_xray(rescan: bool = Query(False, description="Force fresh
     return get_hardware_profile(rescan=rescan)
 
 
+_FAMILY_DEFAULT_LOGOS = {
+    "gemma": "https://cdn.simpleicons.org/googlegemini/4285F4",
+    "codegemma": "https://cdn.simpleicons.org/googlegemini/4285F4",
+    "llama": "https://cdn.simpleicons.org/meta/0467DF",
+    "qwen": "https://cdn.simpleicons.org/alibabacloud/FF6A00",
+    "deepseek": "https://cdn.simpleicons.org/deepseek/4D6BFE",
+    "mistral": "https://cdn.simpleicons.org/mistralai/FA520F",
+    "phi": "https://cdn.simpleicons.org/microsoft/00A4EF",
+    "smollm": "https://cdn.simpleicons.org/huggingface/FFD21E",
+}
+
+
 @router.get("/catalog")
 async def get_model_catalog(
     category: Optional[str] = Query(None, description="Filter by category"),
@@ -112,6 +124,10 @@ async def get_model_catalog(
     models = []
     for m in raw_models:
         item = dict(m)
+        if not item.get("logo_url"):
+            fam = str(item.get("family") or "").lower()
+            if fam in _FAMILY_DEFAULT_LOGOS:
+                item["logo_url"] = _FAMILY_DEFAULT_LOGOS[fam]
         item["installed"] = model_manager.is_installed(item["id"])
         item["is_recommended"] = item["id"] in rec_ids
         item["fit"] = classify_model_fit(item, hw)

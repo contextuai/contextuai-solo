@@ -63,6 +63,7 @@ export interface CatalogModel {
   speed_tier: "fast" | "medium" | "slow";
   hf_repo: string;
   hf_filename: string;
+  logo_url?: string;
   chat_template: string;
   installed: boolean;
   is_recommended?: boolean;

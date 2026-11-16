@@ -111,6 +111,63 @@ function RamIndicator({ required, systemRam }: { required: number; systemRam: nu
   );
 }
 
+// ── Model Family Logo (Remote URL + Instant Offline Fallback) ────────────
+
+const FAMILY_BADGE_COLORS: Record<string, { bg: string; text: string; abbr: string }> = {
+  gemma: { bg: "bg-blue-500/15", text: "text-blue-600 dark:text-blue-400", abbr: "G" },
+  codegemma: { bg: "bg-blue-500/15", text: "text-blue-600 dark:text-blue-400", abbr: "CG" },
+  llama: { bg: "bg-sky-500/15", text: "text-sky-600 dark:text-sky-400", abbr: "L" },
+  qwen: { bg: "bg-orange-500/15", text: "text-orange-600 dark:text-orange-400", abbr: "Q" },
+  deepseek: { bg: "bg-indigo-500/15", text: "text-indigo-600 dark:text-indigo-400", abbr: "DS" },
+  mistral: { bg: "bg-amber-500/15", text: "text-amber-600 dark:text-amber-400", abbr: "M" },
+  phi: { bg: "bg-cyan-500/15", text: "text-cyan-600 dark:text-cyan-400", abbr: "Φ" },
+  smollm: { bg: "bg-yellow-500/15", text: "text-yellow-600 dark:text-yellow-400", abbr: "S" },
+};
+
+function ModelLogo({
+  model,
+  size = "md",
+}: {
+  model: Pick<CatalogModel, "name" | "family" | "logo_url">;
+  size?: "sm" | "md";
+}) {
+  const [imgFailed, setImgFailed] = useState(false);
+  const fam = (model.family || "").toLowerCase();
+  const badge = FAMILY_BADGE_COLORS[fam];
+  const boxClass = size === "sm" ? "w-8 h-8 rounded-xl" : "w-9 h-9 rounded-xl";
+
+  if (model.logo_url && !imgFailed) {
+    return (
+      <div
+        className={cn(
+          boxClass,
+          "flex items-center justify-center bg-white dark:bg-neutral-800 border border-neutral-200/80 dark:border-neutral-700/80 p-1.5 shrink-0 overflow-hidden"
+        )}
+      >
+        <img
+          src={model.logo_url}
+          alt={model.name}
+          loading="lazy"
+          onError={() => setImgFailed(true)}
+          className="w-full h-full object-contain"
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={cn(
+        boxClass,
+        "flex items-center justify-center font-bold text-xs shrink-0",
+        badge ? `${badge.bg} ${badge.text}` : "bg-primary-500/12 text-primary-600 dark:text-primary-400"
+      )}
+    >
+      {badge ? badge.abbr : <Cpu className="w-4 h-4" />}
+    </div>
+  );
+}
+
 // ── Model Card ───────────────────────────────────────────────────────────
 
 function ModelCard({
@@ -151,11 +208,13 @@ function ModelCard({
       )}
 
       {/* Header */}
-      <div className="flex items-start justify-between mb-2">
-        <div>
-          <h3 className="text-sm font-semibold text-neutral-900 dark:text-white">
-            {model.name}
-          </h3>
+      <div className="flex items-start justify-between gap-2 mb-2">
+        <div className="flex items-start gap-2.5 min-w-0">
+          <ModelLogo model={model} size="sm" />
+          <div className="min-w-0">
+            <h3 className="text-sm font-semibold text-neutral-900 dark:text-white truncate">
+              {model.name}
+            </h3>
           <p className="text-[11px] text-neutral-500 flex items-center gap-1 flex-wrap">
             <span>
               {model.provider} · {model.parameter_size} · {model.size_gb} GB
@@ -169,8 +228,9 @@ function ModelCard({
               </span>
             )}
           </p>
+          </div>
         </div>
-        <span className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded", QUALITY_COLORS[model.quality_tier])}>
+        <span className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded shrink-0", QUALITY_COLORS[model.quality_tier])}>
           {model.quality_tier}
         </span>
       </div>
@@ -341,9 +401,7 @@ function ModelListRow({
   return (
     <div className="m3-card px-4 py-3 flex flex-wrap items-center justify-between gap-3 hover:border-primary-500/35 transition-all">
       <div className="flex items-center gap-3 min-w-0 flex-1">
-        <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-primary-500/12 text-primary-600 dark:text-primary-400 shrink-0">
-          <Cpu className="w-4 h-4" />
-        </div>
+        <ModelLogo model={model} size="md" />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-sm font-semibold text-neutral-900 dark:text-white truncate">
