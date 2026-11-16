@@ -37,6 +37,8 @@ VERIFIED_QUANTIZERS = (
     "mistralai",
 )
 
+import sys
+
 DEFAULT_OTA_CACHE_PATH = os.getenv(
     "CATALOG_CACHE_PATH",
     os.path.join(os.path.expanduser("~"), ".contextuai-solo", "data", "catalog_cache.json"),
@@ -45,7 +47,12 @@ DEFAULT_OTA_CATALOG_URL = os.getenv(
     "CATALOG_JSON_URL",
     "https://raw.githubusercontent.com/contextuai/contextuai-solo/main/catalog/models.json",
 )
-DEFAULT_REPO_OTA_MANIFEST = Path(__file__).resolve().parents[2] / "catalog" / "models.json"
+_MEIPASS = getattr(sys, "_MEIPASS", None)
+DEFAULT_REPO_OTA_MANIFEST = (
+    (Path(_MEIPASS) / "catalog" / "models.json")
+    if _MEIPASS
+    else (Path(__file__).resolve().parents[2] / "catalog" / "models.json")
+)
 
 # Preferred quant priority when multiple quants fit comfortably in GPU/RAM
 _QUANT_PREFERENCE = {
