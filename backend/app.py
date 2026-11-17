@@ -584,6 +584,26 @@ async def startup_event():
         # Seed model configs for any already-downloaded local GGUF models
         await _seed_local_models(proxy)
 
+        # Background OTA catalog refresh (on startup + every 24h; skips if Airplane Lock is on)
+        async def _daily_ota_catalog_loop():
+            import asyncio as _asyncio
+            from services.hf_hub_discovery import refresh_ota_catalog
+            while True:
+                try:
+                    res = await refresh_ota_catalog()
+                    logger.info(
+                        "OTA catalog sync (%s): merged %s model(s), total=%s",
+                        res.get("source"),
+                        res.get("merged_count"),
+                        res.get("total_catalog_models"),
+                    )
+                except Exception as exc:
+                    logger.debug("OTA catalog background sync skipped: %s", exc)
+                await _asyncio.sleep(86400)
+
+        import asyncio as _asyncio
+        app.state.ota_sync_task = _asyncio.create_task(_daily_ota_catalog_loop())
+
         # Seed cloud model entries for any connected cloud providers
         await _seed_cloud_models(proxy)
 
