@@ -28,6 +28,9 @@ import {
 import { useAiMode } from "@/contexts/ai-mode-context";
 import { useEdition } from "@/config/edition";
 import { UpgradeToSoloModal } from "@/components/shell/upgrade-to-solo-modal";
+import { CommandPalette } from "@/components/shell/command-palette";
+import { PrivacyShield } from "@/components/privacy/privacy-shield";
+import { ThemeQuickPicker } from "@/components/shell/theme-quick-picker";
 import logoImg from "@/assets/logo.png";
 import vesperLogoImg from "@/assets/vesper-logo.png";
 
@@ -132,8 +135,8 @@ export default function DesktopSidebar() {
         </div>
       </div>
 
-      {/* M3 Extended FAB: Quick New Chat */}
-      <div className="px-3 pt-3 pb-1">
+      {/* M3 Extended FAB: Quick New Chat + Quick Jump (Ctrl+K) */}
+      <div className="px-3 pt-3 pb-1 space-y-2">
         <Link
           to="/"
           onClick={() => window.dispatchEvent(new CustomEvent("contextuai:new-chat"))}
@@ -148,6 +151,7 @@ export default function DesktopSidebar() {
           <Plus className="w-4 h-4 shrink-0" />
           {!collapsed && <span>New Chat</span>}
         </Link>
+        {isLite && <CommandPalette compact collapsed={collapsed} />}
       </div>
 
       {/* Navigation */}
@@ -291,27 +295,36 @@ export default function DesktopSidebar() {
         )}
       </div>
 
-      {/* Connection Status */}
+      {/* Utility & Connection Status Dock */}
       <div
         className={cn(
-          "px-4 py-3 border-t border-neutral-200 dark:border-neutral-800",
-          "flex items-center gap-2"
+          "px-3 py-2.5 border-t border-neutral-200 dark:border-neutral-800",
+          collapsed ? "flex flex-col items-center gap-2" : "flex items-center justify-between gap-2"
         )}
       >
-        {isOnline ? (
-          <Wifi className="w-4 h-4 text-success flex-shrink-0" />
+        {isLite ? (
+          <>
+            <PrivacyShield iconOnly={collapsed} />
+            <ThemeQuickPicker placement="top-left" />
+          </>
         ) : (
-          <WifiOff className="w-4 h-4 text-error flex-shrink-0" />
-        )}
-        {!collapsed && (
-          <span
-            className={cn(
-              "text-xs font-medium",
-              isOnline ? "text-success" : "text-error"
+          <div className="flex items-center gap-2 px-1">
+            {isOnline ? (
+              <Wifi className="w-4 h-4 text-success flex-shrink-0" />
+            ) : (
+              <WifiOff className="w-4 h-4 text-error flex-shrink-0" />
             )}
-          >
-            {isOnline ? "Connected" : "Offline"}
-          </span>
+            {!collapsed && (
+              <span
+                className={cn(
+                  "text-xs font-medium",
+                  isOnline ? "text-success" : "text-error"
+                )}
+              >
+                {isOnline ? "Connected" : "Offline"}
+              </span>
+            )}
+          </div>
         )}
       </div>
 

@@ -44,7 +44,13 @@ interface CommandItem {
   action: () => void;
 }
 
-export function CommandPalette() {
+export function CommandPalette({
+  compact = false,
+  collapsed = false,
+}: {
+  compact?: boolean;
+  collapsed?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -274,19 +280,30 @@ export function CommandPalette() {
         type="button"
         onClick={() => setOpen(true)}
         className={cn(
-          "inline-flex items-center gap-2 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors",
-          "bg-neutral-100 dark:bg-neutral-800/90 hover:bg-neutral-200/80 dark:hover:bg-neutral-700/80",
-          "text-neutral-600 dark:text-neutral-300 border border-neutral-200/80 dark:border-neutral-700"
+          "inline-flex items-center text-xs font-medium transition-colors border",
+          "bg-neutral-100/80 dark:bg-neutral-800/80 hover:bg-neutral-200/80 dark:hover:bg-neutral-700/80",
+          "border-neutral-200/80 dark:border-neutral-700/80",
+          collapsed
+            ? "justify-center w-10 h-9 mx-auto rounded-xl px-0"
+            : compact
+              ? "justify-between w-full px-3 py-1.5 rounded-xl"
+              : "gap-2 px-3 py-1 rounded-full"
         )}
         title="Open Command Palette (Ctrl+K / Cmd+K)"
       >
-        <Search className="w-3.5 h-3.5 text-neutral-400" />
-        <span className="hidden sm:inline text-neutral-500 dark:text-neutral-400">
-          Quick Jump...
+        <span className="inline-flex items-center gap-2 min-w-0">
+          <Search className="w-3.5 h-3.5 text-neutral-400 shrink-0" />
+          {!collapsed && (
+            <span className="text-neutral-500 dark:text-neutral-400 truncate">
+              Quick Jump...
+            </span>
+          )}
         </span>
-        <kbd className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-mono bg-white dark:bg-neutral-900 text-neutral-500 dark:text-neutral-400 border border-neutral-200 dark:border-neutral-700">
-          <Command className="w-2.5 h-2.5" />K
-        </kbd>
+        {!collapsed && (
+          <kbd className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-mono bg-white dark:bg-neutral-900 text-neutral-500 dark:text-neutral-400 border border-neutral-200 dark:border-neutral-700 shrink-0">
+            <Command className="w-2.5 h-2.5" />K
+          </kbd>
+        )}
       </button>
 
       {open && (

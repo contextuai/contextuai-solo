@@ -13,7 +13,11 @@ const MODES: { value: Theme; label: string; icon: React.ElementType }[] = [
   { value: "system", label: "System", icon: Monitor },
 ];
 
-export function ThemeQuickPicker() {
+export function ThemeQuickPicker({
+  placement = "bottom-right",
+}: {
+  placement?: "bottom-right" | "top-left";
+}) {
   const { colorTheme, setColorTheme, theme, setTheme, resetColorThemeToBrand } = useTheme();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -55,7 +59,8 @@ export function ThemeQuickPicker() {
       {open && (
         <div
           className={cn(
-            "absolute right-0 top-10 z-50 w-72 p-3 rounded-2xl border shadow-xl",
+            "absolute z-50 w-72 p-3 rounded-2xl border shadow-xl",
+            placement === "top-left" ? "left-0 bottom-10" : "right-0 top-10",
             "bg-white dark:bg-neutral-900 border-neutral-200 dark:border-neutral-800"
           )}
         >

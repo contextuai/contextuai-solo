@@ -38,7 +38,7 @@ export interface PrivacyManifest {
   guarantees: string[];
 }
 
-export function PrivacyShield() {
+export function PrivacyShield({ iconOnly = false }: { iconOnly?: boolean }) {
   const [open, setOpen] = useState(false);
   const [ledger, setLedger] = useState<EgressLedgerResponse>({
     airplane_lock: false,
@@ -119,17 +119,19 @@ export function PrivacyShield() {
       >
         {ledger.airplane_lock ? (
           <>
-            <Plane className="w-3.5 h-3.5" />
-            <span>Airplane Lock</span>
+            <Plane className="w-3.5 h-3.5 shrink-0" />
+            {!iconOnly && <span className="truncate">Airplane Lock</span>}
           </>
         ) : (
           <>
-            <Shield className="w-3.5 h-3.5" />
-            <span>
-              {ledger.total_allowed_requests === 0
-                ? "0 External Calls"
-                : `${ledger.total_allowed_requests} External`}
-            </span>
+            <Shield className="w-3.5 h-3.5 shrink-0" />
+            {!iconOnly && (
+              <span className="truncate">
+                {ledger.total_allowed_requests === 0
+                  ? "0 External"
+                  : `${ledger.total_allowed_requests} External`}
+              </span>
+            )}
           </>
         )}
       </button>
