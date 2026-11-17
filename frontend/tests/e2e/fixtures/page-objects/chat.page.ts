@@ -20,7 +20,7 @@ export class ChatPage {
 
   /** The main chat textarea input. */
   get chatInput(): Locator {
-    return this.page.locator('textarea[placeholder="Ask me anything..."]');
+    return this.page.locator('textarea[placeholder^="Ask anything"]');
   }
 
   /** Send button (arrow-up icon, visible when not streaming). */
