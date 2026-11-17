@@ -11,7 +11,7 @@ concurrency:
 jobs:
   backend-tests:
     name: Backend Unit Tests (pytest)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: backend
@@ -43,7 +43,7 @@ jobs:
 
   build:
     name: Build & Type Check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: frontend
@@ -62,7 +62,7 @@ jobs:
 
   e2e:
     name: Playwright E2E
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: build
     steps:
       - uses: actions/checkout@v4
