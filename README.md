@@ -15,12 +15,12 @@ You're one person running a business. You need a marketing strategist, a financi
 **Now you don't have to.** ContextuAI Solo puts an entire team of 96 AI business experts on your desktop. They research, write, analyze, review, and publish — individually or as coordinated crews. And everything stays private on your machine.
 
 <p align="center">
-  <a href="https://github.com/contextuai/contextuai-solo/releases/latest"><img src="https://img.shields.io/badge/Download-Latest%20Release-FF6B35?style=for-the-badge&logo=github" alt="Download Latest Release"></a>
+  <a href="https://github.com/contextuai/vesper/releases/latest"><img src="https://img.shields.io/badge/Download-Latest%20Release-FF6B35?style=for-the-badge&logo=github" alt="Download Latest Release"></a>
 </p>
 
-> **Ready to try it?** Download the installer for your platform from the [Releases page](https://github.com/contextuai/contextuai-solo/releases/latest) — Windows (.exe/.msi), macOS (.dmg), or Linux (.deb/.rpm). No build steps required.
+> **Ready to try it?** Download the installer for your platform from the [Releases page](https://github.com/contextuai/vesper/releases/latest) — Windows (.exe/.msi), macOS (.dmg), or Linux (.deb/.rpm). No build steps required.
 >
-> **New here?** Read the [User Guide](docs/user-guide/README.md) to get started, or the [Deep Strategy Playbook (PDF)](https://github.com/contextuai/contextuai-solo/releases/latest/download/ContextuAI_Solo_Deep_Strategy_Playbook.pdf) for a full overview.
+> **New here?** Read the [User Guide](docs/user-guide/README.md) to get started, or the [Deep Strategy Playbook (PDF)](https://github.com/contextuai/vesper/releases/latest/download/ContextuAI_Solo_Deep_Strategy_Playbook.pdf) for a full overview.
 
 > **Which model should I run?** For best results, download **Qwen 3 8B** (8 GB RAM) or **Qwen 3 14B** (16 GB RAM) from the Model Hub. These deliver strong results for business writing, analysis, and social media content. The smaller 1B models work for quick tests but won't match the quality of larger models.
 
@@ -211,7 +211,7 @@ Solo is a native desktop app that runs ~500 MB installed. If you bring your own 
 
 ## Download & Install
 
-**[Download the latest release](https://github.com/contextuai/contextuai-solo/releases/latest)** — pre-built installers for all platforms, no build steps needed.
+**[Download the latest release](https://github.com/contextuai/vesper/releases/latest)** — pre-built installers for all platforms, no build steps needed.
 
 | Platform | Installer | How to Install |
 |----------|-----------|----------------|
@@ -240,7 +240,7 @@ Without this, macOS may silently refuse to launch the app (or show "app is damag
 This is an active beta — we'd love your feedback! If you run into any issues:
 
 1. Check which version you're running (Settings page or the release you downloaded)
-2. [Open a GitHub Issue](https://github.com/contextuai/contextuai-solo/issues/new) with the version number, your OS, and steps to reproduce
+2. [Open a GitHub Issue](https://github.com/contextuai/vesper/issues/new) with the version number, your OS, and steps to reproduce
 3. Feature requests are welcome too — tell us what agents or integrations you'd like to see
 
 ---

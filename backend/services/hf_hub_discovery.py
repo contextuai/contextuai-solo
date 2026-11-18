@@ -45,7 +45,7 @@ DEFAULT_OTA_CACHE_PATH = os.getenv(
 )
 DEFAULT_OTA_CATALOG_URL = os.getenv(
     "CATALOG_JSON_URL",
-    "https://raw.githubusercontent.com/contextuai/contextuai-solo/main/catalog/models.json",
+    "https://raw.githubusercontent.com/contextuai/vesper/main/catalog/models.json",
 )
 _MEIPASS = getattr(sys, "_MEIPASS", None)
 DEFAULT_REPO_OTA_MANIFEST = (

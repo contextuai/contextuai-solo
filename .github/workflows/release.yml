@@ -382,7 +382,7 @@ jobs:
         shell: bash
         run: |
           VERSION="${RELEASE_TAG#v}"
-          REPO="contextuai/contextuai-solo"
+          REPO="contextuai/vesper"
           BASE_URL="https://github.com/$REPO/releases/download/$RELEASE_TAG"
           DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
           NOTES=$(gh release view "$RELEASE_TAG" --json body -q .body 2>/dev/null || echo "")
