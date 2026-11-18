@@ -205,6 +205,10 @@ class CloudProviderService:
         cfg = config or {}
         start = time.monotonic()
         try:
+            from services.net_guard import assert_egress_allowed
+            if provider_type != CloudProviderType.OLLAMA.value:
+                target_url = cfg.get("base_url") or f"https://api.{provider_type}.com"
+                assert_egress_allowed(target_url, f"cloud_probe_{provider_type}")
             if provider_type == CloudProviderType.ANTHROPIC.value:
                 ok, error = await _probe_anthropic(cfg)
             elif provider_type == CloudProviderType.OPENAI.value:
@@ -217,6 +221,8 @@ class CloudProviderService:
                 ok, error = await _probe_ollama(cfg)
             elif provider_type == CloudProviderType.OPENAI_COMPAT.value:
                 ok, error = await _probe_openai(cfg, require_key=False)
+            elif provider_type == CloudProviderType.HUGGINGFACE.value:
+                ok, error = await _probe_huggingface(cfg)
             else:
                 ok, error = False, f"Unsupported provider type: {provider_type!r}"
         except Exception as exc:  # safety net
@@ -367,6 +373,34 @@ async def _probe_bedrock(cfg: Dict[str, Any]):
         return False, _short_error(exc)
 
 
+async def _probe_huggingface(cfg: Dict[str, Any]):
+    """Probe HuggingFace Hub access token via GET /api/whoami-v2 (SPEC-08)."""
+    api_key = (cfg.get("api_key") or "").strip()
+    if not api_key:
+        return False, "Missing api_key"
+    try:
+        from services.net_guard import assert_egress_allowed, record_egress
+        assert_egress_allowed("https://huggingface.co/api/whoami-v2", "huggingface_probe")
+    except ImportError:
+        record_egress = None
+    except Exception as exc:
+        return False, str(exc)
+
+    headers = {"Authorization": f"Bearer {api_key}"}
+    try:
+        async with httpx.AsyncClient(timeout=PROBE_TIMEOUT_SECONDS) as client:
+            resp = await client.get(
+                "https://huggingface.co/api/whoami-v2", headers=headers
+            )
+        if record_egress:
+            record_egress("https://huggingface.co/api/whoami-v2", "huggingface_probe", 0)
+        if 200 <= resp.status_code < 300:
+            return True, None
+        return False, _extract_error_message(resp, default=f"HTTP {resp.status_code}")
+    except httpx.HTTPError as exc:
+        return False, _short_error(exc)
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -379,6 +413,7 @@ def _default_display_name(provider_type: str) -> str:
         "bedrock": "AWS Bedrock",
         "ollama": "Ollama (Local)",
         "openai_compat": "OpenAI-Compatible",
+        "huggingface": "HuggingFace Hub",
     }.get(provider_type, provider_type.title())
 
 

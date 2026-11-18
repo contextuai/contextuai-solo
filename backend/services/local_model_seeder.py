@@ -156,36 +156,68 @@ def _catalog_to_model_doc(entry: Dict, file_path: str) -> Dict[str, Any]:
 
 
 def _unknown_gguf_to_model_doc(file_path: Path) -> Dict[str, Any]:
-    """Create a model document for an unknown GGUF file not in the catalog."""
+    """Create a model document for an unknown GGUF file not in the catalog.
+
+    Uses ``gguf_inspector`` (SPEC-34) to read the binary GGUF header and extract
+    the real context window, architecture, quantization, and tool-calling support
+    instead of falling back to hardcoded 4096 / False defaults.
+    """
     stem = file_path.stem
     model_id = f"local:custom-{stem.lower().replace(' ', '-')}"
-    size_gb = round(file_path.stat().st_size / (1024 ** 3), 2)
+    try:
+        size_gb = round(file_path.stat().st_size / (1024 ** 3), 2)
+    except OSError:
+        size_gb = 1.0
+
+    inspected: Dict[str, Any] = {}
+    try:
+        from services.gguf_inspector import inspect_gguf_file
+        inspected = inspect_gguf_file(file_path)
+    except Exception as exc:
+        logger.debug("Could not inspect GGUF header for %s: %s", file_path.name, exc)
+
+    context_window = int(inspected.get("context_length") or 4096)
+    supports_tools = bool(inspected.get("supports_tools", False))
+    supports_vision = bool(inspected.get("has_mmproj", False))
+    arch = inspected.get("architecture") or "unknown"
+    quant = inspected.get("quantization") or "Unknown"
+    display_name = inspected.get("name") or stem
+
+    capabilities = ["general"]
+    if supports_tools:
+        capabilities.append("tools")
+    if inspected.get("supports_thinking"):
+        capabilities.append("reasoning")
+    if supports_vision:
+        capabilities.append("vision")
+
     return {
         "id": model_id,
-        "name": f"{stem} (Local)",
+        "name": f"{display_name} (Local)",
         "provider": "Local",
         "model": model_id,
-        "max_tokens": 4096,
+        "max_tokens": min(8192, context_window),
         "enabled": True,
-        "description": f"Custom local model: {file_path.name}",
-        "capabilities": ["general"],
+        "description": f"Custom local model: {file_path.name} ({arch}, {quant})",
+        "capabilities": capabilities,
         "input_cost": 0,
         "output_cost": 0,
-        "context_window": 4096,
-        "supports_vision": False,
-        "supports_function_calling": False,
+        "context_window": context_window,
+        "supports_vision": supports_vision,
+        "supports_function_calling": supports_tools,
         "model_metadata": {
             "runtime": "llama-cpp",
             "local_model_id": f"custom-{stem.lower().replace(' ', '-')}",
             "gguf_path": str(file_path),
-            "family": "unknown",
-            "parameter_size": "Unknown",
+            "family": arch,
+            "parameter_size": "Custom",
             "parameter_count": 0,
-            "quantization": "Unknown",
+            "quantization": quant,
             "ram_required_gb": max(1, round(size_gb * 1.2)),
-            "chat_template": "chatml",
+            "chat_template": inspected.get("chat_template") or "chatml",
             "hf_repo": None,
             "hf_filename": file_path.name,
+            "mmproj_path": inspected.get("mmproj_path"),
         },
     }
 

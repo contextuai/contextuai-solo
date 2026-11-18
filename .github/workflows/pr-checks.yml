@@ -9,9 +9,41 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  backend-tests:
+    name: Backend Unit Tests (pytest)
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake build-essential \
+            libglib2.0-dev libpango1.0-dev libharfbuzz-dev libffi-dev
+
+      - name: Install backend dependencies
+        env:
+          CMAKE_ARGS: "-DGGML_NATIVE=OFF"
+        run: pip install -r requirements.txt pytest pytest-asyncio
+
+      - name: Run pytest
+        env:
+          CONTEXTUAI_MODE: desktop
+        run: pytest tests/ -v
+
   build:
     name: Build & Type Check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: frontend
@@ -30,7 +62,7 @@ jobs:
 
   e2e:
     name: Playwright E2E
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: build
     steps:
       - uses: actions/checkout@v4

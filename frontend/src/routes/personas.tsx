@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
+import { useEdition } from "@/config/edition";
 import {
   Sparkles,
   Plus,
@@ -22,6 +23,7 @@ import {
   ArrowRight,
   Cloud,
   Server,
+  Zap,
 } from "lucide-react";
 import {
   getPersonas,
@@ -115,7 +117,76 @@ const emptyForm: PersonaFormData = {
   credentials: {},
 };
 
+const QUICK_START_PRESETS: Array<{
+  id: string;
+  label: string;
+  badge: string;
+  form: PersonaFormData;
+}> = [
+  {
+    id: "mcp_fs",
+    label: "Local Filesystem MCP",
+    badge: "MCP stdio",
+    form: {
+      name: "Local Filesystem MCP",
+      description: "Read & inspect files in your workspace via the Model Context Protocol",
+      type: "mcp_server",
+      category: "Technical",
+      system_prompt: "Use the attached MCP filesystem tools to inspect files accurately before answering.",
+      credentials: {
+        server_url: "npx -y @modelcontextprotocol/server-filesystem ./",
+      },
+    },
+  },
+  {
+    id: "mcp_git",
+    label: "Git / Repo MCP",
+    badge: "MCP stdio",
+    form: {
+      name: "Git Repository Inspector",
+      description: "Inspect git history, diffs, and branches using MCP",
+      type: "mcp_server",
+      category: "Technical",
+      system_prompt: "Analyze git commits, diffs, and branch state before proposing code changes.",
+      credentials: {
+        server_url: "npx -y @modelcontextprotocol/server-git",
+      },
+    },
+  },
+  {
+    id: "web_researcher",
+    label: "Web Search & Grounding",
+    badge: "Web Tool",
+    form: {
+      name: "Live Web Researcher",
+      description: "Search and synthesize live web sources with citations",
+      type: "web_researcher",
+      category: "General",
+      system_prompt: "Search the web when up-to-date facts are required and cite sources clearly.",
+      credentials: {},
+    },
+  },
+  {
+    id: "postgres_analyst",
+    label: "PostgreSQL Analyst",
+    badge: "SQL",
+    form: {
+      name: "PostgreSQL Data Analyst",
+      description: "Run read-only analytical SQL queries against a local or remote Postgres DB",
+      type: "postgresql",
+      category: "Technical",
+      system_prompt: "Inspect table schemas first and write safe, read-only SQL queries.",
+      credentials: {
+        host: "localhost",
+        port: "5432",
+        database: "postgres",
+      },
+    },
+  },
+];
+
 export default function PersonasPage() {
+  const { isLite } = useEdition();
   const [personas, setPersonas] = useState<Persona[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -167,6 +238,15 @@ export default function PersonasPage() {
     setForm(emptyForm);
     setEditingId(null);
     setWizardStep(1);
+    setTypeSearch("");
+    setTestResult(null);
+    setWizardOpen(true);
+  }
+
+  function openPreset(presetForm: PersonaFormData) {
+    setForm(presetForm);
+    setEditingId(null);
+    setWizardStep(2);
     setTypeSearch("");
     setTestResult(null);
     setWizardOpen(true);
@@ -227,18 +307,18 @@ export default function PersonasPage() {
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-primary-100 dark:bg-primary-900/20 rounded-lg">
-            <Sparkles className="w-6 h-6 text-primary-500" />
+      {/* M3 Header */}
+      <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+        <div className="flex items-center gap-3.5">
+          <div className="flex items-center justify-center w-11 h-11 rounded-2xl bg-primary-500/12 text-primary-600 dark:text-primary-400 border border-primary-500/20">
+            <Sparkles className="w-5 h-5" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">
-              Connectors
+            <h1 className="text-xl font-bold tracking-tight text-neutral-900 dark:text-neutral-100">
+              {isLite ? "Connectors & MCP" : "Connectors"}
             </h1>
-            <p className="text-sm text-neutral-500 dark:text-neutral-400">
-              {personas.length} connector{personas.length !== 1 ? "s" : ""} &middot; External data sources & custom AI behaviors
+            <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400">
+              {personas.length} connector{personas.length !== 1 ? "s" : ""} &middot; Plug in Model Context Protocol (MCP) servers, databases, and custom AI behaviors
             </p>
           </div>
         </div>
@@ -246,42 +326,78 @@ export default function PersonasPage() {
           <button
             onClick={loadPersonas}
             disabled={loading}
-            className="p-2 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-500 transition-colors"
+            className="p-2.5 rounded-full border border-neutral-200/80 dark:border-neutral-700/80 bg-white/80 dark:bg-neutral-800/80 hover:bg-neutral-100 dark:hover:bg-neutral-700 text-neutral-500 transition-colors"
+            title="Refresh connectors"
           >
             <RefreshCw className={cn("w-4 h-4", loading && "animate-spin")} />
           </button>
           <button
             onClick={openCreate}
-            className="flex items-center gap-2 px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white rounded-lg text-sm font-medium transition-colors"
+            className="flex items-center gap-2 px-4 py-2.5 bg-primary-500 hover:bg-primary-600 text-white rounded-full text-sm font-medium shadow-sm shadow-primary-500/25 transition-all active:scale-[0.98]"
           >
             <Plus className="w-4 h-4" />
-            Create Connector
+            {isLite ? "Add MCP / Connector" : "Create Connector"}
           </button>
         </div>
       </div>
 
-      {/* Search + categories */}
-      <div className="flex items-center gap-3 mb-6">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
+      {/* 1-Click MCP & Local Tool Quick-Start Presets */}
+      <div className="mb-6 p-4 m3-card">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5">
+          <span className="text-xs font-semibold text-neutral-700 dark:text-neutral-300 flex items-center gap-1.5">
+            <Zap className="w-3.5 h-3.5 text-primary-500" />
+            1-Click MCP & Tool Quick-Start Templates
+          </span>
+          <span className="text-[11px] text-neutral-400">
+            Pre-fills configuration and opens directly on Step 2
+          </span>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+          {QUICK_START_PRESETS.map((preset) => (
+            <button
+              key={preset.id}
+              type="button"
+              onClick={() => openPreset(preset.form)}
+              className="flex flex-col items-start p-2.5 rounded-lg border border-neutral-200 dark:border-neutral-700/80 hover:border-primary-500/50 hover:bg-primary-50/30 dark:hover:bg-primary-500/5 text-left transition-all group"
+            >
+              <div className="flex items-center justify-between w-full mb-1">
+                <span className="text-xs font-semibold text-neutral-900 dark:text-white group-hover:text-primary-600 dark:group-hover:text-primary-400">
+                  {preset.label}
+                </span>
+                <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-500/10 text-purple-600 dark:text-purple-400">
+                  {preset.badge}
+                </span>
+              </div>
+              <span className="text-[11px] text-neutral-500 dark:text-neutral-400 line-clamp-1">
+                {preset.form.description}
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Search + M3 Filter Chips */}
+      <div className="flex flex-wrap items-center gap-3 mb-6">
+        <div className="relative flex-1 min-w-[220px] max-w-sm">
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search connectors..."
-            className="w-full pl-10 pr-4 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-sm text-neutral-900 dark:text-neutral-100 placeholder-neutral-400 focus:outline-none focus:ring-2 focus:ring-primary-500/50"
+            className="w-full pl-10 pr-4 py-2 rounded-full border border-neutral-200/80 dark:border-neutral-700/80 bg-white/90 dark:bg-neutral-900/90 text-sm text-neutral-900 dark:text-neutral-100 placeholder-neutral-400 focus:outline-none focus:ring-2 focus:ring-primary-500/40"
           />
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex flex-wrap items-center gap-1.5">
           {PERSONA_CATEGORIES.map((cat) => (
             <button
               key={cat}
               onClick={() => setActiveCategory(cat)}
               className={cn(
-                "px-3 py-1.5 rounded-lg text-xs font-medium transition-colors",
+                "px-3.5 py-1.5 rounded-full text-xs font-medium transition-all",
                 activeCategory === cat
-                  ? "bg-primary-500 text-white"
-                  : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                  ? "bg-primary-500/15 text-primary-700 dark:text-primary-300 ring-1 ring-primary-500/30 font-semibold"
+                  : "bg-white/80 dark:bg-neutral-900/70 border border-neutral-200/80 dark:border-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
               )}
             >
               {cat}
@@ -296,13 +412,13 @@ export default function PersonasPage() {
           {[1, 2, 3].map((i) => (
             <div
               key={i}
-              className="h-40 rounded-xl bg-neutral-100 dark:bg-neutral-800 animate-pulse"
+              className="h-40 rounded-2xl bg-neutral-100 dark:bg-neutral-800 animate-pulse"
             />
           ))}
         </div>
       ) : filtered.length === 0 ? (
-        <div className="text-center py-16">
-          <Sparkles className="w-12 h-12 text-neutral-300 dark:text-neutral-600 mx-auto mb-4" />
+        <div className="text-center py-16 m3-card">
+          <Sparkles className="w-12 h-12 text-primary-400/70 mx-auto mb-4" />
           <h3 className="text-lg font-semibold text-neutral-700 dark:text-neutral-300 mb-1">
             {personas.length === 0 ? "No connectors yet" : "No matches"}
           </h3>
@@ -314,7 +430,7 @@ export default function PersonasPage() {
           {personas.length === 0 && (
             <button
               onClick={openCreate}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white rounded-lg text-sm font-medium transition-colors"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white rounded-full text-sm font-medium transition-all active:scale-[0.98]"
             >
               <Plus className="w-4 h-4" />
               Create Connector
@@ -328,7 +444,7 @@ export default function PersonasPage() {
             return (
               <div
                 key={persona.id}
-                className="bg-white dark:bg-neutral-800 rounded-xl border border-neutral-200 dark:border-neutral-700 p-5 hover:shadow-md transition-shadow group"
+                className="m3-card p-5 hover:shadow-md hover:border-primary-500/35 transition-all group"
               >
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex items-center gap-3">

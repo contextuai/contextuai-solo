@@ -15,7 +15,7 @@ The Model Hub lets you configure which AI models are available in ContextuAI Sol
 
 ## Cloud Providers
 
-ContextuAI Solo supports 5 cloud AI providers:
+ContextuAI Solo supports 6 cloud AI providers:
 
 | Provider | Models | Key Required |
 |----------|--------|-------------|
@@ -23,7 +23,10 @@ ContextuAI Solo supports 5 cloud AI providers:
 | **OpenAI** | GPT-4o, GPT-4o mini, GPT-4 Turbo, O1 Preview | Yes |
 | **Google Gemini** | Gemini 2.0 Flash/Pro, Gemini 1.5 Flash | Yes |
 | **AWS Bedrock** | Claude 3 Sonnet/Haiku, Titan | Yes (AWS credentials) |
-| **Ollama** | Any Ollama-hosted model | No (local server) |
+| **Ollama** | Whatever you've pulled on the local server — discovered automatically | No (local server) |
+| **OpenAI-Compatible** | Any `/v1` server — vLLM, LM Studio, llama.cpp server, TGI, LiteLLM, OpenRouter | Base URL required, key optional |
+
+Anthropic, OpenAI, Google Gemini, and Ollama models are discovered live, so the list stays in step with what your account (or your local Ollama server) actually serves.
 
 ### Adding an API Key
 

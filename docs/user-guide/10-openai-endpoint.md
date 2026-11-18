@@ -193,6 +193,7 @@ Open **Settings → AI Providers** and add a key for any provider you want to us
 | OpenAI | `openai:` | `openai:gpt-4o` |
 | AWS Bedrock | `bedrock:` | `bedrock:anthropic.claude-3-sonnet` |
 | Ollama (local) | `ollama:` | `ollama:qwen2.5:7b` |
+| OpenAI-Compatible server | `openai_compat:` | `openai_compat:mistral-7b-instruct` |
 | Local GGUF | *(bare name)* | `qwen2.5-coder-7b` |
 
 `GET /v1/models` returns all available IDs — local and cloud — in one list. Ollama models are discovered automatically if Ollama is running.

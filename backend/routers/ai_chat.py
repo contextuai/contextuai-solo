@@ -305,6 +305,28 @@ async def ai_chat(request: ChatRequest, http_request: Request = None):
             except Exception as e:
                 logger.warning(f"⚠️ KB retrieval failed (continuing without): {e}")
 
+        # ── Unified Memory Layer Auto-Recall (SPEC-14 PR-B) ────────────
+        try:
+            from repositories.memory_repository import MemoryRepository
+            from repositories.memory_settings_repository import MemorySettingsRepository
+            from services.memory_service import MemoryService
+
+            _mem_db = await get_database()
+            _mem_svc = MemoryService(
+                MemoryRepository(_mem_db),
+                MemorySettingsRepository(_mem_db),
+            )
+            _mem_block = await _mem_svc.recall_for_prompt(
+                query=request.prompt,
+                surface="chat",
+                scopes=["global"],
+            )
+            if _mem_block:
+                effective_prompt = f"{_mem_block}\n\n{effective_prompt}"
+                logger.info("🧠 Unified Memory recall injected into chat prompt")
+        except Exception as e:
+            logger.warning(f"⚠️ Memory recall failed (continuing without): {e}")
+
         # Load conversation history for context
         history_messages = []
         if not is_first_message:

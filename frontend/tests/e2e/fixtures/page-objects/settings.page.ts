@@ -74,7 +74,7 @@ export class SettingsPage {
 
   /** App version text in the About tab. */
   get versionText(): Locator {
-    return this.page.locator("p").filter({ hasText: /version \d+\.\d+\.\d+/i });
+    return this.page.locator("p").filter({ hasText: /version \d+\.\d+(\.\d+)?/i });
   }
 
   /** Check for Updates button in the About tab. */

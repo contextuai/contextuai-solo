@@ -47,6 +47,7 @@ fn main() {
             commands::api_request,
             commands::get_sidecar_port,
             commands::get_sidecar_status,
+            commands::get_sidecar_token,
         ])
         .build(tauri::generate_context!())
         .expect("error while building ContextuAI Solo");

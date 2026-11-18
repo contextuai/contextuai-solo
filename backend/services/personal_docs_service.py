@@ -81,6 +81,102 @@ class PersonalDocsService:
         await self.rag.delete_for_source(source["kb_id"], source["_id"])
         await self.src.delete_source(source["_id"])
 
+    async def check_folder_staleness(self, mapping_id: str) -> Dict[str, Any]:
+        """SPEC-11: Check whether a folder mapping has changed files since last sync.
+
+        Compares current filesystem candidates (size + mtime) against indexed
+        documents and the last index job/source sync timestamp.
+        """
+        source = (
+            mapping_id
+            if isinstance(mapping_id, dict)
+            else await self.src.get_source(mapping_id)
+        )
+        if not source:
+            raise ValueError(f"Folder source not found: {mapping_id}")
+
+        source_id = source["_id"]
+        folder_path = source.get("path", "")
+        if not folder_path or not os.path.isdir(folder_path):
+            return {
+                "source_id": source_id,
+                "is_stale": True,
+                "changed_files_count": 0,
+                "new_files": 0,
+                "updated_files": 0,
+                "removed_files": 0,
+                "last_sync_at": source.get("last_sync_at"),
+                "error": "folder_missing",
+            }
+
+        candidates, _capped = await asyncio.to_thread(
+            walk_folder,
+            folder_path,
+            include_globs=source.get("include_globs") or [],
+            exclude_globs=source.get("exclude_globs") or [],
+            max_file_bytes=int(source.get("max_file_bytes") or 10 * 1024 * 1024),
+            max_files=int(source.get("max_files") or 5000),
+            max_depth=int(source.get("max_depth") or 8),
+        )
+
+        existing_by_path = await self.docs.list_paths_for_source(source_id)
+        if existing_by_path:
+            plan = classify_diffs(candidates, existing_by_path)
+            changed_count = (
+                len(plan.new) + len(plan.updated) + len(plan.removed_doc_ids)
+            )
+            return {
+                "source_id": source_id,
+                "is_stale": changed_count > 0,
+                "changed_files_count": changed_count,
+                "new_files": len(plan.new),
+                "updated_files": len(plan.updated),
+                "removed_files": len(plan.removed_doc_ids),
+                "last_sync_at": source.get("last_sync_at"),
+            }
+
+        # Fallback: compare file mtimes against last_sync_at (or last job finished_at)
+        last_sync_str = source.get("last_sync_at")
+        if not last_sync_str and self.jobs is not None:
+            recent_jobs = await self.jobs.list_for_source(source_id)
+            for j in recent_jobs or []:
+                if j.get("status") == "done" and j.get("finished_at"):
+                    last_sync_str = j["finished_at"]
+                    break
+
+        if not last_sync_str:
+            changed_count = len(candidates)
+            return {
+                "source_id": source_id,
+                "is_stale": changed_count > 0,
+                "changed_files_count": changed_count,
+                "new_files": changed_count,
+                "updated_files": 0,
+                "removed_files": 0,
+                "last_sync_at": None,
+            }
+
+        try:
+            last_sync_ts = datetime.fromisoformat(
+                last_sync_str.replace("Z", "+00:00")
+            ).timestamp()
+        except Exception:
+            last_sync_ts = 0.0
+
+        newer_files = [c for c in candidates if float(c.mtime) > last_sync_ts]
+        prev_file_count = int(source.get("file_count") or 0)
+        removed_est = max(0, prev_file_count - len(candidates))
+        changed_count = len(newer_files) + removed_est
+        return {
+            "source_id": source_id,
+            "is_stale": changed_count > 0,
+            "changed_files_count": changed_count,
+            "new_files": max(0, len(candidates) - prev_file_count),
+            "updated_files": len(newer_files),
+            "removed_files": removed_est,
+            "last_sync_at": last_sync_str,
+        }
+
     # ------------------------------------------------------------------
     # Internal lifecycle
     # ------------------------------------------------------------------

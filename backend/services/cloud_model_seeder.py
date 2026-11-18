@@ -199,7 +199,8 @@ async def sync_cloud_models_to_db(db) -> int:
     openai_compat_cfg: Optional[Dict[str, Any]] = None
     async for row in providers_coll.find({}):
         ptype = row.get("provider_type")
-        if not ptype:
+        if not ptype or ptype == "huggingface":
+            # huggingface credentials are for local GGUF downloads (SPEC-08), not cloud chat seeding
             continue
         provider_cfgs[ptype] = dict(row.get("config") or {})
         if ptype == "openai_compat":

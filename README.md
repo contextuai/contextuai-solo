@@ -173,8 +173,9 @@ Solo exposes an **OpenAI-compatible API endpoint** (`/v1/chat/completions`) on y
 - **10 Blueprint Templates** — Pre-built workflow templates across strategy, content, marketing, product, and research
 - **10 Distribution Channels** — Telegram, Discord, Reddit, LinkedIn, Twitter/X, Instagram, Facebook, Blog, Email, and Slack — with inbound auto-reply and approval gates. See the [Distributions Guide](CONNECTIONS-GUIDE.md) for setup
 - **Knowledge Base (Local RAG)** — Upload PDFs / DOCX / TXT / MD or map a whole folder on disk, chunk + embed locally with a bundled MiniLM model, and chat with citations. Folder mappings auto-sync on a `1h` / `6h` / `24h` schedule with friction guardrails for large directories. Crews and workspace agents can bind to specific KBs. Pre-built starter packs live under `knowledge-base-packs/`
+- **Memory (Local)** — A user-visible memory store at `/memory`. Add facts by hand, search them semantically with the same bundled MiniLM embeddings, pin the important ones, and export everything. Per-surface toggles (chat and crews on, channels off by default) and a master kill-switch, all stored locally. Automatic recall into chats and crews is on the roadmap — today facts are added and managed manually
 - **Cross-mode handoffs** — Crews can include a Coder run as a step. Automations can route output to a Coder project. Coder projects can be indexed as a KB. Coder errors deep-link into Solo chat with `@bug-analyzer`
-- **AI Providers onboarding** — Settings → AI Providers shows Distributions-style cards for Anthropic, OpenAI, Google Gemini, AWS Bedrock, Ollama, and any OpenAI-compatible endpoint (vLLM / LM Studio / llama.cpp server / TGI / LiteLLM / OpenRouter — base URL required, key optional). Paste a key, test the connection, and every saved provider's models appear in the OpenAI-compatible `/v1/models` list. Anthropic and OpenAI models are discovered live from each account so the list never rots
+- **AI Providers onboarding** — Settings → AI Providers shows Distributions-style cards for Anthropic, OpenAI, Google Gemini, AWS Bedrock, Ollama, and any OpenAI-compatible endpoint (vLLM / LM Studio / llama.cpp server / TGI / LiteLLM / OpenRouter — base URL required, key optional). Paste a key, test the connection, and every saved provider's models appear in the OpenAI-compatible `/v1/models` list. Anthropic, OpenAI, Google Gemini, and Ollama models are discovered live — from each account, or from the local Ollama server for models you've pulled — so the list never rots
 - **Brand Voice** — Define your business identity so every response sounds like you
 - **Dark/Light Theme** — Easy on the eyes, day or night
 
@@ -231,8 +232,8 @@ Without this, macOS may silently refuse to launch the app (or show "app is damag
 ### First Run
 
 1. The app launches a **Setup Wizard** that walks you through configuration
-2. Download a free local model or enter an API key for a cloud provider
-3. Start chatting, building agents, or assembling crews
+2. Download a free local model or enter an API key for a cloud provider. The wizard tells you whether you're ready to chat, and if you skip this step it says so plainly and offers to download a model instead
+3. Start chatting, building agents, or assembling crews — if no model is set up yet, Chat shows a nudge with shortcuts to the Model Hub and AI Providers
 
 ### Beta Testers Welcome
 
@@ -258,6 +259,7 @@ This is an active beta — we'd love your feedback! If you run into any issues:
 | Dark/Light Theme | Yes | Yes |
 | 10 Distribution Channels | Yes | Yes |
 | Knowledge Base / Local RAG | Yes | Yes |
+| Memory (Local Store) | Yes | Yes |
 | SQLite (Local Storage) | Yes | -- |
 | MongoDB + Cloud Infra | -- | Yes |
 | Multi-User / Teams | -- | Yes |

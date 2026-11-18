@@ -10,7 +10,7 @@ export interface ProviderGuideField {
 }
 
 export interface ProviderGuide {
-  id: "anthropic" | "openai" | "google" | "bedrock" | "ollama" | "openai_compat";
+  id: "anthropic" | "openai" | "google" | "bedrock" | "ollama" | "openai_compat" | "huggingface";
   name: string;
   /** One-liner displayed under the name. */
   short_blurb: string;
@@ -187,6 +187,28 @@ export const PROVIDER_GUIDES: readonly ProviderGuide[] = [
         type: "password",
         placeholder: "sk-… (leave blank if your server is keyless)",
         required: false,
+      },
+    ],
+  },
+  {
+    id: "huggingface",
+    name: "HuggingFace Hub (GGUF Downloads)",
+    short_blurb: "Higher download rate limits & gated GGUF model access in Model Hub",
+    dashboard_url: "https://huggingface.co/settings/tokens",
+    steps: [
+      "Sign in at huggingface.co and open Settings → Access Tokens",
+      'Click "Create new token" and select the "Read" role',
+      "Copy the token (starts with hf_)",
+      "Paste it below and click Save — Model Hub downloads will automatically use it",
+    ],
+    cost_copy: "Free. Used only when downloading GGUF weights or searching HuggingFace Hub.",
+    fields: [
+      {
+        key: "api_key",
+        label: "HuggingFace Read Token",
+        type: "password",
+        placeholder: "hf_…",
+        required: true,
       },
     ],
   },

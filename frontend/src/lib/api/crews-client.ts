@@ -109,6 +109,8 @@ export interface CrewRun {
   error?: string;
   trigger_type?: "reactive" | "scheduled" | "manual";
   trigger_source?: string;
+  dry_run?: boolean;
+  outbound_previews?: Record<string, unknown>[];
 }
 
 export interface CrewRunStep {
@@ -234,12 +236,14 @@ export const crewsApi = {
     crewId: string,
     input?: string,
     inputData?: Record<string, unknown>,
+    dryRun = false,
   ): Promise<CrewRun> => {
     // `input` is the task/objective for this run. Without it the crew has
     // nothing concrete to do and agents fall back to describing themselves.
     const { data } = await api.post<{ data: CrewRun }>(`/crews/${crewId}/run`, {
       input: input && input.trim() ? input.trim() : undefined,
       input_data: inputData ?? {},
+      dry_run: dryRun,
     });
     return (data as { data: CrewRun }).data;
   },

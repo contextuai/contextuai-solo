@@ -62,31 +62,10 @@ class APITools:
         ]
 
     def _is_safe_url(self, url: str) -> bool:
-        """Check if URL is safe to access."""
-        try:
-            parsed = urlparse(url)
-            hostname = parsed.hostname
+        """Check if URL is safe to access using the unconditional SSRF guard (SPEC-05)."""
+        from services.tools.url_guard import is_url_allowed
 
-            if not hostname:
-                return False
-
-            # Check against blocked hosts
-            if hostname in self.blocked_hosts:
-                logger.warning(f"Blocked access to host: {hostname}")
-                return False
-
-            # Block private IP ranges in production
-            if self.environment == "prod":
-                # Simple check for common private IPs
-                if hostname.startswith("192.168.") or hostname.startswith("10.") or hostname.startswith("172."):
-                    logger.warning(f"Blocked access to private IP: {hostname}")
-                    return False
-
-            return True
-
-        except Exception as e:
-            logger.error(f"Error checking URL safety: {e}")
-            return False
+        return is_url_allowed(url)
 
     @tool
     async def http_request(
@@ -494,6 +473,16 @@ class APITools:
             unhealthy_count = 0
 
             for endpoint in endpoints[:20]:  # Limit to 20 endpoints
+                if not self._is_safe_url(endpoint):
+                    results.append({
+                        "endpoint": endpoint,
+                        "status_code": None,
+                        "status_text": "Blocked",
+                        "healthy": False,
+                        "error": "URL is not allowed by security policy",
+                    })
+                    unhealthy_count += 1
+                    continue
                 try:
                     # Make HEAD request for health check
                     async with aiohttp.ClientSession() as session:

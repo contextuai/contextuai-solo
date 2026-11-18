@@ -183,6 +183,18 @@ async def sync_folder(
     return {"job_id": job["_id"], "status": job["status"]}
 
 
+@router.get("/folders/{source_id}/staleness")
+async def get_folder_staleness(
+    source_id: str,
+    src: FolderSourceRepository = Depends(_src_repo),
+    svc: PersonalDocsService = Depends(_service),
+) -> Dict[str, Any]:
+    s = await src.get_source(source_id)
+    if not s:
+        raise HTTPException(404, "Folder source not found")
+    return await svc.check_folder_staleness(source_id)
+
+
 # ---------------------------------------------------------------------------
 # Jobs
 # ---------------------------------------------------------------------------

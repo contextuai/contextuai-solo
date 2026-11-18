@@ -298,6 +298,10 @@ class RunCrewRequest(BaseModel):
     input: Optional[str] = Field(None, description="Input prompt or task for the crew")
     input_data: Optional[Dict[str, Any]] = Field(None, description="Structured input data")
     override_config: Optional[CrewExecutionConfig] = None
+    dry_run: bool = Field(
+        False,
+        description="When True, execute agents and capture outbound channel posts as previews without sending to live channels",
+    )
 
 
 # =============================================================================
@@ -401,6 +405,8 @@ class CrewRunResponse(BaseModel):
         None,
         description="connection_id (reactive), cron expression or run_at (scheduled), or 'manual' (button)"
     )
+    dry_run: bool = False
+    publish_results: Optional[List[Dict[str, Any]]] = None
 
     class Config:
         from_attributes = True
@@ -420,6 +426,8 @@ class CrewRunListItem(BaseModel):
     created_at: Optional[str] = None
     trigger_type: Literal["reactive", "scheduled", "manual"] = "manual"
     trigger_source: Optional[str] = None
+    dry_run: bool = False
+    publish_results: Optional[List[Dict[str, Any]]] = None
 
 
 class CrewRunListResponse(BaseModel):

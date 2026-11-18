@@ -236,10 +236,9 @@ class ModelManager:
     # ── Download ────────────────────────────────────────────────────────────
 
     async def download_model(
-        self, model_id: str
+        self, model_id: str, hf_token: Optional[str] = None
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Download a GGUF model from HuggingFace. Yields SSE progress dicts."""
-        import queue as _queue
         from .model_catalog import get_model
 
         entry = get_model(model_id)
@@ -264,6 +263,19 @@ class ModelManager:
             }
             return
 
+        try:
+            from services.net_guard import assert_egress_allowed
+            assert_egress_allowed(f"https://huggingface.co/{repo_id}", "model_download")
+        except ImportError:
+            pass
+        except Exception as exc:
+            yield {"status": "error", "detail": str(exc)}
+            return
+
+        if model_id in self._active_downloads:
+            yield {"status": "error", "detail": "This model is already downloading."}
+            return
+
         self._active_downloads[model_id] = False
 
         yield {
@@ -283,6 +295,9 @@ class ModelManager:
         preflight_url = f"https://huggingface.co/api/models/{repo_id}"
         try:
             req = urllib.request.Request(preflight_url, method="HEAD")
+            effective_token = hf_token or os.getenv("HF_TOKEN") or os.getenv("HUGGING_FACE_HUB_TOKEN")
+            if effective_token:
+                req.add_header("Authorization", f"Bearer {effective_token}")
             urllib.request.urlopen(req, timeout=15)
             logger.info("Pre-flight OK for %s", model_id)
         except urllib.error.HTTPError:
@@ -312,119 +327,20 @@ class ModelManager:
         except Exception as exc:
             logger.warning("Pre-flight error for %s: %s", model_id, exc)
 
-        # ── Clear stale HF cache to avoid hangs on corrupted metadata ────
-        try:
-            from huggingface_hub import scan_cache_dir
-            cache_info = scan_cache_dir()
-            # If there's a stale incomplete download for this repo, clean it
-            for repo_info in cache_info.repos:
-                if repo_info.repo_id == repo_id:
-                    for revision in repo_info.revisions:
-                        if revision.size_on_disk == 0:
-                            logger.info("Cleaning stale cache for %s", repo_id)
-                            cache_info.delete_revisions(revision.commit_hash)
-        except Exception:
-            pass  # Cache cleanup is best-effort
-
-        # ── Clear stale lock/incomplete files in local_dir cache ─────────
-        try:
-            local_cache = Path(self.models_dir) / ".cache" / "huggingface" / "download"
-            if local_cache.is_dir():
-                for lock_file in local_cache.glob(f"{filename}.lock"):
-                    logger.info("Removing stale lock file: %s", lock_file)
-                    lock_file.unlink(missing_ok=True)
-                for inc_file in local_cache.glob("*.incomplete"):
-                    logger.info("Removing incomplete download: %s", inc_file)
-                    inc_file.unlink(missing_ok=True)
-        except Exception:
-            pass  # Best-effort cleanup
-
         yield {
             "status": "connecting",
             "model_id": model_id,
             "detail": "Connected to HuggingFace, starting download...",
         }
 
-        # Thread-safe queue for progress updates from the blocking download
-        progress_queue: _queue.Queue = _queue.Queue()
-
         try:
-            loop = asyncio.get_event_loop()
-            download_future = loop.run_in_executor(
-                None,
-                self._download_with_progress,
-                repo_id, filename, dest_path, model_id, progress_queue,
-            )
-
-            # Poll progress queue while download runs
-            last_progress_time = time.time()
-            got_first_progress = False
-            while not download_future.done():
-                await asyncio.sleep(0.3)
-                # Drain all queued progress updates
-                drained_any = False
-                while True:
-                    try:
-                        update = progress_queue.get_nowait()
-                        yield update
-                        drained_any = True
-                        got_first_progress = True
-                    except _queue.Empty:
-                        break
-                if drained_any:
-                    last_progress_time = time.time()
-                # If no progress for 60s and we never got any, the download is likely blocked
-                elif not got_first_progress and (time.time() - last_progress_time) > 60:
-                    logger.warning("Download stalled for %s — no progress after 60s", model_id)
-                    yield {
-                        "status": "error",
-                        "detail": (
-                            "Download appears stalled — no data received for 60 seconds. "
-                            "This is usually caused by a firewall or proxy blocking "
-                            "downloads from cdn-lfs.huggingface.co. Check your "
-                            "Windows Firewall outbound rules for port 443."
-                        ),
-                    }
-                    self._active_downloads[model_id] = True  # signal cancellation
-                    break
-
-            # If stall detector fired, don't wait for the thread — it may hang
-            if self._active_downloads.get(model_id):
-                # Thread is still blocking in hf_hub_download; clean up partial file
-                if os.path.isfile(dest_path):
-                    try:
-                        os.remove(dest_path)
-                    except OSError:
-                        pass
-                # Don't call download_future.result() — it may never return
-                return
-
-            # Get final result
-            result = download_future.result()
-
-            # Drain remaining progress
-            while True:
-                try:
-                    update = progress_queue.get_nowait()
-                    yield update
-                except _queue.Empty:
-                    break
-
-            if result.get("error"):
-                yield {"status": "error", "detail": result["error"]}
-            else:
-                yield {
-                    "status": "done",
-                    "path": dest_path,
-                    "completed": result.get("size", 0),
-                    "total": result.get("size", 0),
-                    "percent": 100.0,
-                }
+            async for event in self._run_and_stream(
+                repo_id, filename, model_id, dest_path, hf_token=hf_token
+            ):
+                yield event
         except Exception as exc:
             logger.exception("Download failed: %s", model_id)
             yield {"status": "error", "detail": str(exc)}
-        finally:
-            self._active_downloads.pop(model_id, None)
 
     @staticmethod
     def _is_sharded_filename(filename: str) -> bool:
@@ -441,122 +357,288 @@ class ModelManager:
         import re
         return re.sub(r'-\d{5}-of-\d{5}\.gguf$', '-*-of-*.gguf', filename)
 
-    def _download_with_progress(
-        self, repo_id: str, filename: str, dest_path: str, model_id: str,
-        progress_queue=None,
+    async def _run_and_stream(
+        self,
+        repo_id: str,
+        filename: str,
+        model_id: str,
+        dest_path: str,
+        hf_token: Optional[str] = None,
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        """Run the blocking downloader in a thread and yield its progress events."""
+        import queue as _queue
+
+        progress_queue: _queue.Queue = _queue.Queue()
+        loop = asyncio.get_event_loop()
+        download_future = loop.run_in_executor(
+            None,
+            self._download_files,
+            repo_id, filename, model_id, progress_queue, hf_token,
+        )
+        # The worker checks the cancel flag between chunks, so it always
+        # terminates; clear its slot whenever it does (including after the
+        # SSE client disconnects and this generator is gone).
+        download_future.add_done_callback(
+            lambda _f: self._active_downloads.pop(model_id, None)
+        )
+
+        while not download_future.done():
+            await asyncio.sleep(0.3)
+            while True:
+                try:
+                    yield progress_queue.get_nowait()
+                except _queue.Empty:
+                    break
+
+        # Drain remaining progress
+        while True:
+            try:
+                yield progress_queue.get_nowait()
+            except _queue.Empty:
+                break
+
+        result = download_future.result()
+        if result.get("cancelled"):
+            yield {"status": "cancelled", "model_id": model_id}
+        elif result.get("error"):
+            yield {"status": "error", "detail": result["error"]}
+        else:
+            yield {
+                "status": "done",
+                "path": result.get("path", dest_path),
+                "completed": result.get("size", 0),
+                "total": result.get("size", 0),
+                "percent": 100.0,
+            }
+
+    def _download_files(
+        self,
+        repo_id: str,
+        filename: str,
+        model_id: str,
+        progress_queue,
+        hf_token: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Blocking download using huggingface_hub (runs in thread).
+        """Blocking download via plain HTTPS GET from huggingface.co (runs in thread).
 
-        If *progress_queue* is supplied, intermediate progress dicts are
-        pushed so the async caller can yield them as SSE events.
+        Deliberately avoids hf_hub_download: plain ranged GETs work through
+        corporate proxies/firewalls that break the Xet transfer protocol,
+        resume from ``.part`` files, and honour cancellation between chunks.
         """
+        import re
+        import requests
+        from urllib.parse import quote
+
         try:
-            os.environ.setdefault("HF_HUB_DOWNLOAD_TIMEOUT", "30")
+            try:
+                from services.net_guard import assert_egress_allowed, record_egress
+                assert_egress_allowed(f"https://huggingface.co/{repo_id}", "model_download")
+            except ImportError:
+                record_egress = None
+            except Exception as exc:
+                return {"error": str(exc)}
 
-            tqdm_cls = None
-            if progress_queue is not None:
-                tqdm_cls = self._make_progress_tqdm(progress_queue, model_id)
-
-            # Detect sharded GGUF files — download each shard individually
-            # so our byte-level tqdm progress tracking works
             if self._is_sharded_filename(filename):
-                import re
-                from huggingface_hub import hf_hub_download
-                m = re.search(r'-(\d{5})-of-(\d{5})\.gguf$', filename)
+                m = re.search(r"-(\d{5})-of-(\d{5})\.gguf$", filename)
                 total_shards = int(m.group(2))
-                base = re.sub(r'-\d{5}-of-\d{5}\.gguf$', '', filename)
-
-                shard_paths = []
-                for i in range(1, total_shards + 1):
-                    shard_name = f"{base}-{i:05d}-of-{total_shards:05d}.gguf"
-                    logger.info("Downloading shard %d/%d: %s/%s", i, total_shards, repo_id, shard_name)
-                    path = hf_hub_download(
-                        repo_id=repo_id,
-                        filename=shard_name,
-                        local_dir=self.models_dir,
-                        local_dir_use_symlinks=False,
-                        resume_download=True,
-                        tqdm_class=tqdm_cls,
-                    )
-                    shard_paths.append(path)
-
-                total_size = sum(os.path.getsize(p) for p in shard_paths)
-                logger.info("Sharded download complete: %d shards, %.2f GB", len(shard_paths), total_size / (1024**3))
-                return {"path": shard_paths[0], "size": total_size}
+                base = re.sub(r"-\d{5}-of-\d{5}\.gguf$", "", filename)
+                filenames = [
+                    f"{base}-{i:05d}-of-{total_shards:05d}.gguf"
+                    for i in range(1, total_shards + 1)
+                ]
             else:
-                from huggingface_hub import hf_hub_download
-                logger.info("Starting hf_hub_download: %s/%s", repo_id, filename)
-                downloaded_path = hf_hub_download(
-                    repo_id=repo_id,
-                    filename=filename,
-                    local_dir=self.models_dir,
-                    local_dir_use_symlinks=False,
-                    resume_download=True,
-                    tqdm_class=tqdm_cls,
+                filenames = [filename]
+
+            # Check if catalog entry specifies a paired multimodal projector (mmproj)
+            try:
+                from .model_catalog import get_model
+                entry = get_model(model_id)
+                mmproj_fn = entry.get("mmproj_filename") if entry else None
+                if mmproj_fn and mmproj_fn not in filenames:
+                    filenames.append(mmproj_fn)
+            except Exception:
+                pass
+
+            session = requests.Session()
+            token = (
+                (hf_token or "").strip()
+                or os.getenv("HF_TOKEN")
+                or os.getenv("HUGGING_FACE_HUB_TOKEN")
+            )
+            if token:
+                session.headers["Authorization"] = f"Bearer {token}"
+
+            # Resolve sizes up front for overall progress + disk-space check
+            jobs = []  # (url, dest_path, size_or_None)
+            for name in filenames:
+                url = f"https://huggingface.co/{repo_id}/resolve/main/{quote(name)}"
+                dest = os.path.join(self.models_dir, name)
+                size = None
+                try:
+                    head = session.head(url, allow_redirects=True, timeout=30)
+                    if head.status_code < 400:
+                        size = int(head.headers.get("Content-Length") or 0) or None
+                    else:
+                        err = self._friendly_http_error(head.status_code, repo_id)
+                        if err:
+                            return {"error": err}
+                except requests.RequestException:
+                    pass  # let the GET below surface the real error
+                jobs.append((url, dest, size))
+
+            total_bytes = sum(s for (_u, _d, s) in jobs if s) or None
+            if total_bytes:
+                already = sum(
+                    os.path.getsize(d + ".part")
+                    for (_u, d, _s) in jobs
+                    if os.path.isfile(d + ".part")
                 )
-                logger.info("hf_hub_download completed: %s", downloaded_path)
+                free = shutil.disk_usage(self.models_dir).free
+                if free < (total_bytes - already) + 1024 ** 3:
+                    return {"error": (
+                        f"Not enough disk space: this model needs "
+                        f"{(total_bytes - already) / 1024 ** 3:.1f} GB plus 1 GB headroom, "
+                        f"but only {free / 1024 ** 3:.1f} GB is free."
+                    )}
 
-                size = os.path.getsize(downloaded_path)
-                logger.info("Download complete: %s (%.2f GB)", downloaded_path, size / (1024**3))
-                return {"path": downloaded_path, "size": size}
+            completed_offset = 0
+            for url, dest, _size in jobs:
+                result = self._stream_one(
+                    session, url, dest, model_id, progress_queue,
+                    completed_offset, total_bytes,
+                )
+                if result.get("cancelled") or result.get("error"):
+                    return result
+                completed_offset += result["size"]
 
+            total_size = sum(os.path.getsize(d) for (_u, d, _s) in jobs)
+            logger.info(
+                "Download complete: %s (%d file(s), %.2f GB)",
+                model_id, len(jobs), total_size / (1024 ** 3),
+            )
+            return {"path": jobs[0][1], "size": total_size}
         except Exception as exc:
-            logger.exception("HuggingFace download error")
-            return {"error": str(exc)}
+            logger.exception("Download error for %s", model_id)
+            return {"error": self._friendly_exception(exc)}
+
+    def _stream_one(
+        self, session, url: str, dest: str, model_id: str, progress_queue,
+        base_completed: int, overall_total: Optional[int],
+    ) -> Dict[str, Any]:
+        """Stream one file to ``dest`` with resume, cancellation, and progress."""
+        import requests
+
+        part_path = dest + ".part"
+        resume_from = os.path.getsize(part_path) if os.path.isfile(part_path) else 0
+        headers = {"Range": f"bytes={resume_from}-"} if resume_from else {}
+
+        with session.get(
+            url, stream=True, headers=headers, timeout=(15, 60), allow_redirects=True
+        ) as resp:
+            if resp.status_code == 416:
+                # The .part file already covers the full range — finalise it
+                os.replace(part_path, dest)
+                return {"size": os.path.getsize(dest)}
+            if resume_from and resp.status_code == 200:
+                resume_from = 0  # server ignored the Range header — restart
+            if resp.status_code >= 400:
+                err = self._friendly_http_error(resp.status_code, url)
+                return {"error": err or f"HTTP {resp.status_code} from HuggingFace"}
+
+            content_len = int(resp.headers.get("Content-Length") or 0)
+            file_total = resume_from + content_len if content_len else None
+
+            completed = resume_from
+            last_emit = 0.0
+            window_start = time.time()
+            window_bytes = 0
+            with open(part_path, "ab" if resume_from else "wb") as fh:
+                for chunk in resp.iter_content(chunk_size=1024 * 1024):
+                    if self._active_downloads.get(model_id):
+                        logger.info("Download cancelled: %s", model_id)
+                        return {"cancelled": True}  # keep .part for resume
+                    if not chunk:
+                        continue
+                    fh.write(chunk)
+                    completed += len(chunk)
+                    window_bytes += len(chunk)
+
+                    now = time.time()
+                    if now - last_emit >= 0.3:
+                        last_emit = now
+                        total = overall_total or file_total
+                        done_bytes = base_completed + completed
+                        speed = window_bytes / max(now - window_start, 0.001)
+                        window_start, window_bytes = now, 0
+                        progress_queue.put({
+                            "status": "downloading",
+                            "model_id": model_id,
+                            "completed": done_bytes,
+                            "total": total or 0,
+                            "percent": round(done_bytes / total * 100, 1) if total else 0.0,
+                            "completed_mb": round(done_bytes / (1024 * 1024), 1),
+                            "total_mb": round(total / (1024 * 1024), 1) if total else 0.0,
+                            "speed": round(speed),
+                        })
+
+            if file_total and completed != file_total:
+                return {"error": (
+                    f"Download incomplete: received {completed / (1024 ** 2):.0f} MB of "
+                    f"{file_total / (1024 ** 2):.0f} MB. Try again — it will resume "
+                    "where it left off."
+                )}
+            os.replace(part_path, dest)
+            return {"size": completed}
 
     @staticmethod
-    def _make_progress_tqdm(progress_queue, model_id: str):
-        """Create a tqdm-compatible class that pushes progress into a queue."""
-        import tqdm as _tqdm
+    def _friendly_http_error(status: int, context: str) -> Optional[str]:
+        """Map an HTTP status from HuggingFace to an actionable message."""
+        if status in (401, 403):
+            return (
+                "This model is gated on HuggingFace and requires authentication. "
+                "Visit the model page on huggingface.co, accept the license, then "
+                "add your HuggingFace access token in Settings → AI Providers "
+                f"(or set HF_TOKEN). ({context})"
+            )
+        if status == 404:
+            return (
+                f"File not found on HuggingFace ({context}). The repo or filename "
+                "may have been renamed — try updating the app."
+            )
+        if status == 429:
+            return (
+                "HuggingFace is rate-limiting anonymous downloads from your network. "
+                "Add a free HuggingFace access token in Settings → AI Providers "
+                "(or set HF_TOKEN) for higher download limits."
+            )
+        if status >= 500:
+            return f"HuggingFace server error (HTTP {status}). Try again in a few minutes."
+        return None
 
-        class _QueueTqdm(_tqdm.tqdm):
-            """Custom tqdm that reports progress via a thread-safe queue."""
+    @staticmethod
+    def _friendly_exception(exc: Exception) -> str:
+        """Map a network exception to an actionable message."""
+        import requests
 
-            def __init__(self, *args, **kwargs):
-                # huggingface_hub >= 0.25 passes 'name' which tqdm doesn't accept
-                kwargs.pop("name", None)
-                # huggingface_hub passes disable=None which tqdm treats as
-                # disable=True, preventing self.n from updating. Force enabled.
-                kwargs["disable"] = False
-                super().__init__(*args, **kwargs)
-                self._last_reported = 0.0
-                self._sent_initial = False
-
-            def update(self, n=1):
-                super().update(n)
-                if self.total and self.total > 0:
-                    # Emit 0% immediately so frontend switches from "Preparing" to progress bar
-                    if not self._sent_initial:
-                        self._sent_initial = True
-                        total_mb = self.total / (1024 * 1024)
-                        completed_mb = self.n / (1024 * 1024)
-                        progress_queue.put({
-                            "status": "downloading",
-                            "model_id": model_id,
-                            "completed": self.n,
-                            "total": self.total,
-                            "percent": round((self.n / self.total) * 100, 1),
-                            "completed_mb": round(completed_mb, 1),
-                            "total_mb": round(total_mb, 1),
-                        })
-                    percent = (self.n / self.total) * 100
-                    # Throttle: only emit if progress changed by >= 0.5%
-                    if percent - self._last_reported >= 0.5 or percent >= 100:
-                        self._last_reported = percent
-                        completed_mb = self.n / (1024 * 1024)
-                        total_mb = self.total / (1024 * 1024)
-                        progress_queue.put({
-                            "status": "downloading",
-                            "model_id": model_id,
-                            "completed": self.n,
-                            "total": self.total,
-                            "percent": round(percent, 1),
-                            "completed_mb": round(completed_mb, 1),
-                            "total_mb": round(total_mb, 1),
-                            "speed": self.format_dict.get("rate", 0),
-                        })
-
-        return _QueueTqdm
+        if isinstance(exc, requests.exceptions.SSLError):
+            return (
+                "SSL error connecting to HuggingFace. A corporate proxy, VPN, or "
+                "antivirus is likely intercepting secure connections. If your IT "
+                "department provides a CA certificate, set the REQUESTS_CA_BUNDLE "
+                "environment variable to its path and restart the app."
+            )
+        if isinstance(exc, requests.exceptions.Timeout):
+            return (
+                "The download stalled — no data received. Check your connection "
+                "and try again; the download will resume where it left off."
+            )
+        if isinstance(exc, requests.exceptions.ConnectionError):
+            return (
+                "Cannot reach HuggingFace download servers. Check your internet "
+                "connection, and make sure your firewall allows huggingface.co "
+                "and cdn-lfs.huggingface.co on port 443."
+            )
+        return str(exc)
 
     def cancel_download(self, model_id: str) -> bool:
         """Request cancellation of an active download."""
@@ -614,10 +696,10 @@ class ModelManager:
             "disk_total_gb": round(disk.total / (1024 ** 3), 1),
         }
 
-    # ── Custom model download ───────────────────────────────────────────────
+    # ── Custom model download & local import ────────────────────────────────
 
     async def download_custom(
-        self, hf_repo: str, hf_filename: str
+        self, hf_repo: str, hf_filename: str, hf_token: Optional[str] = None
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Download any GGUF file from HuggingFace by repo + filename."""
         dest_path = os.path.join(self.models_dir, hf_filename)
@@ -627,25 +709,90 @@ class ModelManager:
             yield {"status": "done", "path": dest_path, "completed": size, "total": size, "percent": 100.0}
             return
 
+        try:
+            from services.net_guard import assert_egress_allowed
+            assert_egress_allowed(f"https://huggingface.co/{hf_repo}", "model_download")
+        except ImportError:
+            pass
+        except Exception as exc:
+            yield {"status": "error", "detail": str(exc)}
+            return
+
+        model_id = f"custom:{hf_repo}/{hf_filename}"
+        if model_id in self._active_downloads:
+            yield {"status": "error", "detail": "This file is already downloading."}
+            return
+        self._active_downloads[model_id] = False
+
         yield {"status": "starting", "repo": hf_repo, "filename": hf_filename, "completed": 0, "total": 0, "percent": 0.0}
 
         try:
-            result = await asyncio.to_thread(
-                self._download_with_progress,
-                hf_repo, hf_filename, dest_path, f"custom:{hf_repo}",
-            )
-            if result.get("error"):
-                yield {"status": "error", "detail": result["error"]}
-            else:
-                yield {
-                    "status": "done",
-                    "path": dest_path,
-                    "completed": result.get("size", 0),
-                    "total": result.get("size", 0),
-                    "percent": 100.0,
-                }
+            async for event in self._run_and_stream(
+                hf_repo, hf_filename, model_id, dest_path, hf_token=hf_token
+            ):
+                yield event
         except Exception as exc:
             yield {"status": "error", "detail": str(exc)}
+
+    def import_local_gguf(
+        self, source_path: str, copy_file: bool = False
+    ) -> Dict[str, Any]:
+        """Import an existing local .gguf file into the models directory (SPEC-08).
+
+        Validates that the file exists, has a ``.gguf`` extension, and starts with
+        the ``GGUF`` magic bytes. Attempts a symlink/hardlink by default (unless
+        ``copy_file=True``), falling back to ``shutil.copy2`` on Windows when
+        symlinks are not permitted.
+        """
+        if not source_path or not isinstance(source_path, str):
+            raise ValueError("source_path is required")
+
+        src = Path(source_path).expanduser().resolve()
+        if not src.is_file():
+            raise FileNotFoundError(f"GGUF file not found: {source_path}")
+
+        if src.suffix.lower() != ".gguf":
+            raise ValueError(f"File must have a .gguf extension (got {src.name!r})")
+
+        with open(src, "rb") as fh:
+            magic = fh.read(4)
+        if magic != b"GGUF":
+            raise ValueError(
+                f"File {src.name!r} is not a valid GGUF binary (invalid magic header)"
+            )
+
+        Path(self.models_dir).mkdir(parents=True, exist_ok=True)
+        dest = Path(self.models_dir) / src.name
+        method = "existing"
+
+        if dest.resolve() != src:
+            if dest.exists() or dest.is_symlink():
+                dest.unlink()
+            if copy_file:
+                shutil.copy2(src, dest)
+                method = "copied"
+            else:
+                try:
+                    os.symlink(src, dest)
+                    method = "symlinked"
+                except OSError:
+                    try:
+                        os.link(src, dest)
+                        method = "hardlinked"
+                    except OSError:
+                        shutil.copy2(src, dest)
+                        method = "copied"
+
+        size_bytes = dest.stat().st_size
+        stem = dest.stem.lower().replace(" ", "-")
+        return {
+            "status": "imported",
+            "id": f"local:custom-{stem}",
+            "filename": dest.name,
+            "path": str(dest),
+            "size_gb": round(size_bytes / (1024 ** 3), 2),
+            "method": method,
+        }
 
 
 # ── Singleton ───────────────────────────────────────────────────────────────

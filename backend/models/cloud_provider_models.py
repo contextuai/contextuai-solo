@@ -27,6 +27,7 @@ class CloudProviderType(str, Enum):
     BEDROCK = "bedrock"
     OLLAMA = "ollama"
     OPENAI_COMPAT = "openai_compat"
+    HUGGINGFACE = "huggingface"
 
 
 # Sensitive keys per provider type — these are masked in responses.
@@ -38,6 +39,7 @@ SENSITIVE_KEYS = {
     CloudProviderType.BEDROCK.value: {"aws_secret_access_key"},
     CloudProviderType.OLLAMA.value: set(),
     CloudProviderType.OPENAI_COMPAT.value: {"api_key"},
+    CloudProviderType.HUGGINGFACE.value: {"api_key"},
 }
 
 MASK = "***"
@@ -92,7 +94,7 @@ class CloudProviderCreate(BaseModel):
     def _validate_required(self):
         cfg = self.config or {}
         ptype = self.provider_type.value if isinstance(self.provider_type, CloudProviderType) else str(self.provider_type)
-        if ptype in ("anthropic", "openai", "google"):
+        if ptype in ("anthropic", "openai", "google", "huggingface"):
             if not cfg.get("api_key"):
                 raise ValueError(f"{ptype} config requires api_key")
         elif ptype == "bedrock":

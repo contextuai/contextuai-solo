@@ -273,8 +273,8 @@ LOCAL_MODEL_CATALOG: List[Dict] = [
         "supports_tools": False,
         "quality_tier": "good",
         "speed_tier": "fast",
-        "hf_repo": "google/gemma-3-4b-it-qat-q4_0-gguf",
-        "hf_filename": "gemma-3-4b-it-qat-q4_0.gguf",
+        "hf_repo": "bartowski/google_gemma-3-4b-it-GGUF",
+        "hf_filename": "google_gemma-3-4b-it-Q4_0.gguf",
         "chat_template": "gemma",
     },
     {
@@ -295,8 +295,8 @@ LOCAL_MODEL_CATALOG: List[Dict] = [
         "supports_tools": False,
         "quality_tier": "great",
         "speed_tier": "medium",
-        "hf_repo": "google/gemma-3-12b-it-qat-q4_0-gguf",
-        "hf_filename": "gemma-3-12b-it-qat-q4_0.gguf",
+        "hf_repo": "bartowski/google_gemma-3-12b-it-GGUF",
+        "hf_filename": "google_gemma-3-12b-it-Q4_0.gguf",
         "chat_template": "gemma",
     },
     {
@@ -317,8 +317,8 @@ LOCAL_MODEL_CATALOG: List[Dict] = [
         "supports_tools": False,
         "quality_tier": "best",
         "speed_tier": "slow",
-        "hf_repo": "google/gemma-3-27b-it-qat-q4_0-gguf",
-        "hf_filename": "gemma-3-27b-it-qat-q4_0.gguf",
+        "hf_repo": "bartowski/google_gemma-3-27b-it-GGUF",
+        "hf_filename": "google_gemma-3-27b-it-Q4_0.gguf",
         "chat_template": "gemma",
     },
     # ── Google Gemma 4 (April 2026 — Frontier multimodal, tool calling, thinking) ──

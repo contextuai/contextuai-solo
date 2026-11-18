@@ -49,7 +49,7 @@ export default function ChatPage() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingContent, setStreamingContent] = useState("");
   const [streamingThinking, setStreamingThinking] = useState("");
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
   const [errorModal, setErrorModal] = useState<string | null>(null);
 
   // Abort controller for stopping stream
@@ -93,7 +93,7 @@ export default function ChatPage() {
     loadModels();
   }, [aiMode]);
 
-  // Keyboard shortcut: Ctrl/Cmd+N for new chat
+  // Keyboard shortcut: Ctrl/Cmd+N or M3 sidebar FAB for new chat
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "n") {
@@ -101,19 +101,40 @@ export default function ChatPage() {
         handleNewChat();
       }
     };
+    const handleNewChatEvent = () => handleNewChat();
     window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    window.addEventListener("contextuai:new-chat", handleNewChatEvent);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("contextuai:new-chat", handleNewChatEvent);
+    };
   }, []);
 
-  // Cross-mode handoff: pre-fill the chat input from `?prefill=...` and then
-  // strip the param so a refresh doesn't repopulate it.
+  // Cross-mode handoff: pre-fill the chat input from `?prefill=...`, `?kb=...`, or `?model=...`
+  // and then strip the params so a refresh doesn't repopulate them.
   useEffect(() => {
     try {
       const params = new URLSearchParams(window.location.search);
       const prefill = params.get("prefill");
+      const kbParam = params.get("kb");
+      const modelParam = params.get("model");
+      let changed = false;
       if (prefill) {
         setInput(prefill);
         params.delete("prefill");
+        changed = true;
+      }
+      if (kbParam) {
+        setSelectedKnowledgeBaseId(kbParam);
+        params.delete("kb");
+        changed = true;
+      }
+      if (modelParam) {
+        setSelectedModelId(modelParam.startsWith("local:") ? modelParam : `local:${modelParam}`);
+        params.delete("model");
+        changed = true;
+      }
+      if (changed) {
         const newSearch = params.toString();
         const newUrl =
           window.location.pathname +
@@ -398,22 +419,45 @@ export default function ChatPage() {
   // ── Render ─────────────────────────────────────────────────────
 
   return (
-    <div className="flex h-full overflow-hidden">
-      <ChatSidebar
-        sessions={sessions}
-        activeSessionId={activeSessionId}
-        onSelectSession={handleSelectSession}
-        onNewChat={handleNewChat}
-        onDeleteSession={handleDeleteSession}
-        onArchiveSession={handleArchiveSession}
-        collapsed={sidebarCollapsed}
-        onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
-      />
+    <div className="relative flex h-full overflow-hidden">
+      {/* M3 Floating Chat History Drawer (collapsed by default for full-width chat) */}
+      {!sidebarCollapsed && (
+        <>
+          <div
+            className="fixed inset-0 z-20 bg-black/20 backdrop-blur-[1px]"
+            onClick={() => setSidebarCollapsed(true)}
+          />
+          <div className="absolute inset-y-0 left-0 z-30 h-full">
+            <ChatSidebar
+              sessions={sessions}
+              activeSessionId={activeSessionId}
+              onSelectSession={(id) => {
+                handleSelectSession(id);
+                setSidebarCollapsed(true);
+              }}
+              onNewChat={() => {
+                handleNewChat();
+                setSidebarCollapsed(true);
+              }}
+              onDeleteSession={handleDeleteSession}
+              onArchiveSession={handleArchiveSession}
+              collapsed={false}
+              onToggleCollapse={() => setSidebarCollapsed(true)}
+            />
+          </div>
+        </>
+      )}
 
       <div className="flex-1 flex flex-col min-w-0">
         <ChatHeader
           sessionTitle={sessionTitle}
           onRenameSession={handleRenameSession}
+          messages={messages}
+          draftInput={input}
+          selectedModel={models.find((m) => m.id === selectedModelId) ?? null}
+          sessionsCount={sessions.length}
+          historyOpen={!sidebarCollapsed}
+          onToggleHistory={() => setSidebarCollapsed((c) => !c)}
         />
 
         <MessageList
@@ -422,6 +466,7 @@ export default function ChatPage() {
           streamingThinking={streamingThinking}
           isStreaming={isStreaming}
           noModel={modelsLoaded && !models.some((m) => m.enabled)}
+          onSelectStarterPrompt={(prompt) => setInput(prompt)}
         />
 
         <ChatInput

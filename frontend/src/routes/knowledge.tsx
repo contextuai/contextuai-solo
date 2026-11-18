@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   BookOpen,
   Database,
   FileText,
   Loader2,
+  MessageSquare,
   Plus,
   Search,
   Trash2,
@@ -15,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { FoldersTab } from "@/components/knowledge/folders-tab";
+import { useEdition } from "@/config/edition";
 import { cn } from "@/lib/utils";
 import {
   createKnowledgeBase,
@@ -68,6 +71,7 @@ function StatusPill({ status }: { status: KbDocument["status"] }) {
 }
 
 export default function KnowledgePage() {
+  const { isLite } = useEdition();
   const [kbs, setKbs] = useState<KnowledgeBase[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loadingList, setLoadingList] = useState(true);
@@ -139,19 +143,22 @@ export default function KnowledgePage() {
   }
 
   return (
-    <div className="flex h-full overflow-hidden bg-neutral-50 dark:bg-neutral-950">
-      {/* Left rail — KB list */}
-      <div className="flex flex-col w-72 border-r border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900">
-        <div className="flex items-center justify-between px-4 h-16 border-b border-neutral-200 dark:border-neutral-800">
-          <div className="flex items-center gap-2">
-            <BookOpen className="w-5 h-5 text-primary-500" />
-            <h2 className="text-sm font-semibold text-neutral-900 dark:text-white">
-              Knowledge Bases
+    <div className="flex h-full overflow-hidden">
+      {/* Left rail — M3 Master Pane */}
+      <div className="flex flex-col w-72 border-r border-neutral-200/75 dark:border-neutral-800/90 bg-white/80 dark:bg-neutral-900/75 backdrop-blur-md">
+        <div className="flex items-center justify-between px-4 h-16 border-b border-neutral-200/75 dark:border-neutral-800/90">
+          <div className="flex items-center gap-2.5">
+            <div className="flex items-center justify-center w-8 h-8 rounded-xl bg-primary-500/12 text-primary-600 dark:text-primary-400">
+              <BookOpen className="w-4 h-4" />
+            </div>
+            <h2 className="text-sm font-bold tracking-tight text-neutral-900 dark:text-white">
+              {isLite ? "Local Docs & RAG" : "Knowledge Bases"}
             </h2>
           </div>
           <Button
             size="sm"
-            variant="primary"
+            variant="tonal"
+            pill
             onClick={() => setCreateOpen(true)}
           >
             <Plus className="w-3.5 h-3.5" />
@@ -175,10 +182,10 @@ export default function KnowledgePage() {
               key={kb.id}
               onClick={() => setSelectedId(kb.id)}
               className={cn(
-                "w-full flex items-start gap-2.5 px-3 py-2.5 rounded-lg text-left transition-colors",
-                "hover:bg-neutral-100 dark:hover:bg-neutral-800",
-                selectedId === kb.id &&
-                  "bg-primary-50 dark:bg-primary-500/10 text-primary-700 dark:text-primary-300",
+                "w-full flex items-start gap-2.5 px-3.5 py-2.5 rounded-2xl text-left transition-all",
+                selectedId === kb.id
+                  ? "bg-primary-500/15 text-primary-700 dark:text-primary-300 ring-1 ring-primary-500/25"
+                  : "hover:bg-neutral-100/80 dark:hover:bg-neutral-800/70",
               )}
             >
               <Database
@@ -281,6 +288,7 @@ function KbDetail({
   onDelete: () => void;
 }) {
   const [tab, setTab] = useState<"docs" | "folders" | "query">("docs");
+  const navigate = useNavigate();
 
   return (
     <div className="flex flex-col h-full">
@@ -301,10 +309,21 @@ function KbDetail({
             {kb.embedding_model} ({kb.embedding_dim}-dim)
           </p>
         </div>
-        <Button variant="danger" size="sm" onClick={onDelete}>
-          <Trash2 className="w-3.5 h-3.5" />
-          Delete KB
-        </Button>
+        <div className="flex items-center gap-2 shrink-0">
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => navigate(`/?kb=${encodeURIComponent(kb.id)}`)}
+            title="Start a chat grounded in this Knowledge Base"
+          >
+            <MessageSquare className="w-3.5 h-3.5" />
+            Chat with KB
+          </Button>
+          <Button variant="danger" size="sm" onClick={onDelete}>
+            <Trash2 className="w-3.5 h-3.5" />
+            Delete KB
+          </Button>
+        </div>
       </div>
 
       {/* Tabs */}

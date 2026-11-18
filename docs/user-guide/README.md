@@ -15,14 +15,15 @@ Welcome to ContextuAI Solo, your private desktop AI assistant with 96 pre-built 
 | 7 | [Workspace](07-workspace.md) | Legacy — workspace projects now live as `kind="project"` rows under [Crews](05-crews.md) |
 | 8 | [Distributions](08-connections.md) | Connect to Telegram, Discord, Reddit, LinkedIn, Twitter/X, Instagram, Facebook, Blog, Email, Slack |
 | 9 | Knowledge | Upload PDFs / DOCX / TXT / MD or map a folder on disk; chat with citations (local RAG) |
-| 10 | [Settings](09-settings.md) | API keys (Distributions-style provider cards), brand voice, appearance, data export |
-| 11 | [VS Code / IDE](10-openai-endpoint.md) | Use Solo as the model backend for Continue, Cline, Cursor, Aider, Zed, etc. |
-| 12 | [Solo Coder](11-coder.md) | Multi-agent coding environment with per-role models, workflow modes, and live preview |
+| 10 | Memory | A local, user-managed store of facts about you and your work — add/search/pin/edit/delete manually, semantic search, export. Manual and local-only today: no automatic extraction from chats/crews yet and nothing is auto-recalled into conversations (that's on the roadmap) |
+| 11 | [Settings](09-settings.md) | API keys (Distributions-style provider cards), brand voice, appearance, data export |
+| 12 | [VS Code / IDE](10-openai-endpoint.md) | Use Solo as the model backend for Continue, Cline, Cursor, Aider, Zed, etc. |
+| 13 | [Solo Coder](11-coder.md) | Multi-agent coding environment with per-role models, workflow modes, and live preview |
 
 ## Quick Start
 
 1. **Open the app** — No login required. You're the admin.
-2. **Add an AI provider** — Go to **Settings > AI Providers** and enter an API key (Anthropic, OpenAI, or Google), or download a free local model.
+2. **Add an AI provider** — Go to **Settings > AI Providers** and connect a provider (Anthropic, OpenAI, Google Gemini, AWS Bedrock, Ollama, or any OpenAI-compatible server), or download a free local model.
 3. **Start chatting** — Head to **Chat**, pick a model, and send your first message.
 4. **Explore agents** — Browse the **Agent Library** to find pre-built specialists for your business needs.
 5. **Build a crew** — Combine agents into a **Crew** to tackle complex, multi-step tasks.

@@ -5,9 +5,17 @@ use tauri::{AppHandle, Manager};
 static SIDECAR_PORT: AtomicU16 = AtomicU16::new(18741);
 static SIDECAR_RUNNING: AtomicBool = AtomicBool::new(false);
 static SIDECAR_CHILD: Mutex<Option<std::process::Child>> = Mutex::new(None);
+static SIDECAR_TOKEN: Mutex<Option<String>> = Mutex::new(None);
 
 pub fn get_port() -> u16 {
     SIDECAR_PORT.load(Ordering::Relaxed)
+}
+
+pub fn get_token() -> Option<String> {
+    if let Ok(guard) = SIDECAR_TOKEN.lock() {
+        return guard.clone();
+    }
+    None
 }
 
 pub fn is_running() -> bool {
@@ -89,6 +97,11 @@ pub async fn start_sidecar(app_handle: &AppHandle) -> Result<(), String> {
         let mut cmd = std::process::Command::new(&sidecar_exe);
         cmd.args(["--port", &port.to_string(), "--host", "127.0.0.1"])
             .current_dir(&sidecar_dir);
+
+        // If built as Vesper (Lite Edition), propagate CONTEXTUAI_EDITION=lite to the sidecar
+        if app_handle.config().identifier == "com.contextuai.vesper" {
+            cmd.env("CONTEXTUAI_EDITION", "lite");
+        }
 
         // Models live at ~/.contextuai-solo/models/ — same path on every OS,
         // matches the docs (README, CLAUDE.md, SETUP-GUIDE) and the dev-mode

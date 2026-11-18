@@ -17,7 +17,9 @@ import {
   ExternalLink,
 } from "lucide-react";
 import logoImg from "@/assets/logo.png";
+import vesperLogoImg from "@/assets/vesper-logo.png";
 import { useAiMode } from "@/contexts/ai-mode-context";
+import { useEdition } from "@/config/edition";
 import {
   downloadModel,
   syncLocalModels,
@@ -276,6 +278,7 @@ function TagInput({
 export default function WizardPage() {
   const navigate = useNavigate();
   const { setAiMode } = useAiMode();
+  const { isLite, brand } = useEdition();
   const [step, setStep] = useState<WizardStep>(1);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<"success" | "error" | null>(null);
@@ -355,18 +358,32 @@ export default function WizardPage() {
 
   if (step === 1) {
     return (
-      <div className="min-h-screen bg-neutral-50 dark:bg-[#242523] flex items-center justify-center px-6">
+      <div className="min-h-screen bg-neutral-50 dark:bg-neutral-950 flex items-center justify-center px-6">
         <div className="w-full max-w-md text-center">
           {/* Logo */}
           <div className="flex items-center justify-center gap-3 mb-8">
-            <img src={logoImg} alt="ContextuAI" className="w-12 h-12 rounded-2xl shadow-lg shadow-primary-500/25" />
+            <img
+              src={isLite ? vesperLogoImg : logoImg}
+              alt={brand.fullTitle}
+              className="w-12 h-12 rounded-2xl shadow-lg shadow-primary-500/25 object-cover"
+            />
             <span className="text-2xl font-bold text-neutral-900 dark:text-white">
-              ContextuAI <span className="text-primary-500">Solo</span>
+              {isLite ? (
+                <>
+                  Vesper <span className="text-primary-500">Lite</span>
+                </>
+              ) : (
+                <>
+                  ContextuAI <span className="text-primary-500">Solo</span>
+                </>
+              )}
             </span>
           </div>
 
           <p className="text-neutral-500 dark:text-neutral-400 mb-8">
-            Your AI business assistant. Runs locally.
+            {isLite
+              ? "Quiet, sovereign intelligence on your metal."
+              : "Your AI business assistant. Runs locally."}
           </p>
 
           {/* Illustration area */}
@@ -482,10 +499,10 @@ export default function WizardPage() {
     }
 
     return (
-      <div className="min-h-screen bg-neutral-50 dark:bg-[#242523] flex flex-col">
+      <div className="min-h-screen bg-neutral-50 dark:bg-neutral-950 flex flex-col">
         {/* Title bar */}
         <div className="text-center text-xs text-neutral-400 py-3 border-b border-neutral-200 dark:border-neutral-800">
-          ContextuAI Solo
+          {brand.fullTitle}
         </div>
 
         <div className="flex-1 overflow-y-auto px-6 py-8">
@@ -703,7 +720,7 @@ export default function WizardPage() {
               </div>
               <button
                 onClick={() => setShowCloudProviders(!showCloudProviders)}
-                className="relative z-10 px-4 py-1.5 bg-neutral-50 dark:bg-[#242523] text-xs font-medium text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 transition-colors"
+                className="relative z-10 px-4 py-1.5 bg-neutral-50 dark:bg-neutral-950 text-xs font-medium text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 transition-colors"
               >
                 {showCloudProviders ? "Hide cloud providers" : "Or connect a cloud provider instead"}
               </button>
@@ -955,10 +972,10 @@ export default function WizardPage() {
   // ── Step 3: Brand Voice ───────────────────────────────────────
 
   return (
-    <div className="min-h-screen bg-neutral-50 dark:bg-[#242523] flex flex-col">
+    <div className="min-h-screen bg-neutral-50 dark:bg-neutral-950 flex flex-col">
       {/* Title bar */}
       <div className="text-center text-xs text-neutral-400 py-3 border-b border-neutral-200 dark:border-neutral-800">
-        {data.name ? `${data.name}` : "ContextuAI Solo"} — Setup Wizard
+        {data.name ? `${data.name}` : brand.fullTitle} — Setup Wizard
       </div>
 
       <div className="flex-1 overflow-y-auto px-6 py-8">

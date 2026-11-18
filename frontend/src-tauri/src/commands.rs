@@ -26,6 +26,9 @@ pub async fn api_request(
     };
 
     request = request.header("Content-Type", "application/json");
+    if let Some(token) = crate::sidecar::get_token() {
+        request = request.header("X-ContextuAI-Token", token);
+    }
 
     if let Some(body_str) = body {
         request = request.body(body_str);
@@ -50,4 +53,9 @@ pub fn get_sidecar_status() -> String {
     } else {
         "stopped".to_string()
     }
+}
+
+#[tauri::command]
+pub fn get_sidecar_token() -> Option<String> {
+    crate::sidecar::get_token()
 }

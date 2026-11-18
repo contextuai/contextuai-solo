@@ -348,14 +348,14 @@ class WebTools:
                     "url": url
                 }
 
-            # Security check - don't fetch local/internal URLs in production
-            if self.environment == "prod":
-                if parsed.hostname in ["localhost", "127.0.0.1", "0.0.0.0"]:
-                    return {
-                        "success": False,
-                        "error": "Access to local URLs is not allowed",
-                        "url": url
-                    }
+            # Security check - unconditional SSRF guard (SPEC-05)
+            from services.tools.url_guard import is_url_allowed
+            if not is_url_allowed(url):
+                return {
+                    "success": False,
+                    "error": "Access to local, metadata, or blocked URLs is not allowed",
+                    "url": url
+                }
 
             async with aiohttp.ClientSession() as session:
                 async with session.get(
@@ -455,6 +455,13 @@ class WebTools:
             Dictionary with extracted links
         """
         try:
+            from services.tools.url_guard import is_url_allowed
+            if not is_url_allowed(url):
+                return {
+                    "success": False,
+                    "error": "Access to local, metadata, or blocked URLs is not allowed",
+                    "url": url,
+                }
             # Fetch the page
             fetch_result = await self.fetch_url(url, extract_text=False)
             if not fetch_result["success"]:
@@ -529,8 +536,19 @@ class WebTools:
         try:
             results = []
 
+            from services.tools.url_guard import is_url_allowed
+
             async with aiohttp.ClientSession() as session:
                 for url in urls[:20]:  # Limit to 20 URLs
+                    if not is_url_allowed(url):
+                        results.append({
+                            "url": url,
+                            "status_code": None,
+                            "status_text": "Blocked",
+                            "accessible": False,
+                            "error": "Access to local, metadata, or blocked URLs is not allowed"
+                        })
+                        continue
                     try:
                         async with session.head(
                             url,

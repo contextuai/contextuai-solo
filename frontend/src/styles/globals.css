@@ -3,17 +3,300 @@
 @tailwind utilities;
 
 @layer base {
-  :root {
-    --radius: 0.5rem;
+  /* -------------------------------------------------------------------------
+   * Material Design 3 (M3) Tonal Color & Surface Engine
+   * Default Theme: Warm Ember (Solo Terracotta — #E05A2B & Warm Espresso Stone)
+   * ------------------------------------------------------------------------- */
+  :root,
+  [data-color-theme="solo-terracotta"] {
+    --radius: 0.625rem;
+
+    /* M3 Primary Seed — Terracotta Copper / Warm Ember */
+    --m3-primary-50: 255 244 238;   /* #FFF4EE */
+    --m3-primary-100: 255 230 216;  /* #FFE6D8 */
+    --m3-primary-200: 252 212 192;  /* #FCD4C0 */
+    --m3-primary-300: 253 186 156;  /* #FDBA9C (M3 Tone 80) */
+    --m3-primary-400: 242 125 82;   /* #F27D52 */
+    --m3-primary-500: 224 90 43;    /* #E05A2B (Signature Warm Ember) */
+    --m3-primary-600: 200 75 32;    /* #C84B20 */
+    --m3-primary-700: 168 59 22;    /* #A83B16 */
+    --m3-primary-800: 138 48 18;    /* #8A3012 */
+    --m3-primary-900: 112 39 16;    /* #702710 */
+    --m3-primary-950: 67 20 7;      /* #431407 */
+
+    /* M3 Tonal Surfaces — Warm Alabaster (Light) & Warm Espresso Stone (Dark) */
+    --m3-neutral-50: 250 247 242;   /* #FAF7F2 */
+    --m3-neutral-100: 243 239 232;  /* #F3EFE8 */
+    --m3-neutral-200: 231 226 218;  /* #E7E2DA */
+    --m3-neutral-300: 214 207 197;  /* #D6CFC5 */
+    --m3-neutral-400: 168 160 150;  /* #A8A096 */
+    --m3-neutral-500: 120 113 106;  /* #78716A */
+    --m3-neutral-600: 87 83 78;     /* #57534E */
+    --m3-neutral-700: 58 53 48;     /* #3A3530 */
+    --m3-neutral-800: 38 34 31;     /* #26221F (M3 Surface 800) */
+    --m3-neutral-900: 26 23 21;     /* #1A1715 (M3 Surface 900) */
+    --m3-neutral-950: 18 16 14;     /* #12100E (M3 Surface 950) */
+  }
+
+  /* Theme 2: Vesper Nocturne (Iris Indigo & Starlight Slate) */
+  [data-color-theme="vesper-indigo"] {
+    --m3-primary-50: 238 242 255;   /* #EEF2FF */
+    --m3-primary-100: 224 231 255;  /* #E0E7FF */
+    --m3-primary-200: 199 210 254;  /* #C7D2FE */
+    --m3-primary-300: 165 180 252;  /* #A5B4FC */
+    --m3-primary-400: 129 140 248;  /* #818CF8 */
+    --m3-primary-500: 99 102 241;   /* #6366F1 */
+    --m3-primary-600: 79 70 229;    /* #4F46E5 */
+    --m3-primary-700: 67 56 202;    /* #4338CA */
+    --m3-primary-800: 55 48 163;    /* #3730A3 */
+    --m3-primary-900: 49 46 129;    /* #312E81 */
+    --m3-primary-950: 30 27 75;     /* #1E1B4B */
+
+    --m3-neutral-50: 248 250 252;   /* #F8FAFC */
+    --m3-neutral-100: 241 245 249;  /* #F1F5F9 */
+    --m3-neutral-200: 226 232 240;  /* #E2E8F0 */
+    --m3-neutral-300: 203 213 225;  /* #CBD5E1 */
+    --m3-neutral-400: 148 163 184;  /* #94A3B8 */
+    --m3-neutral-500: 100 116 139;  /* #64748B */
+    --m3-neutral-600: 71 85 105;    /* #475569 */
+    --m3-neutral-700: 45 53 78;     /* #2D354E */
+    --m3-neutral-800: 27 32 50;     /* #1B2032 */
+    --m3-neutral-900: 18 21 33;     /* #121521 */
+    --m3-neutral-950: 11 13 20;     /* #0B0D14 */
+  }
+
+  /* Theme 3: Vesper Emerald — signature Vesper brand theme
+   * (Jade emerald accents on deep forest-obsidian surfaces, visibly green-tinted) */
+  [data-color-theme="sovereign-emerald"] {
+    --m3-primary-50: 236 253 245;   /* #ECFDF5 */
+    --m3-primary-100: 209 250 229;  /* #D1FAE5 */
+    --m3-primary-200: 167 243 208;  /* #A7F3D0 */
+    --m3-primary-300: 110 231 183;  /* #6EE7B7 */
+    --m3-primary-400: 52 211 153;   /* #34D399 */
+    --m3-primary-500: 16 185 129;   /* #10B981 */
+    --m3-primary-600: 5 150 105;    /* #059669 */
+    --m3-primary-700: 4 120 87;     /* #047857 */
+    --m3-primary-800: 6 95 70;      /* #065F46 */
+    --m3-primary-900: 6 78 59;      /* #064E3B */
+    --m3-primary-950: 2 44 34;      /* #022C22 */
+
+    --m3-neutral-50: 240 250 245;   /* #F0FAF5 */
+    --m3-neutral-100: 227 244 236;  /* #E3F4EC */
+    --m3-neutral-200: 204 230 218;  /* #CCE6DA */
+    --m3-neutral-300: 168 205 189;  /* #A8CDBD */
+    --m3-neutral-400: 122 163 147;  /* #7AA393 */
+    --m3-neutral-500: 84 124 109;   /* #547C6D */
+    --m3-neutral-600: 56 96 82;     /* #386052 */
+    --m3-neutral-700: 32 70 58;     /* #20463A */
+    --m3-neutral-800: 18 50 41;     /* #123229 */
+    --m3-neutral-900: 10 33 26;     /* #0A211A */
+    --m3-neutral-950: 5 21 16;      /* #051510 */
+  }
+
+  /* Theme 4: Cobalt Sapphire (Titanium Ocean) */
+  [data-color-theme="cobalt-sapphire"] {
+    --m3-primary-50: 239 246 255;   /* #EFF6FF */
+    --m3-primary-100: 219 234 254;  /* #DBEAFE */
+    --m3-primary-200: 191 219 254;  /* #BFDBFE */
+    --m3-primary-300: 147 197 253;  /* #93C5FD */
+    --m3-primary-400: 96 165 250;   /* #60A5FA */
+    --m3-primary-500: 59 130 246;   /* #3B82F6 */
+    --m3-primary-600: 37 99 235;    /* #2563EB */
+    --m3-primary-700: 29 78 216;    /* #1D4ED8 */
+    --m3-primary-800: 30 64 175;    /* #1E40AF */
+    --m3-primary-900: 30 58 138;    /* #1E3A8A */
+    --m3-primary-950: 23 37 84;     /* #172554 */
+
+    --m3-neutral-50: 246 249 254;   /* #F6F9FE */
+    --m3-neutral-100: 237 243 252;  /* #EDF3FC */
+    --m3-neutral-200: 220 230 245;  /* #DCE6F5 */
+    --m3-neutral-300: 192 208 230;  /* #C0D0E6 */
+    --m3-neutral-400: 139 158 183;  /* #8B9EB7 */
+    --m3-neutral-500: 98 116 142;   /* #62748E */
+    --m3-neutral-600: 71 85 105;    /* #475569 */
+    --m3-neutral-700: 40 55 82;     /* #283752 */
+    --m3-neutral-800: 26 36 56;     /* #1A2438 */
+    --m3-neutral-900: 16 23 38;     /* #101726 */
+    --m3-neutral-950: 9 14 23;      /* #090E17 */
+  }
+
+  /* Theme 5: Amethyst Quartz (Violet Studio) */
+  [data-color-theme="amethyst-quartz"] {
+    --m3-primary-50: 245 243 255;   /* #F5F3FF */
+    --m3-primary-100: 237 233 254;  /* #EDE9FE */
+    --m3-primary-200: 221 214 254;  /* #DDD6FE */
+    --m3-primary-300: 196 181 253;  /* #C4B5FD */
+    --m3-primary-400: 167 139 250;  /* #A78BFA */
+    --m3-primary-500: 139 92 246;   /* #8B5CF6 */
+    --m3-primary-600: 124 58 237;   /* #7C3AED */
+    --m3-primary-700: 109 40 217;   /* #6D28D9 */
+    --m3-primary-800: 91 33 182;    /* #5B21B6 */
+    --m3-primary-900: 76 29 149;    /* #4C1D95 */
+    --m3-primary-950: 46 16 101;    /* #2E1065 */
+
+    --m3-neutral-50: 250 248 255;   /* #FAF8FF */
+    --m3-neutral-100: 243 238 255;  /* #F3EEFF */
+    --m3-neutral-200: 229 222 250;  /* #E5DEFA */
+    --m3-neutral-300: 204 194 235;  /* #CCC2EB */
+    --m3-neutral-400: 158 148 184;  /* #9E94B8 */
+    --m3-neutral-500: 118 107 148;  /* #766B94 */
+    --m3-neutral-600: 91 78 119;    /* #5B4E77 */
+    --m3-neutral-700: 54 42 82;     /* #362A52 */
+    --m3-neutral-800: 34 27 54;     /* #221B36 */
+    --m3-neutral-900: 22 17 36;     /* #161124 */
+    --m3-neutral-950: 14 11 22;     /* #0E0B16 */
+  }
+
+  /* Theme 6: Cyber Lagoon (Hardware Cyan) */
+  [data-color-theme="cyber-lagoon"] {
+    --m3-primary-50: 236 254 255;   /* #ECFEFF */
+    --m3-primary-100: 207 250 254;  /* #CFFAFE */
+    --m3-primary-200: 165 243 252;  /* #A5F3FC */
+    --m3-primary-300: 103 232 249;  /* #67E8F9 */
+    --m3-primary-400: 34 211 238;   /* #22D3EE */
+    --m3-primary-500: 6 182 212;    /* #06B6D4 */
+    --m3-primary-600: 8 145 178;    /* #0891B2 */
+    --m3-primary-700: 14 116 144;   /* #0E7490 */
+    --m3-primary-800: 21 94 117;    /* #155E75 */
+    --m3-primary-900: 22 78 99;     /* #164E63 */
+    --m3-primary-950: 8 51 68;      /* #083344 */
+
+    --m3-neutral-50: 244 251 254;   /* #F4FBFE */
+    --m3-neutral-100: 232 246 250;  /* #E8F6FA */
+    --m3-neutral-200: 210 235 242;  /* #D2EBF2 */
+    --m3-neutral-300: 176 212 224;  /* #B0D4E0 */
+    --m3-neutral-400: 132 169 184;  /* #84A9B8 */
+    --m3-neutral-500: 92 129 144;   /* #5C8190 */
+    --m3-neutral-600: 62 101 115;   /* #3E6573 */
+    --m3-neutral-700: 35 64 77;     /* #23404D */
+    --m3-neutral-800: 21 40 49;     /* #152831 */
+    --m3-neutral-900: 13 26 32;     /* #0D1A20 */
+    --m3-neutral-950: 7 16 20;      /* #071014 */
+  }
+
+  /* Font Size Scaling */
+  html[data-font-size="small"] {
+    font-size: 14.5px;
+  }
+  html[data-font-size="medium"] {
+    font-size: 15.5px;
+  }
+  html[data-font-size="large"] {
+    font-size: 17px;
   }
 
   body {
-    @apply antialiased;
+    @apply antialiased bg-neutral-50 text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  ::selection {
+    background-color: rgb(var(--m3-primary-500) / 0.24);
   }
 
   /* Prevent text selection on drag regions */
   [data-tauri-drag-region] {
     -webkit-user-select: none;
     user-select: none;
+  }
+
+  /* Theme-tinted scrollbars */
+  * {
+    scrollbar-color: rgb(var(--m3-primary-500) / 0.35) transparent;
+  }
+}
+
+@layer components {
+  /* Ambient brand glow behind the main workspace — makes the active color
+   * theme felt on every page, not just on buttons and badges. */
+  .app-ambient {
+    background-image:
+      radial-gradient(1100px 520px at 0% 0%, rgb(var(--m3-primary-500) / 0.07), transparent 62%),
+      radial-gradient(900px 480px at 100% 100%, rgb(var(--m3-primary-500) / 0.05), transparent 60%);
+    background-attachment: fixed;
+  }
+  .dark .app-ambient {
+    background-image:
+      radial-gradient(1100px 520px at 0% 0%, rgb(var(--m3-primary-500) / 0.13), transparent 62%),
+      radial-gradient(900px 480px at 100% 100%, rgb(var(--m3-primary-500) / 0.08), transparent 60%);
+  }
+
+  /* Thin brand accent line under the top bar */
+  .brand-topline {
+    position: relative;
+  }
+  .brand-topline::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -1px;
+    height: 1px;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgb(var(--m3-primary-500) / 0.65) 30%,
+      rgb(var(--m3-primary-400) / 0.65) 70%,
+      transparent 100%
+    );
+    pointer-events: none;
+  }
+
+  /* Active sidebar item accent bar */
+  .nav-active-bar {
+    position: relative;
+  }
+  .nav-active-bar::before {
+    content: "";
+    position: absolute;
+    left: -0.75rem;
+    top: 0.5rem;
+    bottom: 0.5rem;
+    width: 3px;
+    border-radius: 0 3px 3px 0;
+    background: rgb(var(--m3-primary-500));
+    box-shadow: 0 0 10px rgb(var(--m3-primary-500) / 0.6);
+  }
+
+  /* Material Design 3 (M3) Tonal Surface Containers & Elevation */
+  .m3-surface-low {
+    background-color: rgb(var(--m3-neutral-100) / 0.65);
+  }
+  .dark .m3-surface-low {
+    background-color: rgb(var(--m3-neutral-900) / 0.72);
+  }
+
+  .m3-card {
+    background-color: rgb(255 255 255 / 0.9);
+    border: 1px solid rgb(var(--m3-neutral-200) / 0.75);
+    border-radius: 1.25rem;
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.04);
+  }
+  .dark .m3-card {
+    background-color: rgb(var(--m3-neutral-900) / 0.85);
+    border: 1px solid rgb(var(--m3-neutral-800) / 0.9);
+    box-shadow: 0 2px 8px rgb(0 0 0 / 0.25);
+  }
+
+  .m3-card-tonal {
+    background-color: rgb(var(--m3-primary-500) / 0.07);
+    border: 1px solid rgb(var(--m3-primary-500) / 0.16);
+    border-radius: 1.25rem;
+  }
+  .dark .m3-card-tonal {
+    background-color: rgb(var(--m3-primary-500) / 0.11);
+    border: 1px solid rgb(var(--m3-primary-500) / 0.22);
+  }
+
+  .m3-card-elevated {
+    background-color: rgb(255 255 255 / 0.95);
+    border: 1px solid rgb(var(--m3-neutral-200) / 0.6);
+    border-radius: 1.5rem;
+    box-shadow: 0 4px 20px -4px rgb(0 0 0 / 0.08), 0 1px 3px rgb(0 0 0 / 0.04);
+  }
+  .dark .m3-card-elevated {
+    background-color: rgb(var(--m3-neutral-900) / 0.92);
+    border: 1px solid rgb(var(--m3-neutral-800) / 0.85);
+    box-shadow: 0 8px 28px -6px rgb(0 0 0 / 0.45), 0 0 0 1px rgb(255 255 255 / 0.03) inset;
   }
 }
