@@ -390,9 +390,9 @@ jobs:
           # Read signature files
           read_sig() { cat "release-assets/$1" 2>/dev/null || echo ""; }
 
-          NSIS_SIG=$(read_sig "ContextuAI Solo_${VERSION}_x64-setup.exe.sig")
-          MAC_SIG=$(read_sig "ContextuAI Solo.app.tar.gz.sig")
-          APPIMAGE_SIG=$(read_sig "ContextuAI Solo_${VERSION}_amd64.AppImage.sig")
+          NSIS_SIG=$(read_sig "Vesper_${VERSION}_x64-setup.exe.sig")
+          MAC_SIG=$(read_sig "Vesper.app.tar.gz.sig")
+          APPIMAGE_SIG=$(read_sig "Vesper_${VERSION}_amd64.AppImage.sig")
 
           python3 -c "
           import json, sys
@@ -404,15 +404,15 @@ jobs:
             'platforms': {
               'windows-x86_64': {
                 'signature': '$NSIS_SIG',
-                'url': '$BASE_URL/ContextuAI+Solo_${VERSION}_x64-setup.exe'
+                'url': '$BASE_URL/Vesper_${VERSION}_x64-setup.exe'
               },
               'darwin-aarch64': {
                 'signature': '$MAC_SIG',
-                'url': '$BASE_URL/ContextuAI+Solo.app.tar.gz'
+                'url': '$BASE_URL/Vesper.app.tar.gz'
               },
               'linux-x86_64': {
                 'signature': '$APPIMAGE_SIG',
-                'url': '$BASE_URL/ContextuAI+Solo_${VERSION}_amd64.AppImage'
+                'url': '$BASE_URL/Vesper_${VERSION}_amd64.AppImage'
               }
             }
           }, indent=2))

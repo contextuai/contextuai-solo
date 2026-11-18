@@ -6,13 +6,13 @@ use tauri::{
 };
 
 pub fn setup_tray(app: &App) -> Result<(), Box<dyn std::error::Error>> {
-    let open = MenuItem::with_id(app, "open", "Open ContextuAI Solo", true, None::<&str>)?;
+    let open = MenuItem::with_id(app, "open", "Open Vesper", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&open, &quit])?;
 
     TrayIconBuilder::new()
         .menu(&menu)
-        .tooltip("ContextuAI Solo")
+        .tooltip("Vesper")
         .on_menu_event(|app, event| {
             match event.id.as_ref() {
                 "open" => {
