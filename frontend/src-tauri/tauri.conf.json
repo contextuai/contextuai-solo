@@ -1,6 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/dev/crates/tauri-config-schema/schema.json",
-  "productName": "ContextuAI Solo",
+  "productName": "Vesper",
   "version": "1.1.0",
   "identifier": "com.contextuai.solo",
   "build": {
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "ContextuAI Solo",
+        "title": "Vesper",
         "width": 1280,
         "height": 800,
         "minWidth": 800,
