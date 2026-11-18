@@ -59,8 +59,10 @@ export class ChatPage {
 
   /** New Chat button in the sidebar. */
   get newChatButton(): Locator {
-    // Sidebar expanded: button with text "New"; collapsed: button with title "New chat"
-    return this.page.locator('button:has(svg.lucide-plus)').first();
+    return this.page
+      .locator('a[title="New Chat (Ctrl+N)"]')
+      .or(this.page.locator('button:has(svg.lucide-plus)'))
+      .first();
   }
 
   /** Session items in the sidebar. */
