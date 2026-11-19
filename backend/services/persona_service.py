@@ -356,49 +356,8 @@ class PersonaService:
         return ""
 
     async def _build_schema_summary(self, persona_id: str, credentials: Dict[str, Any]) -> str:
-        """
-        Build a compact schema summary for database personas to inject into the system prompt.
-        This allows the AI to know the schema upfront without needing a tool call first.
-
-        Returns a formatted string like:
-        Database Schema:
-        - orders: id, customer_id, total, status, created_at
-        - customers: id, name, email, phone
-        """
-        try:
-            from services.database_metadata_service import db_metadata_service
-
-            schema_metadata = await db_metadata_service.get_schema_metadata(
-                persona_id, credentials
-            )
-
-            tables = schema_metadata.get("tables", [])
-            if not tables:
-                return ""
-
-            lines = ["Database Schema (use this to write accurate SQL):"]
-            char_count = len(lines[0])
-
-            for table in tables[:50]:  # Cap at 50 tables
-                table_name = table.get("table_name", "unknown")
-                columns = table.get("columns", [])
-                col_names = [c.get("column_name", c.get("name", "?")) for c in columns]
-                col_str = ", ".join(col_names)
-                line = f"- {table_name}: {col_str}"
-
-                # Truncate at ~2000 chars to keep prompt reasonable
-                if char_count + len(line) > 2000:
-                    lines.append(f"... and {len(tables) - len(lines) + 1} more tables")
-                    break
-
-                lines.append(line)
-                char_count += len(line)
-
-            return "\n".join(lines)
-
-        except Exception as e:
-            logger.warning(f"Failed to build schema summary for persona {persona_id}: {e}")
-            return ""
+        """Legacy warehouse schema introspection has been retired in Vesper."""
+        return ""
 
     def _extract_tools(self, persona_data: Dict[str, Any]) -> List[Any]:
         """Extract and format available tools from persona data using tool registry"""

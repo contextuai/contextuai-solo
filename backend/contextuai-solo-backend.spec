@@ -1,11 +1,10 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_submodules, collect_dynamic_libs
 
-hiddenimports = ['uvicorn.logging', 'uvicorn.loops', 'uvicorn.loops.auto', 'uvicorn.protocols', 'uvicorn.protocols.http', 'uvicorn.protocols.http.auto', 'uvicorn.protocols.websockets', 'uvicorn.protocols.websockets.auto', 'uvicorn.lifespan', 'uvicorn.lifespan.on', 'sqlite3', 'aiosqlite', 'apscheduler', 'apscheduler.schedulers.background', 'apscheduler.jobstores.sqlalchemy', 'sqlalchemy', 'pydantic', 'pydantic_settings', 'anyio', 'anyio._backends', 'anyio._backends._asyncio', 'starlette', 'sse_starlette', 'httpx', 'httpx_sse', 'multipart', 'motor', 'motor.motor_asyncio', 'pymongo', 'asyncpg', 'asyncpg.pgproto.pgproto', 'asyncpg.pgproto', 'asyncpg.protocol', 'asyncpg.protocol.protocol']
+hiddenimports = ['uvicorn.logging', 'uvicorn.loops', 'uvicorn.loops.auto', 'uvicorn.protocols', 'uvicorn.protocols.http', 'uvicorn.protocols.http.auto', 'uvicorn.protocols.websockets', 'uvicorn.protocols.websockets.auto', 'uvicorn.lifespan', 'uvicorn.lifespan.on', 'sqlite3', 'aiosqlite', 'apscheduler', 'apscheduler.schedulers.background', 'apscheduler.jobstores.sqlalchemy', 'sqlalchemy', 'pydantic', 'pydantic_settings', 'anyio', 'anyio._backends', 'anyio._backends._asyncio', 'starlette', 'sse_starlette', 'httpx', 'httpx_sse', 'multipart', 'motor', 'motor.motor_asyncio', 'pymongo']
 hiddenimports += collect_submodules('strands')
 hiddenimports += collect_submodules('strands_tools')
 hiddenimports += collect_submodules('pydantic')
-hiddenimports += collect_submodules('asyncpg')
 hiddenimports += ['llama_cpp', 'onnxruntime', 'huggingface_hub', 'tokenizers', 'tqdm']
 hiddenimports += collect_submodules('huggingface_hub')
 hiddenimports += collect_submodules('tqdm')

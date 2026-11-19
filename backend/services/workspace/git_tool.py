@@ -1,4 +1,4 @@
-"""Git operations for CodeMorph."""
+"""Git operations for Workspace orchestrator."""
 import re
 import subprocess
 import logging

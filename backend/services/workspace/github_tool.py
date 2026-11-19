@@ -1,8 +1,9 @@
-"""GitHub API operations for CodeMorph."""
+"""GitHub API operations for Workspace orchestrator."""
 import re
 import logging
 
 logger = logging.getLogger(__name__)
+
 
 def create_pull_request(
     repo_url: str,

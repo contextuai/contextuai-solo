@@ -12,9 +12,6 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from database import get_database
 from repositories import PersonaRepository, PersonaTypeRepository
 
-# Import database connectors
-from services.postgres_connector import PostgreSQLConnector
-
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/personas", tags=["personas"])
@@ -420,41 +417,11 @@ async def test_connection(request: TestConnectionRequest):
         # Generate temporary persona_id for connection testing
         temp_persona_id = f"test-{uuid.uuid4()}"
 
-        if db_type == "postgresql":
-            pg_connector = PostgreSQLConnector()
-            test_credentials = {**request.credentials, "db_type": db_type}
-            result = await pg_connector.test_connection(
-                persona_id=temp_persona_id,
-                credentials=test_credentials
-            )
-            return result
-
-        elif db_type == "mysql":
-            from services.mysql_connector import mysql_connector
-            test_credentials = {**request.credentials, "db_type": db_type}
-            result = await mysql_connector.test_connection(
-                persona_id=temp_persona_id,
-                credentials=test_credentials
-            )
-            return result
-
-        elif db_type == "mssql":
-            from services.mssql_connector import mssql_connector
-            test_credentials = {**request.credentials, "db_type": db_type}
-            result = await mssql_connector.test_connection(
-                persona_id=temp_persona_id,
-                credentials=test_credentials
-            )
-            return result
-
-        elif db_type == "snowflake":
-            from services.snowflake_connector import snowflake_connector
-            test_credentials = {**request.credentials, "db_type": db_type}
-            result = await snowflake_connector.test_connection(
-                persona_id=temp_persona_id,
-                credentials=test_credentials
-            )
-            return result
+        if db_type in ("postgresql", "mysql", "mssql", "snowflake"):
+            return {
+                "success": False,
+                "error": f"Legacy warehouse connector '{db_type}' has been retired in Vesper. Use an MCP server connector instead.",
+            }
 
         elif db_type == "mongodb":
             from services.tools.mongodb_tools import MongoDBTools
