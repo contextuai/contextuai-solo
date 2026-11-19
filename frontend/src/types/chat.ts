@@ -13,6 +13,31 @@ export interface ChatSession {
   status: "active" | "archived" | "deleted";
 }
 
+export interface ChatCitation {
+  index: number;
+  doc_id?: string;
+  filename: string;
+  page?: number | null;
+  chunk_index?: number;
+  score?: number;
+  vector_score?: number;
+  bm25_score?: number;
+  excerpt: string;
+  mode?: "full_context" | "hybrid_rag";
+}
+
+export interface DlpRedactionSummary {
+  total: number;
+  categories: string[];
+}
+
+export interface ChatMessageMetadata {
+  citations?: ChatCitation[];
+  rag_mode?: "full_context" | "hybrid_rag";
+  dlp_redaction?: DlpRedactionSummary;
+  [key: string]: unknown;
+}
+
 export interface ChatMessage {
   message_id: string;
   session_id: string;
@@ -20,7 +45,7 @@ export interface ChatMessage {
   reasoning?: string;
   message_type: "user" | "assistant" | "system";
   timestamp: string;
-  metadata?: Record<string, unknown>;
+  metadata?: ChatMessageMetadata;
 }
 
 export interface StreamChunk {
@@ -30,6 +55,10 @@ export interface StreamChunk {
     model_used?: string;
     tokens_used?: number;
     processing_time?: number;
+    citations?: ChatCitation[];
+    rag_mode?: "full_context" | "hybrid_rag";
+    dlp_redaction?: DlpRedactionSummary;
+    [key: string]: unknown;
   };
 }
 
