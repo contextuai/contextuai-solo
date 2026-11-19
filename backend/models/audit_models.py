@@ -52,8 +52,20 @@ class AuditAction(str, Enum):
     MFA_FAILED = "auth.mfa.failed"
     MFA_RECOVERY_USED = "auth.mfa.recovery_used"
 
-    # System
+    # System & Automation
     SYSTEM_ERROR = "system.error"
+    AUTOMATION_FAILED = "automation.failed"
+
+    # Vesper Security, Models, Privacy & Compliance
+    MODEL_LOADED = "model.loaded"
+    MODEL_DOWNLOADED = "model.downloaded"
+    MODEL_INTEGRITY_FAILED = "model.integrity_failed"
+    AIRPLANE_LOCK_CHANGED = "privacy.airplane_lock.changed"
+    DLP_REDACTED = "dlp.redacted"
+    DLP_POLICY_UPDATED = "dlp.policy.updated"
+    TOOL_EXECUTED = "tool.executed"
+    CATALOG_REFRESHED = "catalog.refreshed"
+    AUDIT_EXPORTED = "audit.exported"
 
 
 class AuditSeverity(str, Enum):
@@ -99,6 +111,7 @@ class AuditEventResponse(BaseModel):
     request_method: Optional[str] = None
     request_path: Optional[str] = None
     response_status: Optional[int] = None
+    airplane_lock: bool = False
 
 
 class AuditListResponse(BaseModel):
