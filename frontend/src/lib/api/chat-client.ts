@@ -1,4 +1,4 @@
-import { api, streamRequest } from "@/lib/transport";
+import { api, streamRequest, getApiBaseUrl, getSidecarToken } from "@/lib/transport";
 import type {
   ChatSession,
   ChatMessage,
@@ -88,6 +88,7 @@ function normalizeMessage(raw: Record<string, unknown>): ChatMessage {
     session_id:
       (raw.session_id as string) || (raw.sessionId as string) || "",
     content: (raw.content as string) || "",
+    reasoning: (raw.reasoning as string) || undefined,
     message_type:
       ((raw.message_type as string) ||
         (raw.messageType as string) ||
@@ -97,7 +98,7 @@ function normalizeMessage(raw: Record<string, unknown>): ChatMessage {
       (raw.timestamp as string) ||
       (raw.createdAt as string) ||
       new Date().toISOString(),
-    metadata: raw.metadata as Record<string, unknown> | undefined,
+    metadata: raw.metadata as ChatMessage["metadata"],
   };
 }
 
@@ -127,13 +128,54 @@ export async function listMessages(
 
 // ── Streaming chat ───────────────────────────────────────────────
 
+export async function uploadChatFile(
+  file: File
+): Promise<{ file_id: string; original_filename: string; size: number }> {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("user_id", USER_ID);
+
+  const baseUrl = await getApiBaseUrl();
+  const token = await getSidecarToken();
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers["X-ContextuAI-Token"] = token;
+  }
+
+  const response = await fetch(`${baseUrl}/files/upload`, {
+    method: "POST",
+    headers,
+    body: formData,
+  });
+  if (!response.ok) {
+    let detail = response.statusText;
+    try {
+      const errBody = (await response.json()) as {
+        detail?: string;
+        message?: string;
+      };
+      detail = errBody.detail || errBody.message || detail;
+    } catch {
+      const text = await response.text().catch(() => "");
+      if (text) detail = text;
+    }
+    throw new Error(`Upload failed (${response.status}): ${detail}`);
+  }
+  return (await response.json()) as {
+    file_id: string;
+    original_filename: string;
+    size: number;
+  };
+}
+
 export async function* sendMessageStream(
   prompt: string,
   sessionId: string,
   modelId?: string,
   personaId?: string,
   signal?: AbortSignal,
-  knowledgeBaseId?: string
+  knowledgeBaseId?: string,
+  fileIds?: string[]
 ): AsyncGenerator<StreamChunk, void, unknown> {
   const body: Record<string, unknown> = {
     model_name: modelId || "default",
@@ -145,6 +187,7 @@ export async function* sendMessageStream(
     userId: USER_ID,
   };
   if (knowledgeBaseId) body.knowledge_base_id = knowledgeBaseId;
+  if (fileIds && fileIds.length > 0) body.file_ids = fileIds;
 
   for await (const raw of streamRequest("/ai-chat/", body, signal)) {
     // streamRequest already parses SSE into { type, data }

@@ -446,6 +446,14 @@ async def chat_completions(
     Routes by model-id prefix to the appropriate provider.
     Bare model names use the local llama-cpp path.
     """
+    from routers.local_models import is_local_server_enabled
+
+    if not is_local_server_enabled():
+        raise HTTPException(
+            status_code=503,
+            detail="Local OpenAI /v1 server is disabled in Settings -> Developer.",
+        )
+
     include_thinking = http_request.query_params.get("include_thinking", "").lower() in ("true", "1", "yes")
 
     provider, clean_model = _parse_provider(request.model)
@@ -780,6 +788,14 @@ async def completions(request: CompletionRequest):
 
     Compatible with: Continue.dev, Tabby, Cody, llama.cpp server clients.
     """
+    from routers.local_models import is_local_server_enabled
+
+    if not is_local_server_enabled():
+        raise HTTPException(
+            status_code=503,
+            detail="Local OpenAI /v1 server is disabled in Settings -> Developer.",
+        )
+
     llm, catalog_entry = _resolve_model_and_load(request.model)
 
     # Build the effective prompt (FIM or plain)

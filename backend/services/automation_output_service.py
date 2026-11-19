@@ -398,49 +398,11 @@ class AutomationOutputService:
     async def _distribute(
         self, execution: AutomationExecutionResponse, config: Dict[str, Any], db
     ) -> Dict[str, Any]:
-        try:
-            connection_id = config.get("connection_id") or config.get("channel_id")
-            if not connection_id:
-                return {
-                    "type": OutputActionType.DISTRIBUTE.value,
-                    "status": "failed",
-                    "error": "connection_id is required for distribute action",
-                }
-            if db is None:
-                return {
-                    "type": OutputActionType.DISTRIBUTE.value,
-                    "status": "failed",
-                    "error": "Database handle not available — cannot publish",
-                }
-
-            from services.distribution_service import DistributionService
-
-            svc = DistributionService(db)
-            content = (
-                config.get("content_template")
-                or execution.final_result
-                or self._build_email_body(execution)
-            )
-            title = config.get("title") or f"Automation: {execution.automation_id}"
-
-            receipt = await svc.publish(
-                channel_id=connection_id,
-                content=content,
-                title=title,
-                published_by="automation",
-            )
-            return {
-                "type": OutputActionType.DISTRIBUTE.value,
-                "status": "success" if receipt.get("status") == "published" else "failed",
-                "details": receipt,
-            }
-        except Exception as e:
-            logger.exception("Distribute failed")
-            return {
-                "type": OutputActionType.DISTRIBUTE.value,
-                "status": "failed",
-                "error": str(e),
-            }
+        return {
+            "type": OutputActionType.DISTRIBUTE.value,
+            "status": "failed",
+            "error": "Social distribution publishing has been retired in Vesper v1.2",
+        }
 
     # ------------------------------------------------------------------
     # Run Coder project (headless)

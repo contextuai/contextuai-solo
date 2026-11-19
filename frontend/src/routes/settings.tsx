@@ -38,7 +38,13 @@ import {
   HardDrive,
   RefreshCw,
   AlertCircle,
+  Shield,
+  Terminal,
 } from "lucide-react";
+import { SecurityAuditTab } from "@/components/settings/security-audit-tab";
+import { SecurityDlpPanel } from "@/components/settings/security-dlp-panel";
+import { EnterprisePolicyPanel } from "@/components/settings/enterprise-policy-panel";
+import { DeveloperTab } from "@/components/settings/developer-tab";
 
 // PROVIDER_DEFS removed — replaced by PROVIDER_GUIDES in data/provider-guides.ts
 
@@ -62,6 +68,8 @@ const SETTINGS_TABS = [
   { id: "brand", label: "Brand Voice", icon: <MessageSquareText className="w-4 h-4" /> },
   { id: "appearance", label: "Appearance", icon: <Palette className="w-4 h-4" /> },
   { id: "data", label: "Data & Export", icon: <Database className="w-4 h-4" /> },
+  { id: "security", label: "Security & Audit", icon: <Shield className="w-4 h-4" /> },
+  { id: "developer", label: "Developer", icon: <Terminal className="w-4 h-4" /> },
   { id: "about", label: "About", icon: <Info className="w-4 h-4" /> },
 ];
 
@@ -1061,6 +1069,8 @@ const TAB_SLUG_MAP: Record<string, string> = {
   "brand-voice": "brand",
   "appearance": "appearance",
   "data": "data",
+  "security": "security",
+  "developer": "developer",
   "about": "about",
 };
 
@@ -1121,6 +1131,14 @@ export default function SettingsPage() {
         {activeTab === "brand" && <BrandVoiceTab />}
         {activeTab === "appearance" && <AppearanceTab />}
         {activeTab === "data" && <DataExportTab />}
+        {activeTab === "security" && (
+          <div className="space-y-8">
+            <SecurityAuditTab />
+            <SecurityDlpPanel />
+            <EnterprisePolicyPanel />
+          </div>
+        )}
+        {activeTab === "developer" && <DeveloperTab />}
         {activeTab === "about" && <AboutTab />}
       </div>
     </div>

@@ -224,39 +224,11 @@ class SchedulerService:
     # ------------------------------------------------------------------
 
     async def _run_post(self, job: Dict[str, Any]) -> Dict[str, Any]:
-        """Publish ``job.content`` to ``job.channel_id`` via DistributionService."""
-        channel_id = job.get("channel_id")
-        content = job.get("content")
-        if not channel_id:
-            return {"ok": False, "error": "Missing channel_id"}
-        if not content:
-            return {"ok": False, "error": "Missing content"}
-
-        from services.distribution_service import DistributionService
-
-        svc = DistributionService(self.db)
-        channel = await svc.get_channel(channel_id)
-        if not channel:
-            return {"ok": False, "error": f"Channel {channel_id} not found"}
-        if not channel.get("enabled"):
-            return {"ok": False, "error": f"Channel {channel_id} is disabled"}
-
-        delivery = await svc.publish(
-            channel_id=channel_id,
-            content=content,
-            title=job.get("title"),
-            metadata=job.get("metadata"),
-            published_by="scheduler",
-        )
-
-        # DistributionService returns either an error envelope or a delivery
-        # record with status="published" / "failed".
-        if delivery.get("status") == "published":
-            return {"ok": True, "delivery": delivery}
+        """Post publishing via DistributionService has been retired in Vesper v1.2."""
         return {
             "ok": False,
-            "error": delivery.get("message") or str(delivery.get("result", {}).get("error", "publish failed")),
-            "delivery": delivery,
+            "status": "retired",
+            "error": "Distribution channels have been retired in Vesper v1.2",
         }
 
     async def _run_crew(self, job: Dict[str, Any]) -> Dict[str, Any]:

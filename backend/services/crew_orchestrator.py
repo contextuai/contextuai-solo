@@ -1217,12 +1217,6 @@ class CrewOrchestrator:
                 })
             return publish_results
 
-        from database import get_database
-        from services.distribution_service import DistributionService
-
-        db = await get_database()
-        dist_svc = DistributionService(db)
-
         for binding in bindings:
             if not binding.get("enabled", True):
                 continue
@@ -1231,90 +1225,11 @@ class CrewOrchestrator:
             if not channel_type:
                 continue
 
-            # Find a distribution channel matching this channel_type
-            dist_coll = db["distribution_channels"]
-            channel_doc = await dist_coll.find_one({
+            publish_results.append({
                 "channel_type": channel_type,
-                "enabled": True,
+                "status": "retired",
+                "error": "Social distribution channels have been retired in Vesper v1.2",
             })
-
-            if not channel_doc:
-                logger.info(
-                    f"No distribution channel for '{channel_type}' — "
-                    f"skipping publish for crew '{crew.get('name')}'"
-                )
-                continue
-
-            channel_id = channel_doc.get("channel_id")
-
-            if binding.get("approval_required"):
-                # Route to approval queue instead of publishing directly
-                try:
-                    approval_coll = db["approval_queue"]
-                    import uuid
-                    await approval_coll.insert_one({
-                        "_id": str(uuid.uuid4()),
-                        "approval_id": str(uuid.uuid4()),
-                        "type": "crew_publish",
-                        "crew_id": crew.get("crew_id"),
-                        "crew_name": crew.get("name"),
-                        "run_id": run_id,
-                        "channel_type": channel_type,
-                        "channel_id": channel_id,
-                        "draft_response": content,
-                        "content": content,
-                        "status": "pending",
-                        "created_at": datetime.utcnow().isoformat(),
-                    })
-                    publish_results.append({
-                        "channel_type": channel_type,
-                        "status": "pending_approval",
-                    })
-                    logger.info(
-                        f"Crew '{crew.get('name')}' output routed to approval queue "
-                        f"for {channel_type}"
-                    )
-                except Exception as e:
-                    publish_results.append({
-                        "channel_type": channel_type,
-                        "status": "error",
-                        "error": str(e),
-                    })
-                    logger.warning(f"Failed to create approval for {channel_type}: {e}")
-                continue
-
-            # Publish directly
-            try:
-                result = await dist_svc.publish(
-                    channel_id=channel_id,
-                    content=content,
-                    title=f"Crew: {crew.get('name', 'Untitled')}",
-                    published_by=f"crew:{crew.get('crew_id')}",
-                )
-                pub_result = result.get("result", {})
-                success = pub_result.get("success", False)
-                publish_results.append({
-                    "channel_type": channel_type,
-                    "status": "published" if success else "failed",
-                    "post_id": pub_result.get("post_id"),
-                    "error": pub_result.get("error") if not success else None,
-                })
-                if success:
-                    logger.info(
-                        f"Published crew '{crew.get('name')}' output to {channel_type}"
-                    )
-                else:
-                    logger.warning(
-                        f"Publish to {channel_type} returned: "
-                        f"{pub_result.get('error', 'unknown')}"
-                    )
-            except Exception as e:
-                publish_results.append({
-                    "channel_type": channel_type,
-                    "status": "error",
-                    "error": str(e),
-                })
-                logger.warning(f"Failed to publish to {channel_type}: {e}")
 
         return publish_results
 
@@ -1354,13 +1269,6 @@ class CrewOrchestrator:
                 })
             return publish_results
 
-        from database import get_database
-        from services.distribution_service import DistributionService
-
-        db = await get_database()
-        dist_svc = DistributionService(db)
-        approval_required = bool(crew.get("approval_required"))
-
         for binding in (crew.get("connection_bindings") or []):
             direction = (binding or {}).get("direction") or "both"
             if direction not in ("outbound", "both"):
@@ -1369,74 +1277,11 @@ class CrewOrchestrator:
             if not platform:
                 continue
             channel_type = platform_to_channel_type.get(platform, platform)
-
-            channel_doc = await db["distribution_channels"].find_one({
+            publish_results.append({
+                "platform": platform,
                 "channel_type": channel_type,
-                "enabled": True,
+                "status": "retired",
+                "error": "Social distribution channels have been retired in Vesper v1.2",
             })
-            if not channel_doc:
-                logger.info(
-                    "No distribution channel for platform '%s' — skipping outbound for crew '%s'",
-                    platform, crew.get("name"),
-                )
-                continue
-
-            channel_id = channel_doc.get("channel_id")
-
-            if approval_required:
-                try:
-                    import uuid
-                    await db["approval_queue"].insert_one({
-                        "_id": str(uuid.uuid4()),
-                        "approval_id": str(uuid.uuid4()),
-                        "type": "crew_publish",
-                        "crew_id": crew.get("crew_id"),
-                        "crew_name": crew.get("name"),
-                        "run_id": run_id,
-                        "channel_type": channel_type,
-                        "channel_id": channel_id,
-                        "platform": platform,
-                        "draft_response": content,
-                        "content": content,
-                        "status": "pending",
-                        "created_at": datetime.utcnow().isoformat(),
-                    })
-                    publish_results.append({
-                        "platform": platform,
-                        "channel_type": channel_type,
-                        "status": "pending_approval",
-                    })
-                except Exception as e:
-                    publish_results.append({
-                        "platform": platform,
-                        "channel_type": channel_type,
-                        "status": "error",
-                        "error": str(e),
-                    })
-                continue
-
-            try:
-                result = await dist_svc.publish(
-                    channel_id=channel_id,
-                    content=content,
-                    title=f"Crew: {crew.get('name', 'Untitled')}",
-                    published_by=f"crew:{crew.get('crew_id')}",
-                )
-                pub_result = result.get("result", {})
-                success = pub_result.get("success", False)
-                publish_results.append({
-                    "platform": platform,
-                    "channel_type": channel_type,
-                    "status": "published" if success else "failed",
-                    "post_id": pub_result.get("post_id"),
-                    "error": pub_result.get("error") if not success else None,
-                })
-            except Exception as e:
-                publish_results.append({
-                    "platform": platform,
-                    "channel_type": channel_type,
-                    "status": "error",
-                    "error": str(e),
-                })
 
         return publish_results

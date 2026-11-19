@@ -274,11 +274,5 @@ export interface ConnectionSummary {
 }
 
 export async function listOutboundConnections(): Promise<ConnectionSummary[]> {
-  const { data } = await api.get<{
-    connections: ConnectionSummary[];
-    total_count: number;
-  }>("/connections");
-  return (data.connections || []).filter(
-    (c) => c.outbound_supported && c.outbound_enabled,
-  );
+  return [];
 }

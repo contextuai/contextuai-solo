@@ -158,16 +158,6 @@ class ApprovalService:
         elif channel_type == "teams":
             logger.warning("Teams send not implemented in approval flow")
         elif channel_type in ("linkedin", "twitter", "instagram", "facebook"):
-            from services.distribution_service import DistributionService
-            dist_svc = DistributionService(self.db)
-            result = await dist_svc.publish(
-                channel_id=channel_id,
-                content=text,
-                published_by="approval-queue",
-            )
-            if not result.get("result", {}).get("success"):
-                raise RuntimeError(
-                    f"Distribution publish failed: {result.get('result', {}).get('error', 'unknown')}"
-                )
+            raise RuntimeError("Social distribution publishing has been retired in Vesper v1.2")
         else:
             logger.warning("Unknown channel type: %s", channel_type)
