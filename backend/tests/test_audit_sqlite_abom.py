@@ -396,3 +396,101 @@ async def test_tool_loop_circuit_breaker_emits_audit_events(tmp_path, monkeypatc
     assert events[0]["details"]["identical_count"] == 2
     assert events[1]["details"]["tripped"] is False
     assert events[1]["details"]["allowed"] is True
+
+
+def test_sha256_disk_cache_persists_across_memory_clear(tmp_path, monkeypatch):
+    import hashlib
+    from services import enterprise_policy
+
+    cache_file = tmp_path / "model_sha256_cache.json"
+    monkeypatch.setenv("VESPER_SHA256_CACHE_PATH", str(cache_file))
+
+    gguf = tmp_path / "persisted.gguf"
+    payload = b"vesper-gguf-payload-v1"
+    gguf.write_bytes(payload)
+
+    with enterprise_policy._SHA256_LOCK:
+        enterprise_policy._SHA256_CACHE.clear()
+
+    digest1 = enterprise_policy.compute_file_sha256(str(gguf))
+    assert digest1 == hashlib.sha256(payload).hexdigest()
+    assert cache_file.is_file()
+
+    with enterprise_policy._SHA256_LOCK:
+        enterprise_policy._SHA256_CACHE.clear()
+
+    assert enterprise_policy.get_cached_file_sha256(str(gguf)) == digest1
+
+    mutated = b"vesper-gguf-payload-mutated-size"
+    gguf.write_bytes(mutated)
+    with enterprise_policy._SHA256_LOCK:
+        enterprise_policy._SHA256_CACHE.clear()
+
+    assert enterprise_policy.get_cached_file_sha256(str(gguf)) is None
+    digest2 = enterprise_policy.compute_file_sha256(str(gguf))
+    assert digest2 == hashlib.sha256(mutated).hexdigest()
+    assert digest2 != digest1
+
+
+def test_generate_abom_hashes_large_models_async_and_caches(tmp_path, monkeypatch):
+    import hashlib
+    from repositories.audit_repository import AuditRepository
+    from services import audit_service, enterprise_policy
+
+    repo = AuditRepository(db_path=tmp_path / "audit_async_abom.db")
+    monkeypatch.setenv("VESPER_SHA256_CACHE_PATH", str(tmp_path / "model_sha256_cache.json"))
+    monkeypatch.setenv("VESPER_DLP_POLICY_PATH", str(tmp_path / "dlp.json"))
+    monkeypatch.setenv("VESPER_ENTERPRISE_SETTINGS_PATH", str(tmp_path / "ent.json"))
+
+    with enterprise_policy._SHA256_LOCK:
+        enterprise_policy._SHA256_CACHE.clear()
+    with audit_service._SHA256_CACHE_LOCK:
+        audit_service._SHA256_CACHE.clear()
+
+    small_gguf = tmp_path / "small.gguf"
+    large_gguf = tmp_path / "large.gguf"
+    small_bytes = b"s" * 512
+    large_bytes = b"l" * 4096
+    small_gguf.write_bytes(small_bytes)
+    large_gguf.write_bytes(large_bytes)
+
+    monkeypatch.setattr(
+        "services.model_manager.model_manager.list_installed",
+        lambda: [
+            {
+                "id": "local:small.gguf",
+                "name": "Small Model",
+                "filename": "small.gguf",
+                "path": str(small_gguf),
+                "size_gb": 0.001,
+            },
+            {
+                "id": "local:large.gguf",
+                "name": "Large Model",
+                "filename": "large.gguf",
+                "path": str(large_gguf),
+                "size_gb": 20.0,
+            },
+        ],
+    )
+
+    abom1 = audit_service.generate_abom(repo=repo, sync_hash_limit_bytes=1024)
+    by_id1 = {m["id"]: m for m in abom1["installed_models"]}
+
+    assert by_id1["local:small.gguf"]["sha256"] == hashlib.sha256(small_bytes).hexdigest()
+    assert by_id1["local:small.gguf"]["hash_status"] == "computed"
+    assert by_id1["local:large.gguf"]["sha256"] is None
+    assert by_id1["local:large.gguf"]["hash_status"] == "computing"
+
+    worker = audit_service._BG_SHA256_WORKER
+    if worker is not None:
+        worker.join(timeout=5.0)
+
+    abom2 = audit_service.generate_abom(repo=repo, sync_hash_limit_bytes=1024)
+    by_id2 = {m["id"]: m for m in abom2["installed_models"]}
+
+    assert by_id2["local:small.gguf"]["sha256"] == hashlib.sha256(small_bytes).hexdigest()
+    assert by_id2["local:small.gguf"]["hash_status"] == "cached"
+    assert by_id2["local:large.gguf"]["sha256"] == hashlib.sha256(large_bytes).hexdigest()
+    assert by_id2["local:large.gguf"]["hash_status"] == "cached"
+

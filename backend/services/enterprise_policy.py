@@ -128,6 +128,13 @@ def _resolve_user_settings_path() -> Path:
     return Path.home() / ".contextuai-solo" / "data" / "enterprise_settings.json"
 
 
+def _resolve_sha256_cache_path() -> Path:
+    env_path = (os.getenv("VESPER_SHA256_CACHE_PATH") or "").strip()
+    if env_path:
+        return Path(env_path).expanduser()
+    return Path.home() / ".contextuai-solo" / "data" / "model_sha256_cache.json"
+
+
 def _read_json_dict(path: Optional[Path]) -> Dict[str, Any]:
     if not path:
         return {}
@@ -141,16 +148,75 @@ def _read_json_dict(path: Optional[Path]) -> Dict[str, Any]:
         return {}
 
 
-def compute_file_sha256(path: str) -> str:
-    """Compute SHA-256 hex digest using 8 MB chunks, cached by ``(abs_path, size, mtime)``."""
-    abs_path = os.path.abspath(os.path.expanduser(path))
-    st = os.stat(abs_path)
-    cache_key = (abs_path, int(st.st_size), int(st.st_mtime_ns))
-
+def _lookup_cached_sha256(abs_path: str, size: int, mtime_ns: int) -> Optional[str]:
+    cache_key = (abs_path, size, mtime_ns)
     with _SHA256_LOCK:
         cached = _SHA256_CACHE.get(cache_key)
         if cached is not None:
             return cached
+
+        disk_entries = _read_json_dict(_resolve_sha256_cache_path())
+        entry = disk_entries.get(abs_path)
+        if isinstance(entry, dict):
+            entry_sha = entry.get("sha256")
+            if (
+                entry.get("size") == size
+                and entry.get("mtime_ns") == mtime_ns
+                and isinstance(entry_sha, str)
+                and entry_sha
+            ):
+                norm_sha = entry_sha.lower()
+                if len(_SHA256_CACHE) >= _SHA256_CACHE_MAX:
+                    _SHA256_CACHE.clear()
+                _SHA256_CACHE[cache_key] = norm_sha
+                return norm_sha
+    return None
+
+
+def _store_cached_sha256(abs_path: str, size: int, mtime_ns: int, digest: str) -> None:
+    cache_key = (abs_path, size, mtime_ns)
+    norm_sha = digest.lower()
+    with _SHA256_LOCK:
+        if len(_SHA256_CACHE) >= _SHA256_CACHE_MAX:
+            _SHA256_CACHE.clear()
+        _SHA256_CACHE[cache_key] = norm_sha
+
+        cache_path = _resolve_sha256_cache_path()
+        try:
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            disk_entries = _read_json_dict(cache_path)
+            disk_entries[abs_path] = {
+                "size": size,
+                "mtime_ns": mtime_ns,
+                "sha256": norm_sha,
+            }
+            tmp_path = cache_path.parent / f".{cache_path.name}.{os.getpid()}.{threading.get_ident()}.tmp"
+            tmp_path.write_text(json.dumps(disk_entries, indent=2), encoding="utf-8")
+            os.replace(tmp_path, cache_path)
+        except Exception as exc:
+            logger.debug("Unable to persist SHA-256 cache %s: %s", cache_path, exc)
+
+
+def get_cached_file_sha256(path: str) -> Optional[str]:
+    """Return cached SHA-256 hex digest from RAM/disk if ``(size, mtime_ns)`` matches, else ``None``."""
+    abs_path = os.path.abspath(os.path.expanduser(path))
+    try:
+        st = os.stat(abs_path)
+    except OSError:
+        return None
+    return _lookup_cached_sha256(abs_path, int(st.st_size), int(st.st_mtime_ns))
+
+
+def compute_file_sha256(path: str) -> str:
+    """Compute SHA-256 hex digest using 8 MB chunks, cached in RAM and on disk."""
+    abs_path = os.path.abspath(os.path.expanduser(path))
+    st = os.stat(abs_path)
+    size = int(st.st_size)
+    mtime_ns = int(st.st_mtime_ns)
+
+    cached = _lookup_cached_sha256(abs_path, size, mtime_ns)
+    if cached is not None:
+        return cached
 
     hasher = hashlib.sha256()
     with open(abs_path, "rb") as fh:
@@ -161,11 +227,7 @@ def compute_file_sha256(path: str) -> str:
             hasher.update(chunk)
     digest = hasher.hexdigest().lower()
 
-    with _SHA256_LOCK:
-        if len(_SHA256_CACHE) >= _SHA256_CACHE_MAX:
-            _SHA256_CACHE.clear()
-        _SHA256_CACHE[cache_key] = digest
-
+    _store_cached_sha256(abs_path, size, mtime_ns, digest)
     return digest
 
 

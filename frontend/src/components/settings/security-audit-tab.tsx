@@ -353,10 +353,17 @@ export function SecurityAuditTab() {
                     </Badge>
                   )}
                   <code
-                    title={model.sha256 || "Unavailable"}
+                    title={
+                      model.sha256 ||
+                      (model.hash_status === "computing"
+                        ? "Computing SHA-256 in background…"
+                        : "Unavailable")
+                    }
                     className="px-2 py-1 rounded-lg bg-neutral-100 dark:bg-neutral-800 font-mono text-[11px] text-neutral-700 dark:text-neutral-300"
                   >
-                    {truncateHash(model.sha256)}
+                    {!model.sha256 && model.hash_status === "computing"
+                      ? "Hashing…"
+                      : truncateHash(model.sha256)}
                   </code>
                   {model.sha256 && (
                     <button

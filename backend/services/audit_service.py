@@ -16,8 +16,9 @@ import logging
 import os
 import threading
 import uuid
+from collections import deque
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Deque, Dict, List, Optional, Set, Tuple
 
 from models.audit_models import AuditAction, AuditSeverity
 from repositories.audit_repository import AuditRepository
@@ -25,8 +26,13 @@ from repositories.audit_repository import AuditRepository
 logger = logging.getLogger(__name__)
 
 _CHUNK_SIZE = 8 * 1024 * 1024  # 8 MB streaming chunks
+_DEFAULT_SYNC_HASH_LIMIT_BYTES = 256 * 1024 * 1024  # 256 MB
 _SHA256_CACHE: Dict[Tuple[str, int, int], str] = {}
 _SHA256_CACHE_LOCK = threading.Lock()
+_BG_SHA256_LOCK = threading.Lock()
+_BG_SHA256_INFLIGHT: Set[str] = set()
+_BG_SHA256_QUEUE: Deque[str] = deque()
+_BG_SHA256_WORKER: Optional[threading.Thread] = None
 
 _CSV_COLUMNS = [
     "id",
@@ -64,8 +70,34 @@ def _current_airplane_lock_state() -> bool:
         return False
 
 
+def _get_cached_sha256(path: str) -> Optional[str]:
+    """Return cached SHA-256 hex digest without hashing file contents."""
+    try:
+        from services import enterprise_policy as _ep
+
+        return _ep.get_cached_file_sha256(path)
+    except ImportError:
+        pass
+
+    abs_path = os.path.abspath(path)
+    try:
+        st = os.stat(abs_path)
+    except OSError:
+        return None
+    cache_key = (abs_path, int(st.st_size), int(st.st_mtime_ns))
+    with _SHA256_CACHE_LOCK:
+        return _SHA256_CACHE.get(cache_key)
+
+
 def compute_file_sha256_cached(path: str) -> str:
-    """Compute streaming SHA-256 hex digest cached by ``(abs_path, size, mtime_ns)``."""
+    """Compute streaming SHA-256 hex digest cached in RAM and persistent disk cache."""
+    try:
+        from services import enterprise_policy as _ep
+
+        return _ep.compute_file_sha256(path)
+    except ImportError:
+        pass
+
     abs_path = os.path.abspath(path)
     st = os.stat(abs_path)
     cache_key = (abs_path, int(st.st_size), int(st.st_mtime_ns))
@@ -82,11 +114,51 @@ def compute_file_sha256_cached(path: str) -> str:
             if not chunk:
                 break
             digest.update(chunk)
-    hex_digest = digest.hexdigest()
+    hex_digest = digest.hexdigest().lower()
 
     with _SHA256_CACHE_LOCK:
         _SHA256_CACHE[cache_key] = hex_digest
     return hex_digest
+
+
+def _bg_sha256_worker() -> None:
+    global _BG_SHA256_WORKER
+    while True:
+        with _BG_SHA256_LOCK:
+            if not _BG_SHA256_QUEUE:
+                _BG_SHA256_WORKER = None
+                return
+            path = _BG_SHA256_QUEUE.popleft()
+        try:
+            compute_file_sha256_cached(path)
+        except Exception as exc:
+            logger.warning("Background SHA-256 computation failed for %s: %s", path, exc)
+        finally:
+            with _BG_SHA256_LOCK:
+                _BG_SHA256_INFLIGHT.discard(path)
+
+
+def _schedule_background_sha256(paths: List[str]) -> None:
+    """Queue uncached model files on a single daemon worker so ABOM stays non-blocking."""
+    global _BG_SHA256_WORKER
+    if not paths:
+        return
+    with _BG_SHA256_LOCK:
+        added = False
+        for p in paths:
+            abs_p = os.path.abspath(os.path.expanduser(p))
+            if abs_p not in _BG_SHA256_INFLIGHT:
+                _BG_SHA256_INFLIGHT.add(abs_p)
+                _BG_SHA256_QUEUE.append(abs_p)
+                added = True
+        if added and (_BG_SHA256_WORKER is None or not _BG_SHA256_WORKER.is_alive()):
+            worker = threading.Thread(
+                target=_bg_sha256_worker,
+                name="vesper-abom-sha256",
+                daemon=True,
+            )
+            _BG_SHA256_WORKER = worker
+            worker.start()
 
 
 def _build_audit_event(
@@ -286,7 +358,12 @@ async def audit_log(
 # ------------------------------------------------------------------
 
 
-def generate_abom(repo: Optional[AuditRepository] = None) -> Dict[str, Any]:
+def generate_abom(
+    repo: Optional[AuditRepository] = None,
+    *,
+    compute_missing_hashes: Optional[bool] = None,
+    sync_hash_limit_bytes: int = _DEFAULT_SYNC_HASH_LIMIT_BYTES,
+) -> Dict[str, Any]:
     """Generate Vesper's AI Bill of Materials (ABOM) compliance snapshot."""
     target_repo = repo or AuditRepository()
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -316,17 +393,38 @@ def generate_abom(repo: Optional[AuditRepository] = None) -> Dict[str, Any]:
         catalog_policy = {"available": False}
 
     installed_models: List[Dict[str, Any]] = []
+    paths_to_hash: List[str] = []
     try:
         from services import model_manager as _mm_mod
 
         raw_installed = _mm_mod.model_manager.list_installed()
         for item in raw_installed:
             entry = dict(item)
-            if not entry.get("sha256"):
+            if entry.get("sha256"):
+                entry.setdefault("hash_status", "cached")
+            else:
                 model_path = entry.get("path")
                 if isinstance(model_path, str) and os.path.isfile(model_path):
                     try:
-                        entry["sha256"] = compute_file_sha256_cached(model_path)
+                        cached_sha = _get_cached_sha256(model_path)
+                        if cached_sha:
+                            entry["sha256"] = cached_sha
+                            entry["hash_status"] = "cached"
+                        else:
+                            should_compute_sync = (
+                                compute_missing_hashes is True
+                                or (
+                                    compute_missing_hashes is None
+                                    and os.path.getsize(model_path) <= sync_hash_limit_bytes
+                                )
+                            )
+                            if should_compute_sync:
+                                entry["sha256"] = compute_file_sha256_cached(model_path)
+                                entry["hash_status"] = "computed"
+                            else:
+                                entry["sha256"] = None
+                                entry["hash_status"] = "computing"
+                                paths_to_hash.append(model_path)
                     except Exception as sha_exc:
                         logger.warning(
                             "Failed to compute SHA-256 for %s: %s", model_path, sha_exc
@@ -337,6 +435,7 @@ def generate_abom(repo: Optional[AuditRepository] = None) -> Dict[str, Any]:
                     str(entry["sha256"]).lower() == str(expected_sha).lower()
                 )
             installed_models.append(entry)
+        _schedule_background_sha256(paths_to_hash)
     except Exception as exc:
         logger.warning("ABOM installed_models unavailable: %s", exc)
 
