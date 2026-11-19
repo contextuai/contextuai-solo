@@ -5,7 +5,7 @@ Exposes live outbound network egress ledger, Airplane Lock toggle, and
 verifiable privacy manifest.
 """
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from services.net_guard import (
@@ -31,7 +31,10 @@ async def read_privacy_ledger():
 @router.post("/airplane-lock")
 async def update_airplane_lock(request: AirplaneLockRequest):
     """Toggle Airplane Lock to block or allow non-loopback network requests."""
-    state = set_airplane_lock(request.enabled)
+    try:
+        state = set_airplane_lock(request.enabled)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     return {
         **state,
         "ledger": get_egress_ledger(),
