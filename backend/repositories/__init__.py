@@ -16,7 +16,6 @@ from .user_repository import UserRepository
 from .user_profile_repository import UserProfileRepository
 from .user_settings_repository import UserSettingsRepository
 from .analytics_repository import AnalyticsRepository
-from .codemorph_repository import CodeMorphRepository
 from .workspace_project_repository import WorkspaceProjectRepository
 from .workspace_execution_repository import WorkspaceExecutionRepository
 from .workspace_agent_repository import WorkspaceAgentRepository
@@ -38,7 +37,6 @@ __all__ = [
     "UserProfileRepository",
     "UserSettingsRepository",
     "AnalyticsRepository",
-    "CodeMorphRepository",
     "WorkspaceProjectRepository",
     "WorkspaceExecutionRepository",
     "WorkspaceAgentRepository",

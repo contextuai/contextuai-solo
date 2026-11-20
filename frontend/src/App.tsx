@@ -15,7 +15,6 @@ import CrewDetailPage from "@/routes/crew-detail";
 import WorkspacePage from "@/routes/workspace";
 import PersonasPage from "@/routes/personas";
 import AnalyticsPage from "@/routes/analytics";
-import ConnectionsPage from "@/routes/connections";
 import ModelsPage from "@/routes/models";
 import LocalServerPage from "@/routes/local-server";
 import SettingsPage from "@/routes/settings";
@@ -185,7 +184,7 @@ export default function App() {
                 <Route path="/blueprints" element={<BlueprintsPage />} />
                 <Route path="/workspace" element={<WorkspacePage />} />
                 <Route path="/workspace/:id" element={<WorkspacePage />} />
-                <Route path="/connections" element={<ConnectionsPage />} />
+                <Route path="/connections" element={<Navigate to="/settings" replace />} />
                 <Route path="/knowledge" element={<KnowledgePage />} />
                 <Route path="/memory" element={<MemoryPage />} />
                 <Route path="/automations" element={<AutomationsPage />} />

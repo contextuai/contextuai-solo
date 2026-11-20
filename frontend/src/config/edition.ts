@@ -48,7 +48,7 @@ export function getActiveEdition(): AppEdition {
   const buildEdition = (
     envMap?.VITE_APP_EDITION ||
     envMap?.VITE_EDITION ||
-    "solo"
+    "lite"
   )
     .toLowerCase()
     .trim();

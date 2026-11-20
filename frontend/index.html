@@ -17,7 +17,7 @@
         var explicit = localStorage.getItem('contextuai-color-theme-explicit') === '1';
         var stored = localStorage.getItem('contextuai-color-theme');
         var edition = localStorage.getItem('contextuai.edition.unlocked');
-        root.dataset.colorTheme = explicit && stored ? stored : (edition === 'lite' ? 'sovereign-emerald' : (stored || 'solo-terracotta'));
+        root.dataset.colorTheme = explicit && stored ? stored : (edition === 'solo' ? 'solo-terracotta' : 'sovereign-emerald');
       } catch (e) {}
     })();
   </script>

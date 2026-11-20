@@ -246,16 +246,82 @@ class LocalModelService:
         except Exception:
             return 2048 if file_size_gb > 15 else 4096
 
+    @staticmethod
+    def _find_matching_catalog_entry(model_path: str) -> Optional[Dict[str, Any]]:
+        try:
+            from services.model_catalog import LOCAL_MODEL_CATALOG
+            from services.local_model_seeder import _strip_vendor_prefix
+
+            fname_lower = os.path.basename(model_path).lower()
+            stripped_fname = _strip_vendor_prefix(fname_lower)
+            for entry in LOCAL_MODEL_CATALOG:
+                cat_fn = str(entry.get("hf_filename") or "").lower()
+                if not cat_fn:
+                    continue
+                if (
+                    cat_fn == fname_lower
+                    or _strip_vendor_prefix(cat_fn) == stripped_fname
+                    or cat_fn == stripped_fname
+                ):
+                    return entry
+        except Exception:
+            pass
+        return None
+
+    def get_loaded_n_ctx(self, fallback: int = 8192) -> int:
+        """Return the active context window size of the loaded model, or ``fallback``."""
+        if self._loaded_n_ctx and self._loaded_n_ctx > 0:
+            return int(self._loaded_n_ctx)
+        return int(fallback)
+
     def _ensure_model(self, model_path: str) -> Any:
-        """Lazy-load (or swap) the Llama model."""
+        """Lazy-load (or swap) the Llama model after verifying GGUF SHA-256 integrity."""
+        # Normalize path for consistent comparison
+        model_path = os.path.normpath(os.path.abspath(model_path))
+
+        # Verify SHA-256 integrity BEFORE checking/unloading or entering the Llama retry loop
+        # so integrity failures are never swallowed by fallback attempts.
+        catalog_entry = self._find_matching_catalog_entry(model_path)
+        verification: Optional[Dict[str, Any]] = None
+        if os.path.isfile(model_path):
+            from services.enterprise_policy import (
+                ModelIntegrityError,
+                resolve_expected_sha256,
+                verify_gguf_sha256,
+            )
+
+            model_stem = os.path.splitext(os.path.basename(model_path))[0]
+            expected_sha256 = resolve_expected_sha256(
+                model_id=(catalog_entry["id"] if catalog_entry else model_stem),
+                filename=os.path.basename(model_path),
+                catalog_entry=catalog_entry,
+            )
+            try:
+                verification = verify_gguf_sha256(model_path, expected_sha256)
+            except ModelIntegrityError as exc:
+                try:
+                    from models.audit_models import AuditAction, AuditSeverity
+                    from services.audit_service import audit_log_sync
+                    audit_log_sync(
+                        getattr(AuditAction, "MODEL_INTEGRITY_FAILED", "model.integrity_failed"),
+                        resource_type="model",
+                        resource_id=(catalog_entry["id"] if catalog_entry else model_stem),
+                        details={
+                            "model_path": model_path,
+                            "expected_sha256": expected_sha256,
+                            "reason": str(exc),
+                        },
+                        severity=AuditSeverity.ERROR,
+                    )
+                except Exception:
+                    pass
+                raise
+
         if not LLAMA_CPP_AVAILABLE:
             raise RuntimeError(
                 "llama-cpp-python is not installed. "
                 "Install with: pip install llama-cpp-python"
             )
-
-        # Normalize path for consistent comparison
-        model_path = os.path.normpath(os.path.abspath(model_path))
 
         if self._model is not None and self._loaded_model_path == model_path:
             return self._model
@@ -351,6 +417,24 @@ class LocalModelService:
             "Model loaded successfully: %s (%.1f GB, n_ctx=%d, n_gpu_layers=%d, mmproj=%s)",
             model_path, file_size_gb, self._loaded_n_ctx, self._loaded_n_gpu_layers, bool(mmproj_path),
         )
+        try:
+            from models.audit_models import AuditAction, AuditSeverity
+            from services.audit_service import audit_log_sync
+            audit_log_sync(
+                getattr(AuditAction, "MODEL_LOADED", "model.loaded"),
+                resource_type="model",
+                resource_id=(catalog_entry["id"] if catalog_entry else os.path.basename(model_path)),
+                details={
+                    "model_path": model_path,
+                    "n_ctx": self._loaded_n_ctx,
+                    "n_gpu_layers": self._loaded_n_gpu_layers,
+                    "sha256": verification.get("sha256") if verification else None,
+                    "verified": bool(verification.get("verified")) if verification else False,
+                },
+                severity=AuditSeverity.INFO,
+            )
+        except Exception:
+            pass
         return self._model
 
     def load_model(self, model_path: str, model_id: str = None) -> None:

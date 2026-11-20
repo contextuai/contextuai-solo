@@ -184,6 +184,18 @@ class ModelManager:
                     "ram_required_gb": None,
                 })
 
+            try:
+                from services.enterprise_policy import resolve_expected_sha256
+                expected_sha = resolve_expected_sha256(
+                    model_id=info.get("id"),
+                    filename=f.name,
+                    catalog_entry=catalog_entry,
+                )
+                if expected_sha:
+                    info["expected_sha256"] = expected_sha
+            except Exception:
+                pass
+
             installed.append(info)
 
         return installed
@@ -246,11 +258,33 @@ class ModelManager:
             yield {"status": "error", "detail": f"Model '{model_id}' not found in catalog"}
             return
 
-        repo_id = entry["hf_repo"]
+        repo_id = entry.get("hf_repo") or "enterprise"
         filename = entry["hf_filename"]
+        download_url = (entry.get("download_url") or "").strip() or None
         dest_path = os.path.join(self.models_dir, filename)
 
         if os.path.isfile(dest_path):
+            try:
+                from services.enterprise_policy import (
+                    ModelIntegrityError,
+                    resolve_expected_sha256,
+                    verify_gguf_sha256,
+                )
+                expected_sha = resolve_expected_sha256(
+                    model_id=model_id, filename=filename, catalog_entry=entry
+                )
+                verify_gguf_sha256(dest_path, expected_sha)
+            except ModelIntegrityError as exc:
+                try:
+                    os.unlink(dest_path)
+                except OSError:
+                    pass
+                self._audit_integrity_failed(model_id, dest_path, str(exc), expected_sha)
+                yield {"status": "error", "detail": str(exc)}
+                return
+            except Exception:
+                pass
+
             size = os.path.getsize(dest_path)
             logger.info("Model %s already exists at %s (%.2f GB)", model_id, dest_path, size / (1024**3))
             yield {
@@ -263,14 +297,16 @@ class ModelManager:
             }
             return
 
-        try:
-            from services.net_guard import assert_egress_allowed
-            assert_egress_allowed(f"https://huggingface.co/{repo_id}", "model_download")
-        except ImportError:
-            pass
-        except Exception as exc:
-            yield {"status": "error", "detail": str(exc)}
-            return
+        egress_target = download_url or f"https://huggingface.co/{repo_id}"
+        if egress_target.startswith(("http://", "https://")):
+            try:
+                from services.net_guard import assert_egress_allowed
+                assert_egress_allowed(egress_target, "model_download")
+            except ImportError:
+                pass
+            except Exception as exc:
+                yield {"status": "error", "detail": str(exc)}
+                return
 
         if model_id in self._active_downloads:
             yield {"status": "error", "detail": "This model is already downloading."}
@@ -288,54 +324,56 @@ class ModelManager:
             "percent": 0.0,
         }
 
-        # ── Pre-flight: verify HuggingFace is reachable ──────────────────
-        import urllib.request
-        import urllib.error
+        # ── Pre-flight: verify download source is reachable ──────────────
+        if not download_url or download_url.startswith(("http://", "https://")):
+            import urllib.request
+            import urllib.error
 
-        preflight_url = f"https://huggingface.co/api/models/{repo_id}"
-        try:
-            req = urllib.request.Request(preflight_url, method="HEAD")
-            effective_token = hf_token or os.getenv("HF_TOKEN") or os.getenv("HUGGING_FACE_HUB_TOKEN")
-            if effective_token:
-                req.add_header("Authorization", f"Bearer {effective_token}")
-            urllib.request.urlopen(req, timeout=15)
-            logger.info("Pre-flight OK for %s", model_id)
-        except urllib.error.HTTPError:
-            pass  # HTTP errors mean the server is reachable
-        except (urllib.error.URLError, OSError) as exc:
-            reason = str(getattr(exc, "reason", exc))
-            if "getaddrinfo" in reason.lower() or "name or service" in reason.lower():
-                detail = (
-                    "Cannot reach huggingface.co — please check your internet connection."
-                )
-            elif "timed out" in reason.lower():
-                detail = (
-                    "Connection to huggingface.co timed out. Please check your "
-                    "internet connection and try again."
-                )
-            elif "certificate" in reason.lower() or "ssl" in reason.lower():
-                detail = (
-                    "SSL error connecting to huggingface.co. If you use a corporate "
-                    "proxy or VPN, it may be interfering with secure connections."
-                )
-            else:
-                detail = f"Cannot reach huggingface.co: {reason}"
-            logger.warning("Pre-flight failed for %s: %s", model_id, detail)
-            yield {"status": "error", "detail": detail}
-            self._active_downloads.pop(model_id, None)
-            return
-        except Exception as exc:
-            logger.warning("Pre-flight error for %s: %s", model_id, exc)
+            preflight_url = download_url or f"https://huggingface.co/api/models/{repo_id}"
+            try:
+                req = urllib.request.Request(preflight_url, method="HEAD")
+                if not download_url:
+                    effective_token = hf_token or os.getenv("HF_TOKEN") or os.getenv("HUGGING_FACE_HUB_TOKEN")
+                    if effective_token:
+                        req.add_header("Authorization", f"Bearer {effective_token}")
+                urllib.request.urlopen(req, timeout=15)
+                logger.info("Pre-flight OK for %s", model_id)
+            except urllib.error.HTTPError:
+                pass  # HTTP errors mean the server is reachable
+            except (urllib.error.URLError, OSError) as exc:
+                host_label = preflight_url if download_url else "huggingface.co"
+                reason = str(getattr(exc, "reason", exc))
+                if "getaddrinfo" in reason.lower() or "name or service" in reason.lower():
+                    detail = f"Cannot reach {host_label} — please check your internet connection."
+                elif "timed out" in reason.lower():
+                    detail = f"Connection to {host_label} timed out. Please check your connection and try again."
+                elif "certificate" in reason.lower() or "ssl" in reason.lower():
+                    detail = (
+                        f"SSL error connecting to {host_label}. If you use a corporate "
+                        "proxy or VPN, it may be interfering with secure connections."
+                    )
+                else:
+                    detail = f"Cannot reach {host_label}: {reason}"
+                logger.warning("Pre-flight failed for %s: %s", model_id, detail)
+                yield {"status": "error", "detail": detail}
+                self._active_downloads.pop(model_id, None)
+                return
+            except Exception as exc:
+                logger.warning("Pre-flight error for %s: %s", model_id, exc)
 
         yield {
             "status": "connecting",
             "model_id": model_id,
-            "detail": "Connected to HuggingFace, starting download...",
+            "detail": (
+                f"Connected to {download_url}, starting download..."
+                if download_url
+                else "Connected to HuggingFace, starting download..."
+            ),
         }
 
         try:
             async for event in self._run_and_stream(
-                repo_id, filename, model_id, dest_path, hf_token=hf_token
+                repo_id, filename, model_id, dest_path, hf_token=hf_token, download_url=download_url
             ):
                 yield event
         except Exception as exc:
@@ -357,6 +395,55 @@ class ModelManager:
         import re
         return re.sub(r'-\d{5}-of-\d{5}\.gguf$', '-*-of-*.gguf', filename)
 
+    @staticmethod
+    def _audit_integrity_failed(
+        model_id: str, path: str, reason: str, expected_sha256: Optional[str] = None
+    ) -> None:
+        try:
+            from models.audit_models import AuditAction, AuditSeverity
+            from services.audit_service import audit_log_sync
+            audit_log_sync(
+                getattr(AuditAction, "MODEL_INTEGRITY_FAILED", "model.integrity_failed"),
+                resource_type="model",
+                resource_id=model_id,
+                details={
+                    "path": path,
+                    "expected_sha256": expected_sha256,
+                    "reason": reason,
+                },
+                severity=AuditSeverity.ERROR,
+            )
+        except Exception:
+            pass
+
+    @staticmethod
+    def _audit_model_downloaded(
+        model_id: str,
+        path: str,
+        size_bytes: int,
+        sha256: Optional[str],
+        verified: bool,
+        source_url: str,
+    ) -> None:
+        try:
+            from models.audit_models import AuditAction, AuditSeverity
+            from services.audit_service import audit_log_sync
+            audit_log_sync(
+                getattr(AuditAction, "MODEL_DOWNLOADED", "model.downloaded"),
+                resource_type="model",
+                resource_id=model_id,
+                details={
+                    "path": path,
+                    "size_bytes": size_bytes,
+                    "sha256": sha256,
+                    "verified": verified,
+                    "source_url": source_url,
+                },
+                severity=AuditSeverity.INFO,
+            )
+        except Exception:
+            pass
+
     async def _run_and_stream(
         self,
         repo_id: str,
@@ -364,6 +451,7 @@ class ModelManager:
         model_id: str,
         dest_path: str,
         hf_token: Optional[str] = None,
+        download_url: Optional[str] = None,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Run the blocking downloader in a thread and yield its progress events."""
         import queue as _queue
@@ -373,7 +461,7 @@ class ModelManager:
         download_future = loop.run_in_executor(
             None,
             self._download_files,
-            repo_id, filename, model_id, progress_queue, hf_token,
+            repo_id, filename, model_id, progress_queue, hf_token, download_url,
         )
         # The worker checks the cancel flag between chunks, so it always
         # terminates; clear its slot whenever it does (including after the
@@ -418,8 +506,9 @@ class ModelManager:
         model_id: str,
         progress_queue,
         hf_token: Optional[str] = None,
+        download_url: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Blocking download via plain HTTPS GET from huggingface.co (runs in thread).
+        """Blocking download via plain HTTPS GET from enterprise mirror or HuggingFace (runs in thread).
 
         Deliberately avoids hf_hub_download: plain ranged GETs work through
         corporate proxies/firewalls that break the Xet transfer protocol,
@@ -427,16 +516,32 @@ class ModelManager:
         """
         import re
         import requests
-        from urllib.parse import quote
+        from urllib.parse import quote, unquote, urlparse
+        from urllib.request import url2pathname
 
         try:
+            entry = None
             try:
-                from services.net_guard import assert_egress_allowed, record_egress
-                assert_egress_allowed(f"https://huggingface.co/{repo_id}", "model_download")
-            except ImportError:
-                record_egress = None
-            except Exception as exc:
-                return {"error": str(exc)}
+                from .model_catalog import get_model
+                entry = get_model(model_id)
+            except Exception:
+                entry = None
+
+            if not download_url and entry:
+                download_url = (entry.get("download_url") or "").strip() or None
+
+            egress_target = download_url or f"https://huggingface.co/{repo_id}"
+            is_http_source = egress_target.startswith(("http://", "https://"))
+            record_egress = None
+            if is_http_source:
+                try:
+                    from services.net_guard import assert_egress_allowed, record_egress as _rec
+                    assert_egress_allowed(egress_target, "model_download")
+                    record_egress = _rec
+                except ImportError:
+                    record_egress = None
+                except Exception as exc:
+                    return {"error": str(exc)}
 
             if self._is_sharded_filename(filename):
                 m = re.search(r"-(\d{5})-of-(\d{5})\.gguf$", filename)
@@ -450,73 +555,130 @@ class ModelManager:
                 filenames = [filename]
 
             # Check if catalog entry specifies a paired multimodal projector (mmproj)
-            try:
-                from .model_catalog import get_model
-                entry = get_model(model_id)
-                mmproj_fn = entry.get("mmproj_filename") if entry else None
-                if mmproj_fn and mmproj_fn not in filenames:
-                    filenames.append(mmproj_fn)
-            except Exception:
-                pass
+            mmproj_fn = entry.get("mmproj_filename") if entry else None
+            if mmproj_fn and mmproj_fn not in filenames:
+                filenames.append(mmproj_fn)
 
-            session = requests.Session()
-            token = (
-                (hf_token or "").strip()
-                or os.getenv("HF_TOKEN")
-                or os.getenv("HUGGING_FACE_HUB_TOKEN")
-            )
-            if token:
-                session.headers["Authorization"] = f"Bearer {token}"
+            # Support local file:// URI or filesystem path for air-gapped enterprise mirrors
+            if download_url and not is_http_source:
+                parsed_dl = urlparse(download_url)
+                if parsed_dl.scheme == "file":
+                    src_path = Path(url2pathname(unquote(parsed_dl.path or "")))
+                else:
+                    src_path = Path(download_url).expanduser()
+                if not src_path.is_file():
+                    return {"error": f"Model source file not found: {src_path}"}
+                Path(self.models_dir).mkdir(parents=True, exist_ok=True)
+                dest = os.path.join(self.models_dir, filename)
+                shutil.copy2(src_path, dest)
+                total_size = os.path.getsize(dest)
+                downloaded_paths = [dest]
+            else:
+                session = requests.Session()
+                parsed_target = urlparse(egress_target)
+                is_hf_host = (parsed_target.hostname or "").lower().endswith("huggingface.co")
+                token = (
+                    (hf_token or "").strip()
+                    or os.getenv("HF_TOKEN")
+                    or os.getenv("HUGGING_FACE_HUB_TOKEN")
+                )
+                if token and is_hf_host:
+                    session.headers["Authorization"] = f"Bearer {token}"
 
-            # Resolve sizes up front for overall progress + disk-space check
-            jobs = []  # (url, dest_path, size_or_None)
-            for name in filenames:
-                url = f"https://huggingface.co/{repo_id}/resolve/main/{quote(name)}"
-                dest = os.path.join(self.models_dir, name)
-                size = None
-                try:
-                    head = session.head(url, allow_redirects=True, timeout=30)
-                    if head.status_code < 400:
-                        size = int(head.headers.get("Content-Length") or 0) or None
+                # Resolve sizes up front for overall progress + disk-space check
+                jobs = []  # (url, dest_path, size_or_None)
+                for name in filenames:
+                    if download_url and name == filename:
+                        url = download_url
                     else:
-                        err = self._friendly_http_error(head.status_code, repo_id)
-                        if err:
-                            return {"error": err}
-                except requests.RequestException:
-                    pass  # let the GET below surface the real error
-                jobs.append((url, dest, size))
+                        url = f"https://huggingface.co/{repo_id}/resolve/main/{quote(name)}"
+                    dest = os.path.join(self.models_dir, name)
+                    size = None
+                    try:
+                        head = session.head(url, allow_redirects=True, timeout=30)
+                        if head.status_code < 400:
+                            size = int(head.headers.get("Content-Length") or 0) or None
+                        elif head.status_code not in (405, 501):
+                            err = self._friendly_http_error(head.status_code, url if download_url else repo_id)
+                            if err:
+                                return {"error": err}
+                    except requests.RequestException:
+                        pass  # let the GET below surface the real error
+                    jobs.append((url, dest, size))
 
-            total_bytes = sum(s for (_u, _d, s) in jobs if s) or None
-            if total_bytes:
-                already = sum(
-                    os.path.getsize(d + ".part")
-                    for (_u, d, _s) in jobs
-                    if os.path.isfile(d + ".part")
-                )
-                free = shutil.disk_usage(self.models_dir).free
-                if free < (total_bytes - already) + 1024 ** 3:
-                    return {"error": (
-                        f"Not enough disk space: this model needs "
-                        f"{(total_bytes - already) / 1024 ** 3:.1f} GB plus 1 GB headroom, "
-                        f"but only {free / 1024 ** 3:.1f} GB is free."
-                    )}
+                total_bytes = sum(s for (_u, _d, s) in jobs if s) or None
+                if total_bytes:
+                    already = sum(
+                        os.path.getsize(d + ".part")
+                        for (_u, d, _s) in jobs
+                        if os.path.isfile(d + ".part")
+                    )
+                    free = shutil.disk_usage(self.models_dir).free
+                    if free < (total_bytes - already) + 1024 ** 3:
+                        return {"error": (
+                            f"Not enough disk space: this model needs "
+                            f"{(total_bytes - already) / 1024 ** 3:.1f} GB plus 1 GB headroom, "
+                            f"but only {free / 1024 ** 3:.1f} GB is free."
+                        )}
 
-            completed_offset = 0
-            for url, dest, _size in jobs:
-                result = self._stream_one(
-                    session, url, dest, model_id, progress_queue,
-                    completed_offset, total_bytes,
-                )
-                if result.get("cancelled") or result.get("error"):
-                    return result
-                completed_offset += result["size"]
+                completed_offset = 0
+                for url, dest, _size in jobs:
+                    result = self._stream_one(
+                        session, url, dest, model_id, progress_queue,
+                        completed_offset, total_bytes,
+                    )
+                    if result.get("cancelled") or result.get("error"):
+                        return result
+                    completed_offset += result["size"]
 
-            total_size = sum(os.path.getsize(d) for (_u, d, _s) in jobs)
-            logger.info(
-                "Download complete: %s (%d file(s), %.2f GB)",
-                model_id, len(jobs), total_size / (1024 ** 3),
+                dest = jobs[0][1]
+                downloaded_paths = [d for (_u, d, _s) in jobs]
+                total_size = sum(os.path.getsize(d) for d in downloaded_paths)
+
+            # Verify SHA-256 checksum against catalog entry / enterprise policy
+            from services.enterprise_policy import (
+                ModelIntegrityError,
+                resolve_expected_sha256,
+                verify_gguf_sha256,
             )
-            return {"path": jobs[0][1], "size": total_size}
+            expected_sha256 = resolve_expected_sha256(
+                model_id=model_id,
+                filename=filename,
+                catalog_entry=entry,
+            )
+            try:
+                verification = verify_gguf_sha256(dest, expected_sha256)
+            except ModelIntegrityError as exc:
+                for p in downloaded_paths:
+                    try:
+                        if os.path.isfile(p):
+                            os.unlink(p)
+                    except OSError:
+                        pass
+                self._audit_integrity_failed(model_id, dest, str(exc), expected_sha256)
+                return {"error": str(exc)}
+
+            if record_egress and is_http_source:
+                record_egress(egress_target, "model_download", total_size)
+
+            self._audit_model_downloaded(
+                model_id=model_id,
+                path=dest,
+                size_bytes=total_size,
+                sha256=verification.get("sha256"),
+                verified=bool(verification.get("verified")),
+                source_url=egress_target,
+            )
+            logger.info(
+                "Download complete: %s (%d file(s), %.2f GB, sha256_verified=%s)",
+                model_id, len(downloaded_paths), total_size / (1024 ** 3), verification.get("verified"),
+            )
+            return {
+                "path": dest,
+                "size": total_size,
+                "sha256": verification.get("sha256"),
+                "verified": verification.get("verified"),
+            }
         except Exception as exc:
             logger.exception("Download error for %s", model_id)
             return {"error": self._friendly_exception(exc)}

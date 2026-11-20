@@ -882,7 +882,7 @@ class WorkspaceOrchestrator:
                 execution_repo=self.execution_repo,
             )
 
-            from services.codemorph.tools.git_tool import git_clone
+            from services.workspace.git_tool import git_clone
             result = git_clone(
                 repo_url=repo_url, target_dir=work_dir,
                 branch=branch, token=token
@@ -996,7 +996,7 @@ class WorkspaceOrchestrator:
                 execution_repo=self.execution_repo,
             )
 
-            from services.codemorph.tools.git_tool import git_push
+            from services.workspace.git_tool import git_push
             push_result = git_push(
                 repo_dir=work_dir, branch=branch_name, token=token
             )
@@ -1033,7 +1033,7 @@ class WorkspaceOrchestrator:
                     execution_repo=self.execution_repo,
                 )
 
-                from services.codemorph.tools.github_tool import create_pull_request
+                from services.workspace.github_tool import create_pull_request
                 pr_url = create_pull_request(
                     repo_url=repo_url,
                     head_branch=branch_name,

@@ -86,7 +86,7 @@ export function defaultColorThemeFor(edition: AppEdition): ColorThemeId {
 }
 
 function readInitialColorTheme(): ColorThemeId {
-  if (typeof window === "undefined") return "solo-terracotta";
+  if (typeof window === "undefined") return "sovereign-emerald";
   try {
     const explicit = localStorage.getItem(COLOR_THEME_EXPLICIT_KEY) === "1";
     const stored = localStorage.getItem(COLOR_THEME_KEY) as ColorThemeId | null;
@@ -111,7 +111,7 @@ const ThemeContext = createContext<ThemeContextType>({
   theme: "system",
   setTheme: () => {},
   resolvedTheme: "dark",
-  colorTheme: "solo-terracotta",
+  colorTheme: "sovereign-emerald",
   setColorTheme: () => {},
   resetColorThemeToBrand: () => {},
 });

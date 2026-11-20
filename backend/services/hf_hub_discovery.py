@@ -13,14 +13,19 @@ Provides:
 
 from __future__ import annotations
 
+import copy
 import json
 import logging
 import os
+import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from urllib.parse import unquote, urlparse
+from urllib.request import url2pathname
 
 import httpx
 
+from services import model_catalog
 from services.gguf_inspector import infer_quantization_from_filename
 from services.hardware import get_hardware_profile
 from services.model_fit_engine import classify_model_fit
@@ -37,15 +42,16 @@ VERIFIED_QUANTIZERS = (
     "mistralai",
 )
 
-import sys
-
 DEFAULT_OTA_CACHE_PATH = os.getenv(
     "CATALOG_CACHE_PATH",
     os.path.join(os.path.expanduser("~"), ".contextuai-solo", "data", "catalog_cache.json"),
 )
 DEFAULT_OTA_CATALOG_URL = os.getenv(
-    "CATALOG_JSON_URL",
-    "https://raw.githubusercontent.com/contextuai/contextuai-solo/main/catalog/models.json",
+    "VESPER_CATALOG_URL",
+    os.getenv(
+        "CATALOG_JSON_URL",
+        "https://raw.githubusercontent.com/contextuai/vesper/main/catalog/models.json",
+    ),
 )
 _MEIPASS = getattr(sys, "_MEIPASS", None)
 DEFAULT_REPO_OTA_MANIFEST = (
@@ -53,6 +59,13 @@ DEFAULT_REPO_OTA_MANIFEST = (
     if _MEIPASS
     else (Path(__file__).resolve().parents[2] / "catalog" / "models.json")
 )
+
+# Snapshot of the built-in curated catalog so toggling exclusive mode off
+# cleanly restores all built-in models while preserving list/dict object identity.
+_BUILTIN_CATALOG_SNAPSHOT: List[Dict[str, Any]] = [
+    copy.deepcopy(m) for m in model_catalog.LOCAL_MODEL_CATALOG
+]
+_EXCLUSIVE_MODE_ACTIVE: bool = False
 
 # Preferred quant priority when multiple quants fit comfortably in GPU/RAM
 _QUANT_PREFERENCE = {
@@ -257,41 +270,120 @@ async def list_hf_repo_gguf_files(
     }
 
 
-def merge_catalog_entries(new_entries: List[Dict[str, Any]]) -> int:
-    """Merge validated catalog entries into ``LOCAL_MODEL_CATALOG`` in-place."""
-    from services import model_catalog
+def _resolve_local_manifest_path(source_str: str) -> Optional[Path]:
+    """Return a local filesystem ``Path`` if ``source_str`` is a local path or ``file://`` URI."""
+    cleaned = (source_str or "").strip()
+    if not cleaned:
+        return None
+    parsed = urlparse(cleaned)
+    scheme = (parsed.scheme or "").lower()
+    if scheme in ("http", "https"):
+        return None
+    if scheme == "file":
+        raw_path = url2pathname(unquote(parsed.path or ""))
+        if parsed.netloc and parsed.netloc.lower() not in ("", "localhost"):
+            raw_path = f"//{parsed.netloc}{unquote(parsed.path or '')}"
+        return Path(raw_path)
+    if not scheme or (len(scheme) == 1 and scheme.isalpha()):
+        return Path(cleaned).expanduser()
+    return None
 
-    required_keys = {"id", "name", "hf_repo", "hf_filename"}
-    added_or_updated = 0
 
+def restore_builtin_catalog() -> int:
+    """Restore built-in ``LOCAL_MODEL_CATALOG`` and ``_CATALOG_BY_ID`` in place."""
+    global _EXCLUSIVE_MODE_ACTIVE
+    restored = [copy.deepcopy(m) for m in _BUILTIN_CATALOG_SNAPSHOT]
+    model_catalog.LOCAL_MODEL_CATALOG[:] = restored
+    model_catalog._CATALOG_BY_ID.clear()
+    for item in restored:
+        model_catalog._CATALOG_BY_ID[str(item["id"])] = item
+    _EXCLUSIVE_MODE_ACTIVE = False
+    return len(restored)
+
+
+def _normalize_catalog_entry(entry: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    if not isinstance(entry, dict):
+        return None
+    if "id" not in entry or "name" not in entry:
+        return None
+    has_hf = bool(entry.get("hf_repo") and entry.get("hf_filename"))
+    download_url = str(entry.get("download_url") or "").strip()
+    if not has_hf and not download_url:
+        return None
+
+    mid = str(entry["id"])
+    hf_filename = str(entry.get("hf_filename") or "").strip()
+    if not hf_filename and download_url:
+        derived = Path(unquote(urlparse(download_url).path)).name
+        hf_filename = derived if derived.lower().endswith(".gguf") else f"{mid}.gguf"
+
+    hf_repo = str(entry.get("hf_repo") or "enterprise").strip()
+    normalized: Dict[str, Any] = {
+        "family": entry.get("family", "custom"),
+        "provider": entry.get("provider", "Community"),
+        "parameter_size": entry.get("parameter_size", "Unknown"),
+        "parameter_count": float(entry.get("parameter_count") or 7.0),
+        "size_gb": float(entry.get("size_gb") or 4.5),
+        "ram_required_gb": int(entry.get("ram_required_gb") or 6),
+        "ram_recommended_gb": int(entry.get("ram_recommended_gb") or 8),
+        "categories": list(entry.get("categories") or ["general"]),
+        "description": str(entry.get("description") or entry["name"]),
+        "quantization": str(entry.get("quantization") or "Q4_K_M"),
+        "context_window": int(entry.get("context_window") or 32768),
+        "supports_vision": bool(entry.get("supports_vision", False)),
+        "supports_tools": bool(entry.get("supports_tools", True)),
+        "quality_tier": str(entry.get("quality_tier") or "great"),
+        "speed_tier": str(entry.get("speed_tier") or "fast"),
+        "chat_template": str(entry.get("chat_template") or "chatml"),
+        "is_new": True,
+        **entry,
+        "id": mid,
+        "hf_repo": hf_repo,
+        "hf_filename": hf_filename,
+    }
+    if download_url:
+        normalized["download_url"] = download_url
+    if entry.get("sha256"):
+        sha = str(entry["sha256"]).strip().lower()
+        if sha.startswith("sha256:"):
+            sha = sha[7:].strip()
+        normalized["sha256"] = sha
+    return normalized
+
+
+def merge_catalog_entries(
+    new_entries: List[Dict[str, Any]],
+    *,
+    replace_existing: bool = False,
+) -> int:
+    """Merge validated catalog entries into ``LOCAL_MODEL_CATALOG`` in-place.
+
+    When ``replace_existing=True`` (enterprise exclusive mode), replaces
+    ``LOCAL_MODEL_CATALOG`` and ``_CATALOG_BY_ID`` with only the validated entries
+    while preserving the list/dict object identities imported by other modules.
+    """
+    global _EXCLUSIVE_MODE_ACTIVE
+
+    validated: List[Dict[str, Any]] = []
     for entry in new_entries:
-        if not isinstance(entry, dict):
-            continue
-        if not required_keys.issubset(entry.keys()):
-            continue
+        norm = _normalize_catalog_entry(entry)
+        if norm is not None:
+            validated.append(norm)
 
-        mid = str(entry["id"])
-        normalized = {
-            "family": entry.get("family", "custom"),
-            "provider": entry.get("provider", "Community"),
-            "parameter_size": entry.get("parameter_size", "Unknown"),
-            "parameter_count": float(entry.get("parameter_count") or 7.0),
-            "size_gb": float(entry.get("size_gb") or 4.5),
-            "ram_required_gb": int(entry.get("ram_required_gb") or 6),
-            "ram_recommended_gb": int(entry.get("ram_recommended_gb") or 8),
-            "categories": list(entry.get("categories") or ["general"]),
-            "description": str(entry.get("description") or entry["name"]),
-            "quantization": str(entry.get("quantization") or "Q4_K_M"),
-            "context_window": int(entry.get("context_window") or 32768),
-            "supports_vision": bool(entry.get("supports_vision", False)),
-            "supports_tools": bool(entry.get("supports_tools", True)),
-            "quality_tier": str(entry.get("quality_tier") or "great"),
-            "speed_tier": str(entry.get("speed_tier") or "fast"),
-            "chat_template": str(entry.get("chat_template") or "chatml"),
-            "is_new": True,
-            **entry,
-        }
+    if replace_existing:
+        model_catalog.LOCAL_MODEL_CATALOG[:] = validated
+        model_catalog._CATALOG_BY_ID.clear()
+        for item in validated:
+            model_catalog._CATALOG_BY_ID[str(item["id"])] = item
+        _EXCLUSIVE_MODE_ACTIVE = True
+        return len(validated)
 
+    if _EXCLUSIVE_MODE_ACTIVE:
+        restore_builtin_catalog()
+
+    added_or_updated = 0
+    for normalized in validated:
+        mid = str(normalized["id"])
         if mid in model_catalog._CATALOG_BY_ID:
             existing = model_catalog._CATALOG_BY_ID[mid]
             existing.update(normalized)
@@ -303,79 +395,142 @@ def merge_catalog_entries(new_entries: List[Dict[str, Any]]) -> int:
     return added_or_updated
 
 
+def _extract_models_from_payload(payload: Any) -> List[Dict[str, Any]]:
+    if isinstance(payload, dict) and "models" in payload and isinstance(payload["models"], list):
+        return payload["models"]
+    if isinstance(payload, list):
+        return payload
+    return []
+
+
 async def refresh_ota_catalog(
     remote_url: Optional[str] = None,
     cache_path: Optional[str] = None,
+    exclusive: Optional[bool] = None,
 ) -> Dict[str, Any]:
-    """Refresh the curated model catalog from a remote JSON manifest or local cache (SPEC-34)."""
-    from services import model_catalog
+    """Refresh the curated model catalog from an enterprise/OTA manifest or local cache."""
+    from services.enterprise_policy import get_enterprise_policy
+
+    policy = get_enterprise_policy()
+    effective_exclusive = (
+        bool(exclusive)
+        if exclusive is not None
+        else bool(policy.get("catalog_exclusive", False))
+    )
+    policy_url = policy.get("catalog_url")
+    candidate_url = (
+        remote_url if remote_url is not None else (policy_url or DEFAULT_OTA_CATALOG_URL)
+    ) or ""
 
     target_cache = Path(cache_path or DEFAULT_OTA_CACHE_PATH)
     entries_loaded: List[Dict[str, Any]] = []
+    manifest_loaded = False
     source = "bundled"
-    candidate_url = (remote_url if remote_url is not None else DEFAULT_OTA_CATALOG_URL) or ""
 
-    if candidate_url and not (remote_url is None and cache_path is not None):
-        try:
-            try:
-                from services.net_guard import assert_egress_allowed, record_egress
-                assert_egress_allowed(candidate_url, "ota_catalog_sync")
-            except ImportError:
-                record_egress = None
+    should_fetch_source = bool(candidate_url) and (
+        remote_url is not None or policy_url is not None or cache_path is None
+    )
 
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                resp = await client.get(candidate_url)
-                resp.raise_for_status()
-                payload = resp.json()
-
-            if record_egress:
-                record_egress(candidate_url, "ota_catalog_sync", 0)
-
-            entries_loaded = (
-                payload.get("models")
-                if isinstance(payload, dict) and "models" in payload
-                else (payload if isinstance(payload, list) else [])
-            )
+    if should_fetch_source:
+        local_manifest = _resolve_local_manifest_path(candidate_url)
+        if local_manifest is not None:
+            # Local filesystem paths & file:// URIs read directly without net_guard
+            # so air-gapped enterprise deployments can sync under Airplane Lock.
+            if not local_manifest.is_file():
+                raise FileNotFoundError(f"Catalog manifest file not found: {local_manifest}")
+            payload = json.loads(local_manifest.read_text(encoding="utf-8"))
+            entries_loaded = _extract_models_from_payload(payload)
+            manifest_loaded = True
+            source = "local_file"
             if entries_loaded:
                 target_cache.parent.mkdir(parents=True, exist_ok=True)
                 target_cache.write_text(json.dumps(entries_loaded, indent=2), encoding="utf-8")
-                source = "remote"
-        except Exception as exc:
-            # If caller explicitly requested a specific URL, raise; otherwise fall back cleanly
-            if remote_url is not None:
-                raise
-            logger.debug("Remote OTA catalog sync skipped (%s); falling back to local cache/manifest", exc)
+        else:
+            try:
+                try:
+                    from services.net_guard import assert_egress_allowed, record_egress
+                    assert_egress_allowed(candidate_url, "ota_catalog_sync")
+                except ImportError:
+                    record_egress = None
 
-    if not entries_loaded and target_cache.is_file():
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    resp = await client.get(candidate_url)
+                    resp.raise_for_status()
+                    payload = resp.json()
+
+                if record_egress:
+                    record_egress(
+                        candidate_url,
+                        "ota_catalog_sync",
+                        len(resp.content) if resp.content else 0,
+                    )
+
+                entries_loaded = _extract_models_from_payload(payload)
+                manifest_loaded = True
+                source = "remote"
+                if entries_loaded:
+                    target_cache.parent.mkdir(parents=True, exist_ok=True)
+                    target_cache.write_text(json.dumps(entries_loaded, indent=2), encoding="utf-8")
+            except Exception as exc:
+                # If caller or enterprise policy explicitly targeted this URL, surface the error
+                if remote_url is not None or policy_url is not None:
+                    raise
+                logger.debug("Remote OTA catalog sync skipped (%s); falling back to local cache/manifest", exc)
+
+    if not manifest_loaded and target_cache.is_file():
         try:
             raw = json.loads(target_cache.read_text(encoding="utf-8"))
-            entries_loaded = (
-                raw.get("models")
-                if isinstance(raw, dict) and "models" in raw
-                else (raw if isinstance(raw, list) else [])
-            )
+            entries_loaded = _extract_models_from_payload(raw)
             if entries_loaded:
+                manifest_loaded = True
                 source = "cache"
         except Exception as exc:
             logger.warning("Failed to read OTA catalog cache at %s: %s", target_cache, exc)
 
-    if not entries_loaded and DEFAULT_REPO_OTA_MANIFEST.is_file():
+    if not manifest_loaded and DEFAULT_REPO_OTA_MANIFEST.is_file():
         try:
             raw = json.loads(DEFAULT_REPO_OTA_MANIFEST.read_text(encoding="utf-8"))
-            entries_loaded = (
-                raw.get("models")
-                if isinstance(raw, dict) and "models" in raw
-                else (raw if isinstance(raw, list) else [])
-            )
+            entries_loaded = _extract_models_from_payload(raw)
             if entries_loaded:
+                manifest_loaded = True
                 source = "manifest"
         except Exception as exc:
             logger.warning("Failed to read bundled OTA manifest: %s", exc)
 
-    merged_count = merge_catalog_entries(entries_loaded) if entries_loaded else 0
+    if manifest_loaded:
+        merged_count = merge_catalog_entries(
+            entries_loaded,
+            replace_existing=effective_exclusive,
+        )
+    elif not effective_exclusive and _EXCLUSIVE_MODE_ACTIVE:
+        restore_builtin_catalog()
+        merged_count = 0
+    else:
+        merged_count = 0
+
+    try:
+        from models.audit_models import AuditAction, AuditSeverity
+        from services.audit_service import audit_log_sync
+        audit_log_sync(
+            getattr(AuditAction, "CATALOG_REFRESHED", "catalog.refreshed"),
+            resource_type="catalog",
+            resource_id=source,
+            details={
+                "source": source,
+                "merged_count": merged_count,
+                "exclusive": effective_exclusive,
+                "total_catalog_models": len(model_catalog.LOCAL_MODEL_CATALOG),
+            },
+            severity=AuditSeverity.INFO,
+        )
+    except Exception:
+        pass
+
     return {
         "status": "ok",
         "source": source,
         "merged_count": merged_count,
         "total_catalog_models": len(model_catalog.LOCAL_MODEL_CATALOG),
+        "exclusive": effective_exclusive,
+        "catalog_url": candidate_url,
     }

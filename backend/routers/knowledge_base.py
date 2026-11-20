@@ -15,9 +15,10 @@ Endpoints
 import logging
 import uuid
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Literal, Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from pydantic import Field
 
 from database import get_database
 from models.knowledge_base_models import (
@@ -33,6 +34,11 @@ from services.rag_service import SUPPORTED_EXTS, RAGService
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/knowledge-bases", tags=["knowledge-bases"])
+
+
+class HybridQueryRequest(QueryRequest):
+    mode: Optional[Literal["hybrid", "vector", "bm25"]] = None
+    alpha: float = Field(0.6, ge=0.0, le=1.0)
 
 
 def _kb_repo(db=Depends(get_database)) -> KnowledgeBaseRepository:
@@ -247,11 +253,23 @@ async def delete_document(
 @router.post("/{kb_id}/query")
 async def query_kb(
     kb_id: str,
-    payload: QueryRequest,
+    payload: HybridQueryRequest,
+    mode: Optional[Literal["hybrid", "vector", "bm25"]] = Query(None),
     kb_repo: KnowledgeBaseRepository = Depends(_kb_repo),
     rag: RAGService = Depends(_rag),
 ) -> Dict[str, Any]:
     if not await kb_repo.exists_by_id(kb_id):
         raise HTTPException(404, "Knowledge base not found")
-    citations = await rag.query(kb_id, payload.query, payload.top_k)
-    return {"query": payload.query, "citations": citations}
+    effective_mode = payload.mode or mode or "hybrid"
+    citations = await rag.query(
+        kb_id,
+        payload.query,
+        top_k=payload.top_k,
+        mode=effective_mode,
+        alpha=payload.alpha,
+    )
+    return {
+        "query": payload.query,
+        "mode": effective_mode,
+        "citations": citations,
+    }

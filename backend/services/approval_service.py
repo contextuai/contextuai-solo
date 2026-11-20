@@ -16,6 +16,14 @@ from repositories.approval_repository import ApprovalRepository
 
 logger = logging.getLogger(__name__)
 
+RETIRED_SOCIAL_CHANNELS = frozenset(
+    {"linkedin", "twitter", "instagram", "facebook", "reddit"}
+)
+
+
+def _is_retired_social_approval(doc: Dict[str, Any]) -> bool:
+    return str(doc.get("channel_type") or "").strip().lower() in RETIRED_SOCIAL_CHANNELS
+
 
 class ApprovalService:
     """Business logic for the approval queue."""
@@ -48,14 +56,16 @@ class ApprovalService:
         })
 
     async def list_pending(self, limit: int = 50) -> List[Dict[str, Any]]:
-        return await self.repo.list_pending(limit=limit)
+        rows = await self.repo.list_pending(limit=max(limit * 2, 100))
+        return [d for d in rows if not _is_retired_social_approval(d)][:limit]
 
     async def list_all(
         self,
         status: Optional[str] = None,
         limit: int = 50,
     ) -> List[Dict[str, Any]]:
-        return await self.repo.list_all(status=status, limit=limit)
+        rows = await self.repo.list_all(status=status, limit=max(limit * 2, 100))
+        return [d for d in rows if not _is_retired_social_approval(d)][:limit]
 
     async def get(self, approval_id: str) -> Optional[Dict[str, Any]]:
         return await self.repo.get_by_id(approval_id)
@@ -130,7 +140,21 @@ class ApprovalService:
         return approval
 
     async def count_pending(self) -> int:
-        return await self.repo.count_pending()
+        pending = await self.repo.list_pending(limit=500)
+        return sum(1 for d in pending if not _is_retired_social_approval(d))
+
+    async def retire_legacy_social_approvals(self) -> int:
+        """Reject leftover pending social-distribution drafts from pre-v1.2 installs."""
+        pending = await self.repo.list_pending(limit=500)
+        retired = 0
+        for doc in pending:
+            if _is_retired_social_approval(doc):
+                await self.repo.reject(
+                    doc["approval_id"],
+                    reviewed_by="vesper-v1.2-migration",
+                )
+                retired += 1
+        return retired
 
     async def _send_via_channel(
         self,
@@ -146,28 +170,19 @@ class ApprovalService:
             TeamsBot,
         )
 
-        if channel_type == "telegram":
+        ct = str(channel_type or "").strip().lower()
+        if ct == "telegram":
             bot = TelegramBot()
             await bot.send_message(channel_id, text)
-        elif channel_type == "discord":
+        elif ct == "discord":
             bot = DiscordBot()
             await bot.send_message(channel_id, text)
-        elif channel_type == "whatsapp":
+        elif ct == "whatsapp":
             bot = WhatsAppBot()
             await bot.send_message(channel_id, text)
-        elif channel_type == "teams":
+        elif ct == "teams":
             logger.warning("Teams send not implemented in approval flow")
-        elif channel_type in ("linkedin", "twitter", "instagram", "facebook"):
-            from services.distribution_service import DistributionService
-            dist_svc = DistributionService(self.db)
-            result = await dist_svc.publish(
-                channel_id=channel_id,
-                content=text,
-                published_by="approval-queue",
-            )
-            if not result.get("result", {}).get("success"):
-                raise RuntimeError(
-                    f"Distribution publish failed: {result.get('result', {}).get('error', 'unknown')}"
-                )
+        elif ct in RETIRED_SOCIAL_CHANNELS:
+            raise RuntimeError("Social distribution publishing has been retired in Vesper v1.2")
         else:
             logger.warning("Unknown channel type: %s", channel_type)

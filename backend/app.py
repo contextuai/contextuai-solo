@@ -36,7 +36,6 @@ from routers.tools import router as tools_router
 from routers.files import router as files_router
 from routers.analytics import router as analytics_router
 from routers.channels import router as channels_router
-from routers.distribution import router as distribution_router
 from routers.desktop_oauth import router as desktop_oauth_router
 from routers.models import router as models_router
 from routers.local_models import router as local_models_router
@@ -44,10 +43,7 @@ from routers.openai_compat import router as openai_compat_router
 from routers.triggers import router as triggers_router
 from routers.approvals import router as approvals_router
 from routers.blueprints import router as blueprints_router
-from routers.reddit import router as reddit_router
-from routers.twitter import router as twitter_router
 from routers.scheduled_jobs import router as scheduled_jobs_router
-from routers.connections import router as connections_router
 from routers.knowledge_base import router as knowledge_base_router
 from routers.personal_docs import router as personal_docs_router
 from routers.memory import router as memory_router
@@ -57,6 +53,9 @@ from routers.coder_projects import router as coder_projects_router
 from routers.coder_roles import router as coder_roles_router
 from routers.coder_workflow import router as coder_workflow_router
 from routers.privacy import router as privacy_router
+from routers.dlp import router as dlp_router
+from routers.audit import router as audit_router
+from routers.enterprise import router as enterprise_router
 import settings as app_settings
 
 # ---------------------------------------------------------------------------
@@ -142,7 +141,6 @@ app.include_router(tools_router)
 app.include_router(files_router)
 app.include_router(analytics_router)
 app.include_router(channels_router)
-app.include_router(distribution_router)
 app.include_router(desktop_oauth_router)
 app.include_router(models_router)
 app.include_router(local_models_router)
@@ -150,10 +148,7 @@ app.include_router(openai_compat_router)
 app.include_router(triggers_router)
 app.include_router(approvals_router)
 app.include_router(blueprints_router)
-app.include_router(reddit_router)
-app.include_router(twitter_router)
 app.include_router(scheduled_jobs_router)
-app.include_router(connections_router)
 app.include_router(knowledge_base_router)
 app.include_router(personal_docs_router)
 app.include_router(memory_router)
@@ -163,6 +158,9 @@ app.include_router(coder_projects_router)
 app.include_router(coder_roles_router)
 app.include_router(coder_workflow_router)
 app.include_router(privacy_router)
+app.include_router(dlp_router)
+app.include_router(audit_router)
+app.include_router(enterprise_router)
 
 
 # ---------------------------------------------------------------------------
@@ -644,18 +642,27 @@ async def startup_event():
         except Exception:
             logger.exception("coder_workflow_mode migration failed; continuing startup")
 
-        if not is_lite:
-            # Start Reddit poller (runs only when a Reddit account is configured)
-            from services.reddit_poller import get_poller
+        # Vesper v1.2: retire legacy social distribution approvals left in approval_queue
+        try:
+            from services.approval_service import ApprovalService
 
-            app.state.reddit_poller = get_poller(proxy)
-            await app.state.reddit_poller.start()
+            retired_approvals = await ApprovalService(proxy).retire_legacy_social_approvals()
+            if retired_approvals > 0:
+                logger.info(
+                    "Retired %d legacy social distribution approval(s)",
+                    retired_approvals,
+                )
+        except Exception:
+            logger.exception("Failed retiring legacy social approvals; continuing startup")
 
-            # Start Twitter poller (runs only when a Twitter account is configured)
-            from services.twitter_poller import get_poller as get_twitter_poller
-
-            app.state.twitter_poller = get_twitter_poller(proxy)
-            await app.state.twitter_poller.start()
+        # Attach Local DLP log redaction filter (checks redact_logs dynamically)
+        try:
+            from services.dlp_service import DlpLogFilter
+            root_logger = logging.getLogger()
+            if not any(isinstance(f, DlpLogFilter) for f in root_logger.filters):
+                root_logger.addFilter(DlpLogFilter())
+        except Exception:
+            logger.debug("Failed to attach DlpLogFilter", exc_info=True)
 
         # Personal Docs scheduler — sweeps folder mappings on a fixed tick
         try:
@@ -709,20 +716,6 @@ async def shutdown_event():
         logger.info("Scheduler adapter closed")
     except Exception:
         logger.exception("Error closing scheduler adapter")
-
-    try:
-        poller = getattr(app.state, "reddit_poller", None)
-        if poller:
-            await poller.stop()
-    except Exception:
-        logger.exception("Error stopping Reddit poller")
-
-    try:
-        poller = getattr(app.state, "twitter_poller", None)
-        if poller:
-            await poller.stop()
-    except Exception:
-        logger.exception("Error stopping Twitter poller")
 
     try:
         sched = getattr(app.state, "personal_docs_scheduler", None)

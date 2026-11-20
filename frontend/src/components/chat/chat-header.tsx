@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { cn } from "@/lib/utils";
-import { Sun, Moon, Pencil, History } from "lucide-react";
+import { Sun, Moon, Pencil, History, Brain } from "lucide-react";
 import { useTheme } from "@/components/providers/theme-provider";
 import { ContextMeter } from "./context-meter";
 import type { ChatMessage } from "@/types/chat";
@@ -15,6 +15,8 @@ interface ChatHeaderProps {
   sessionsCount?: number;
   historyOpen?: boolean;
   onToggleHistory?: () => void;
+  memoryOpen?: boolean;
+  onToggleMemory?: () => void;
 }
 
 export default function ChatHeader({
@@ -26,6 +28,8 @@ export default function ChatHeader({
   sessionsCount = 0,
   historyOpen = false,
   onToggleHistory,
+  memoryOpen = false,
+  onToggleMemory,
 }: ChatHeaderProps) {
   const { resolvedTheme, setTheme } = useTheme();
   const [isEditing, setIsEditing] = useState(false);
@@ -108,8 +112,24 @@ export default function ChatHeader({
         )}
       </div>
 
-      {/* Right: Context Meter + Theme toggle */}
+      {/* Right: Memory Drawer + Context Meter + Theme toggle */}
       <div className="flex items-center gap-2.5">
+        {onToggleMemory && (
+          <button
+            type="button"
+            onClick={onToggleMemory}
+            className={cn(
+              "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-all",
+              memoryOpen
+                ? "bg-primary-500/15 text-primary-700 dark:text-primary-300 border-primary-500/30"
+                : "bg-white/80 dark:bg-neutral-800/80 text-neutral-600 dark:text-neutral-300 border-neutral-200/80 dark:border-neutral-700/80 hover:bg-neutral-100 dark:hover:bg-neutral-700"
+            )}
+            title="Toggle Memory Drawer"
+          >
+            <Brain className="w-3.5 h-3.5 text-primary-500" />
+            <span>Memory</span>
+          </button>
+        )}
         <ContextMeter
           messages={messages}
           draftInput={draftInput}

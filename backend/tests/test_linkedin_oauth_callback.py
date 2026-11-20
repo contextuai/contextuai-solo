@@ -9,6 +9,7 @@ The regression guarded here: an `org_id` configured without the matching
 which made every subsequent publish fail with 403 ACCESS_DENIED on /author.
 """
 
+import asyncio
 import json
 
 import pytest
@@ -85,9 +86,11 @@ def _connect(client, granted_scope: str, org_id: str | None):
     )
     assert resp.status_code == 200, resp.text
 
-    rows = client.get("/api/v1/distribution/channels").json()["data"]["channels"]
-    linkedin = [c for c in rows if c.get("channel_type") == "linkedin"]
-    assert len(linkedin) == 1, f"expected one linkedin channel, got {rows}"
+    db = client.app.state.db
+    linkedin = asyncio.get_event_loop().run_until_complete(
+        db["distribution_channels"].find({"channel_type": "linkedin"}).to_list(length=20)
+    )
+    assert len(linkedin) == 1, f"expected one linkedin channel, got {linkedin}"
     return linkedin[0]
 
 

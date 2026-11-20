@@ -12,6 +12,14 @@ const AiModeContext = createContext<AiModeContextValue | null>(null);
 
 const STORAGE_KEY = "contextuai-solo-ai-mode";
 
+function isLocalModel(m: { provider?: string; id: string }): boolean {
+  return (
+    (m.provider || "").toLowerCase() === "local" ||
+    m.id.startsWith("local:") ||
+    m.id.startsWith("local-")
+  );
+}
+
 export function AiModeProvider({ children }: { children: ReactNode }) {
   const [aiMode, setAiModeState] = useState<AiMode>(() => {
     try {
@@ -22,25 +30,28 @@ export function AiModeProvider({ children }: { children: ReactNode }) {
   });
   const [, setInitialized] = useState(false);
 
-  // On mount: if no stored preference, check if any local model exists
+  // On mount: detect usable local models and recover profiles stuck on "cloud" with 0 cloud keys
   useEffect(() => {
     const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored === "local" || stored === "cloud") {
+    if (stored === "local") {
       setInitialized(true);
       return;
     }
-    // Auto-detect: default to "local" if any local model is available
     getModels()
       .then((models) => {
-        const hasLocal = models.some(
-          (m) => m.provider === "local" || m.id.startsWith("local-")
-        );
-        const mode: AiMode = hasLocal ? "local" : "cloud";
-        setAiModeState(mode);
-        localStorage.setItem(STORAGE_KEY, mode);
+        const hasEnabledLocal = models.some((m) => m.enabled && isLocalModel(m));
+        const hasEnabledCloud = models.some((m) => m.enabled && !isLocalModel(m));
+        if (!stored || stored !== "cloud") {
+          const mode: AiMode = hasEnabledLocal ? "local" : "cloud";
+          setAiModeState(mode);
+          localStorage.setItem(STORAGE_KEY, mode);
+        } else if (!hasEnabledCloud && hasEnabledLocal) {
+          setAiModeState("local");
+          localStorage.setItem(STORAGE_KEY, "local");
+        }
       })
       .catch(() => {
-        // Keep cloud default on error
+        // Keep current mode on error
       })
       .finally(() => setInitialized(true));
   }, []);

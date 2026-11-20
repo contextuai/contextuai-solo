@@ -182,34 +182,55 @@ class ToolLoopCircuitBreaker:
             self.trip_reason = (
                 f"Tool '{tool_name}' called {identical_count} times with identical arguments"
             )
-            return {
+            result = {
                 "allowed": False,
                 "tripped": True,
                 "reason": self.trip_reason,
                 "identical_count": identical_count,
                 "total_count": self.total_calls,
             }
-
-        if self.total_calls >= self.max_total:
+        elif self.total_calls >= self.max_total:
             self.is_tripped = True
             self.trip_reason = (
                 f"Exceeded maximum tool calls per turn ({self.max_total})"
             )
-            return {
+            result = {
                 "allowed": False,
                 "tripped": True,
                 "reason": self.trip_reason,
                 "identical_count": identical_count,
                 "total_count": self.total_calls,
             }
+        else:
+            result = {
+                "allowed": True,
+                "tripped": False,
+                "reason": None,
+                "identical_count": identical_count,
+                "total_count": self.total_calls,
+            }
 
-        return {
-            "allowed": True,
-            "tripped": False,
-            "reason": None,
-            "identical_count": identical_count,
-            "total_count": self.total_calls,
-        }
+        try:
+            from models.audit_models import AuditAction, AuditSeverity
+            from services.audit_service import audit_log_sync
+
+            audit_log_sync(
+                AuditAction.TOOL_EXECUTED,
+                resource_type="tool",
+                resource_id=tool_name,
+                severity=AuditSeverity.WARNING if result["tripped"] else AuditSeverity.INFO,
+                details={
+                    "allowed": result["allowed"],
+                    "tripped": result["tripped"],
+                    "reason": result["reason"],
+                    "identical_count": result["identical_count"],
+                    "total_count": result["total_count"],
+                },
+            )
+        except Exception:
+            pass
+
+        return result
 
     def check(self, tool_name: str, arguments: Any = None) -> bool:
         """Record call and return True if allowed, False if circuit breaker tripped."""

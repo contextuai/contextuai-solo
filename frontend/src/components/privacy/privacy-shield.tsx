@@ -16,25 +16,32 @@ export interface EgressLedgerEntry {
   url: string;
   host: string;
   purpose: string;
-  method: string;
+  method?: string;
   bytes_sent: number;
   blocked: boolean;
 }
 
 export interface EgressLedgerResponse {
   airplane_lock: boolean;
-  total_allowed_requests: number;
-  total_blocked_requests: number;
+  total_allowed_requests?: number;
+  total_blocked_requests?: number;
+  external_connections_count?: number;
+  blocked_connections_count?: number;
+  policy_locked?: boolean;
+  policy_source?: string | null;
   entries: EgressLedgerEntry[];
 }
 
 export interface PrivacyManifest {
   airplane_lock: boolean;
-  telemetry_enabled: boolean;
-  crash_reporting_enabled: boolean;
+  policy_locked?: boolean;
+  policy_source?: string | null;
+  telemetry?: string;
+  telemetry_enabled?: boolean;
+  crash_reporting_enabled?: boolean;
   analytics_sdks: string[];
-  local_storage_only: boolean;
-  allowed_outbound_purposes: { purpose: string; destination: string; when: string }[];
+  local_storage_only?: boolean;
+  allowed_outbound_purposes?: { purpose: string; destination: string; when: string }[];
   guarantees: string[];
 }
 
@@ -44,10 +51,17 @@ export function PrivacyShield({ iconOnly = false }: { iconOnly?: boolean }) {
     airplane_lock: false,
     total_allowed_requests: 0,
     total_blocked_requests: 0,
+    policy_locked: false,
+    policy_source: null,
     entries: [],
   });
   const [manifest, setManifest] = useState<PrivacyManifest | null>(null);
   const [toggling, setToggling] = useState(false);
+  const [toggleError, setToggleError] = useState<string | null>(null);
+
+  const allowedRequests =
+    ledger.total_allowed_requests ?? ledger.external_connections_count ?? 0;
+  const isPolicyLocked = Boolean(ledger.policy_locked);
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -81,12 +95,17 @@ export function PrivacyShield({ iconOnly = false }: { iconOnly?: boolean }) {
   }, [open, fetchStatus, fetchManifest]);
 
   const handleToggleAirplane = async () => {
+    if (isPolicyLocked && ledger.airplane_lock) return;
     setToggling(true);
+    setToggleError(null);
     try {
       const next = !ledger.airplane_lock;
       await api.post("/privacy/airplane-lock", { enabled: next });
       await fetchStatus();
     } catch (err) {
+      setToggleError(
+        err instanceof Error ? err.message : "Failed to toggle Airplane Lock"
+      );
       console.error("Failed to toggle Airplane Lock:", err);
     } finally {
       setToggling(false);
@@ -111,25 +130,30 @@ export function PrivacyShield({ iconOnly = false }: { iconOnly?: boolean }) {
           "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-colors border",
           ledger.airplane_lock
             ? "bg-amber-50 dark:bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-500/30"
-            : ledger.total_allowed_requests === 0
+            : allowedRequests === 0
               ? "bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-500/30"
               : "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 border-neutral-200 dark:border-neutral-700"
         )}
-        title="Glass-Box Privacy Shield & Egress Ledger"
+        title={
+          isPolicyLocked
+            ? "Glass-Box Privacy Shield (Airplane Lock Locked by IT Policy)"
+            : "Glass-Box Privacy Shield & Egress Ledger"
+        }
       >
         {ledger.airplane_lock ? (
           <>
             <Plane className="w-3.5 h-3.5 shrink-0" />
             {!iconOnly && <span className="truncate">Airplane Lock</span>}
+            {!iconOnly && isPolicyLocked && <Lock className="w-3 h-3 shrink-0" />}
           </>
         ) : (
           <>
             <Shield className="w-3.5 h-3.5 shrink-0" />
             {!iconOnly && (
               <span className="truncate">
-                {ledger.total_allowed_requests === 0
+                {allowedRequests === 0
                   ? "0 External"
-                  : `${ledger.total_allowed_requests} External`}
+                  : `${allowedRequests} External`}
               </span>
             )}
           </>
@@ -138,7 +162,10 @@ export function PrivacyShield({ iconOnly = false }: { iconOnly?: boolean }) {
 
       <Dialog
         open={open}
-        onClose={() => setOpen(false)}
+        onClose={() => {
+          setOpen(false);
+          setToggleError(null);
+        }}
         title="Glass-Box Privacy Shield"
         className="max-w-2xl"
         actions={
@@ -153,7 +180,10 @@ export function PrivacyShield({ iconOnly = false }: { iconOnly?: boolean }) {
             </button>
             <button
               type="button"
-              onClick={() => setOpen(false)}
+              onClick={() => {
+                setOpen(false);
+                setToggleError(null);
+              }}
               className="px-4 py-1.5 text-xs font-medium rounded-lg bg-primary-500 hover:bg-primary-600 text-white"
             >
               Done
@@ -163,34 +193,60 @@ export function PrivacyShield({ iconOnly = false }: { iconOnly?: boolean }) {
       >
         <div className="space-y-4">
           {/* Airplane Lock Banner */}
-          <div className="flex items-center justify-between p-3.5 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800/60">
+          <div className="flex items-center justify-between gap-3 p-3.5 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800/60">
             <div className="flex items-start gap-3">
               <div className="p-2 rounded-lg bg-amber-100 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400">
                 <Lock className="w-4 h-4" />
               </div>
               <div>
-                <h4 className="text-sm font-semibold text-neutral-900 dark:text-white">
-                  Airplane Lock (Zero-Egress Mode)
-                </h4>
-                <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                  When active, every non-loopback network connection (HuggingFace, Cloud APIs, Channels) is hard-blocked before any socket leaves your machine.
+                <div className="flex flex-wrap items-center gap-2">
+                  <h4 className="text-sm font-semibold text-neutral-900 dark:text-white">
+                    Airplane Lock (Zero-Egress Mode)
+                  </h4>
+                  {isPolicyLocked && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-amber-100 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-500/30">
+                      <Lock className="w-3 h-3" />
+                      Locked by IT Policy
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
+                  {isPolicyLocked
+                    ? "Enforced by enterprise IT policy. All non-loopback network connections are blocked and cannot be unlocked by the user."
+                    : "When active, every non-loopback network connection (HuggingFace, Cloud APIs, Channels) is hard-blocked before any socket leaves your machine."}
                 </p>
               </div>
             </div>
             <button
               type="button"
-              disabled={toggling}
+              disabled={toggling || isPolicyLocked}
               onClick={handleToggleAirplane}
+              title={
+                isPolicyLocked
+                  ? "Locked by IT Policy"
+                  : undefined
+              }
               className={cn(
                 "px-3.5 py-2 rounded-lg text-xs font-semibold transition-colors shrink-0",
                 ledger.airplane_lock
                   ? "bg-amber-500 text-white hover:bg-amber-600"
-                  : "bg-neutral-200 dark:bg-neutral-700 text-neutral-800 dark:text-neutral-200 hover:bg-neutral-300 dark:hover:bg-neutral-600"
+                  : "bg-neutral-200 dark:bg-neutral-700 text-neutral-800 dark:text-neutral-200 hover:bg-neutral-300 dark:hover:bg-neutral-600",
+                (toggling || isPolicyLocked) && "opacity-60 cursor-not-allowed hover:bg-amber-500"
               )}
             >
-              {ledger.airplane_lock ? "Airplane Lock: ON" : "Enable Airplane Lock"}
+              {isPolicyLocked
+                ? "Locked by IT Policy"
+                : ledger.airplane_lock
+                  ? "Airplane Lock: ON"
+                  : "Enable Airplane Lock"}
             </button>
           </div>
+
+          {toggleError && (
+            <div className="px-3 py-2 rounded-lg bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30 text-xs text-red-700 dark:text-red-300">
+              {toggleError}
+            </div>
+          )}
 
           {/* Verifiable Guarantees */}
           {manifest && (
@@ -234,7 +290,7 @@ export function PrivacyShield({ iconOnly = false }: { iconOnly?: boolean }) {
                   >
                     <div className="truncate pr-3">
                       <span className="font-mono font-medium text-neutral-900 dark:text-white">
-                        {entry.method} {entry.host}
+                        {entry.method ? `${entry.method} ` : ""}{entry.host}
                       </span>
                       <span className="ml-2 text-neutral-500">({entry.purpose})</span>
                     </div>

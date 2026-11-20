@@ -118,10 +118,9 @@ class TestSchedulerService:
         await svc.unregister(created["id"])
         aps.remove_job.assert_called_once_with(_aps_job_id(created["id"]))
 
-    async def test_run_now_post_path(self, db_proxy, monkeypatch):
-        """run_now should dispatch to DistributionService.publish."""
+    async def test_run_now_post_path(self, db_proxy):
+        """run_now on a post job should return retired failure status cleanly."""
         from services.scheduler_service import SchedulerService
-        import services.scheduler_service as mod
 
         adapter, _ = _mock_adapter()
         svc = SchedulerService(db_proxy, adapter)
@@ -134,22 +133,13 @@ class TestSchedulerService:
             "content": "hi",
         })
 
-        # Patch DistributionService inside services.distribution_service
-        fake_dist = MagicMock()
-        fake_dist.get_channel = AsyncMock(return_value={"channel_id": "c-1", "enabled": True})
-        fake_dist.publish = AsyncMock(return_value={"status": "published", "delivery_id": "d-1"})
-
-        import services.distribution_service as dist_mod
-        monkeypatch.setattr(
-            dist_mod, "DistributionService", lambda db: fake_dist
-        )
-
         result = await svc.run_now(created["id"])
-        assert result["status"] == "success"
-        fake_dist.publish.assert_awaited_once()
+        assert result["status"] == "failed"
+        assert result["error"] == "Distribution channels have been retired in Vesper v1.2"
+        assert result["details"]["status"] == "retired"
 
         refreshed = await svc.repo.get_job(created["id"])
-        assert refreshed["last_run_status"] == "success"
+        assert refreshed["last_run_status"] == "failed"
         assert refreshed["run_count"] == 1
 
 

@@ -286,6 +286,57 @@ async def _local_stream(
     yield {"type": "done", "finish_reason": "stop", "usage": {}}
 
 
+# ---------------------------------------------------------------------------
+# Egress & DLP helpers
+# ---------------------------------------------------------------------------
+
+_CLOUD_TARGET_URLS: Dict[str, str] = {
+    "openai": "https://api.openai.com",
+    "anthropic": "https://api.anthropic.com",
+    "google": "https://generativelanguage.googleapis.com",
+    "bedrock": "https://bedrock-runtime.amazonaws.com",
+}
+
+
+def _resolve_target_url(provider: str, creds: Dict[str, Any]) -> Optional[str]:
+    """Resolve the outbound target URL for egress and DLP checks."""
+    if provider in _CLOUD_TARGET_URLS:
+        return _CLOUD_TARGET_URLS[provider]
+    if provider == "ollama":
+        return creds.get("base_url") or "http://localhost:11434"
+    if provider == "openai_compat":
+        return creds.get("base_url") or None
+    return None
+
+
+def _emit_dlp_redacted_audit(
+    provider: str,
+    model_id: str,
+    summary: Dict[str, Any],
+) -> None:
+    """Fire-and-forget audit log for DLP redactions (never stores raw secrets)."""
+    try:
+        from models.audit_models import AuditAction
+        from services import audit_service
+
+        action = getattr(AuditAction, "DLP_REDACTED", "dlp.redacted")
+        sync_fn = getattr(audit_service, "audit_log_sync", None)
+        if callable(sync_fn):
+            sync_fn(
+                action,
+                resource_type="chat",
+                resource_id=model_id,
+                details={
+                    "provider": provider,
+                    "total_redactions": summary.get("total_redactions", 0),
+                    "categories": summary.get("categories", []),
+                    "counts_by_category": summary.get("counts_by_category", {}),
+                },
+            )
+    except Exception:
+        pass
+
+
 # This is an async generator factory — it cannot be a plain async function
 # that returns an iterator because the local path IS an async generator.
 # We wrap both paths so callers always do ``async for event in stream_chat(...)``.
@@ -303,6 +354,7 @@ async def stream_chat(
     """Provider-agnostic streaming chat.
 
     Yields normalized events:
+        {"type": "dlp_redacted", "summary": {...}}  # only when redactions > 0
         {"type": "delta",  "content": "..."}
         {"type": "done",   "finish_reason": "stop", "usage": {...}}
 
@@ -359,15 +411,35 @@ async def stream_chat(
             "Add a key in Settings -> AI Providers."
         )
 
+    dispatch_messages = messages
+    dlp_summary: Optional[Dict[str, Any]] = None
+    target_url = _resolve_target_url(provider, creds)
+
+    if target_url:
+        from services import dlp_service, net_guard
+
+        net_guard.assert_egress_allowed(target_url, purpose=f"cloud_chat:{provider}")
+        if not net_guard.is_loopback_url(target_url):
+            dlp_settings = dlp_service.get_dlp_settings()
+            if dlp_settings.get("enabled", True):
+                dispatch_messages, dlp_summary = dlp_service.redact_messages(
+                    messages, policy=dlp_settings
+                )
+
     cloud_iter = await _cloud_stream(
         provider,
         clean_model,
         creds,
-        messages,
+        dispatch_messages,
         temperature=temperature,
         max_tokens=max_tokens,
         top_p=top_p,
         stop=stop,
     )
+
+    if dlp_summary and dlp_summary.get("total_redactions", 0) > 0:
+        _emit_dlp_redacted_audit(provider, model_id, dlp_summary)
+        yield {"type": "dlp_redacted", "summary": dlp_summary}
+
     async for event in cloud_iter:
         yield event

@@ -38,7 +38,14 @@ import {
   HardDrive,
   RefreshCw,
   AlertCircle,
+  Shield,
+  Terminal,
 } from "lucide-react";
+import { SecurityAuditTab } from "@/components/settings/security-audit-tab";
+import { SecurityDlpPanel } from "@/components/settings/security-dlp-panel";
+import { EnterprisePolicyPanel } from "@/components/settings/enterprise-policy-panel";
+import { DeveloperTab } from "@/components/settings/developer-tab";
+import vesperLogoImg from "@/assets/vesper-logo.png";
 
 // PROVIDER_DEFS removed — replaced by PROVIDER_GUIDES in data/provider-guides.ts
 
@@ -62,6 +69,8 @@ const SETTINGS_TABS = [
   { id: "brand", label: "Brand Voice", icon: <MessageSquareText className="w-4 h-4" /> },
   { id: "appearance", label: "Appearance", icon: <Palette className="w-4 h-4" /> },
   { id: "data", label: "Data & Export", icon: <Database className="w-4 h-4" /> },
+  { id: "security", label: "Security & Audit", icon: <Shield className="w-4 h-4" /> },
+  { id: "developer", label: "Developer", icon: <Terminal className="w-4 h-4" /> },
   { id: "about", label: "About", icon: <Info className="w-4 h-4" /> },
 ];
 
@@ -941,16 +950,18 @@ function AboutTab() {
 
       {/* App Info */}
       <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 p-6 text-center">
-        <div className="flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-primary-500 to-primary-600 mx-auto mb-4">
-          <Settings className="w-7 h-7 text-white" />
-        </div>
+        <img
+          src={vesperLogoImg}
+          alt="Vesper"
+          className="w-14 h-14 rounded-2xl object-cover mx-auto mb-4 shadow-md ring-1 ring-primary-500/25"
+        />
         {isLite ? (
           <>
             <h4 className="text-xl font-bold text-neutral-900 dark:text-white">
               Vesper <span className="text-primary-500">by ContextuAI</span>
             </h4>
             <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">
-              Lite Edition &middot; Version 2027.1 (MIT Open-Source)
+              Lite Edition &middot; Version 1.2.0 (MIT Open-Source)
             </p>
             <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-0.5">
               Zero-Config Private Local AI Workstation &middot; Shared <code className="font-mono">~/.contextuai-solo/</code> storage
@@ -969,10 +980,10 @@ function AboutTab() {
         ) : (
           <>
             <h4 className="text-xl font-bold text-neutral-900 dark:text-white">
-              ContextuAI <span className="text-primary-500">Solo</span>
+              Vesper <span className="text-primary-500">Solo</span>
             </h4>
             <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">
-              Full Solo Workstation &middot; Version 2027.1
+              Full Solo Workstation &middot; Version 1.2.0
             </p>
             <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-0.5">
               Your personal AI workstation with multi-agent crews, persistent memory, and local GGUF engine
@@ -1061,6 +1072,8 @@ const TAB_SLUG_MAP: Record<string, string> = {
   "brand-voice": "brand",
   "appearance": "appearance",
   "data": "data",
+  "security": "security",
+  "developer": "developer",
   "about": "about",
 };
 
@@ -1121,6 +1134,14 @@ export default function SettingsPage() {
         {activeTab === "brand" && <BrandVoiceTab />}
         {activeTab === "appearance" && <AppearanceTab />}
         {activeTab === "data" && <DataExportTab />}
+        {activeTab === "security" && (
+          <div className="space-y-8">
+            <SecurityAuditTab />
+            <SecurityDlpPanel />
+            <EnterprisePolicyPanel />
+          </div>
+        )}
+        {activeTab === "developer" && <DeveloperTab />}
         {activeTab === "about" && <AboutTab />}
       </div>
     </div>

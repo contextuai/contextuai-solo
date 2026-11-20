@@ -13,10 +13,6 @@ import {
   type CoderProject,
 } from "@/lib/api/coder-client";
 import { AgentLibraryTabs } from "@/components/agents/agent-library-tabs";
-import {
-  connectionsApi,
-  type ConnectionSummary,
-} from "@/lib/api/connections-client";
 import { getModels, type ModelConfig } from "@/lib/api/models-client";
 import { KbMultiSelect } from "@/components/shared/kb-multi-select";
 import {
@@ -59,6 +55,17 @@ type ExecutionMode = "sequential" | "parallel" | "pipeline" | "autonomous";
 type WizardStep = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 
 type Direction = "inbound" | "outbound" | "both";
+
+interface ConnectionSummary {
+  id: string;
+  platform: string;
+  display_name?: string | null;
+  connected: boolean;
+  inbound_enabled: boolean;
+  outbound_enabled: boolean;
+  inbound_supported: boolean;
+  outbound_supported: boolean;
+}
 
 interface ReactiveTriggerDraft {
   id: string; // local-only, for list keying
@@ -472,12 +479,9 @@ export function CrewBuilder({ open, onClose, onCreated, kind = "crew", editCrew 
     }
   }, [open]);
 
-  // Fetch unified connections on open (Phase 3)
+  // Connections aggregator retired in Vesper v1.2
   const refreshConnections = useCallback(() => {
-    connectionsApi
-      .list()
-      .then(setAvailableConnections)
-      .catch(() => setAvailableConnections([]));
+    setAvailableConnections([]);
   }, []);
 
   useEffect(() => {
@@ -639,23 +643,7 @@ export function CrewBuilder({ open, onClose, onCreated, kind = "crew", editCrew 
 
   async function enableCapabilityAndContinue() {
     if (!capabilityModal) return;
-    const { connection, direction } = capabilityModal;
-    const update: { inbound_enabled?: boolean; outbound_enabled?: boolean } = {};
-    if (direction === "inbound") update.inbound_enabled = true;
-    else if (direction === "outbound") update.outbound_enabled = true;
-    else {
-      update.inbound_enabled = true;
-      update.outbound_enabled = true;
-    }
-    try {
-      await connectionsApi.updateCapabilities(connection.id, update);
-      refreshConnections();
-      addBinding(connection, direction);
-    } catch (e) {
-      console.error("Failed to enable capability", e);
-    } finally {
-      setCapabilityModal(null);
-    }
+    setCapabilityModal(null);
   }
 
   // --- Reactive trigger helpers ---
@@ -1376,7 +1364,7 @@ export function CrewBuilder({ open, onClose, onCreated, kind = "crew", editCrew 
 
                 {availableConnections.length === 0 ? (
                   <p className="text-xs text-neutral-400 dark:text-neutral-500 italic">
-                    No connections set up yet. Add one from <a href="/connections" className="underline text-primary-500">Connections</a> and come back.
+                    No connections set up yet. Configure MCP servers from <a href="/personas" className="underline text-primary-500">Tools &amp; MCP</a> and come back.
                   </p>
                 ) : (
                   <div className="space-y-2">

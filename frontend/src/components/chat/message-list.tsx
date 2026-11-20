@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import {
@@ -17,8 +17,11 @@ import {
   Sparkles,
   Server,
 } from "lucide-react";
-import type { ChatMessage } from "@/types/chat";
+import type { ChatCitation, ChatMessage, DlpRedactionSummary } from "@/types/chat";
 import { useEdition } from "@/config/edition";
+import { CitationPanel } from "./citation-panel";
+import { DlpIndicator } from "./dlp-indicator";
+import vesperLogoImg from "@/assets/vesper-logo.png";
 
 interface MessageListProps {
   messages: ChatMessage[];
@@ -32,7 +35,7 @@ interface MessageListProps {
 }
 
 /** Lightweight markdown renderer for AI chat messages. */
-function renderMarkdown(text: string): string {
+function renderMarkdown(text: string, citationIndices?: Set<number>): string {
   // Escape HTML
   let html = text
     .replace(/&/g, "&amp;")
@@ -134,6 +137,21 @@ function renderMarkdown(text: string): string {
   html = html.replace(/(<hr[^>]*\/>)<br \/>/g, "$1");
   html = html.replace(/(<\/blockquote>)<br \/>/g, "$1");
 
+  // Make inline [1], [2] references clickable citation triggers outside tags/code blocks
+  if (citationIndices && citationIndices.size > 0) {
+    const parts = html.split(/(<pre[\s\S]*?<\/pre>|<code[^>]*>[\s\S]*?<\/code>|<[^>]+>)/g);
+    html = parts
+      .map((part, idx) => {
+        if (idx % 2 === 1) return part;
+        return part.replace(/\[(\d+)\]/g, (full, numStr: string) => {
+          const num = Number(numStr);
+          if (!citationIndices.has(num)) return full;
+          return `<button type="button" data-citation-idx="${num}" class="inline-flex items-center px-1 py-0.2 mx-0.5 rounded text-[11px] font-semibold bg-primary-500/15 text-primary-600 dark:text-primary-400 hover:bg-primary-500/25 transition-colors cursor-pointer align-baseline">[${num}]</button>`;
+        });
+      })
+      .join("");
+  }
+
   return html;
 }
 
@@ -173,11 +191,35 @@ function MessageBubble({
 }) {
   const isUser = message.message_type === "user";
   const [copied, setCopied] = useState(false);
+  const [activeCitationIndex, setActiveCitationIndex] = useState<number | null>(null);
+
+  const metadata = message.metadata;
+  const citations = Array.isArray(metadata?.citations)
+    ? (metadata.citations as ChatCitation[])
+    : [];
+  const ragMode =
+    typeof metadata?.rag_mode === "string" ? metadata.rag_mode : undefined;
+  const dlpRedaction = metadata?.dlp_redaction as
+    | (DlpRedactionSummary & { total_redactions?: number })
+    | undefined;
+  const citationIndices =
+    citations.length > 0 ? new Set(citations.map((c) => c.index)) : undefined;
 
   const handleCopy = () => {
     navigator.clipboard.writeText(message.content || "");
     setCopied(true);
     setTimeout(() => setCopied(false), 1600);
+  };
+
+  const handleMarkdownClick = (e: MouseEvent<HTMLDivElement>) => {
+    const target = (e.target as HTMLElement | null)?.closest<HTMLElement>(
+      "[data-citation-idx]"
+    );
+    if (!target) return;
+    const idx = Number(target.getAttribute("data-citation-idx"));
+    if (!Number.isNaN(idx)) {
+      setActiveCitationIndex((prev) => (prev === idx ? null : idx));
+    }
   };
 
   return (
@@ -221,11 +263,25 @@ function MessageBubble({
               <ThinkingBlock content={message.reasoning} />
             )}
             <div
+              onClick={handleMarkdownClick}
               className="prose prose-sm dark:prose-invert max-w-none [&_pre]:my-2 [&_code]:text-xs"
               dangerouslySetInnerHTML={{
-                __html: renderMarkdown(message.content),
+                __html: renderMarkdown(message.content, citationIndices),
               }}
             />
+            {dlpRedaction && (
+              <div className="mt-2">
+                <DlpIndicator summary={dlpRedaction} />
+              </div>
+            )}
+            {citations.length > 0 && (
+              <CitationPanel
+                citations={citations}
+                ragMode={ragMode}
+                activeIndex={activeCitationIndex}
+                onSelectIndex={setActiveCitationIndex}
+              />
+            )}
             <div className="mt-2 pt-1.5 border-t border-neutral-200/60 dark:border-neutral-700/50 flex items-center justify-end opacity-0 group-hover:opacity-100 transition-opacity">
               <button
                 type="button"
@@ -339,8 +395,12 @@ function EmptyState({
 
   return (
     <div className="flex flex-col items-center justify-center h-full text-center px-6 py-8 overflow-y-auto">
-      <div className="flex items-center justify-center w-14 h-14 rounded-2xl bg-primary-50 dark:bg-primary-500/10 border border-primary-500/20 mb-4">
-        <Bot className="w-7 h-7 text-primary-500" />
+      <div className="relative flex items-center justify-center w-16 h-16 rounded-2xl overflow-hidden shadow-lg shadow-primary-500/15 ring-1 ring-primary-500/30 mb-4">
+        <img
+          src={vesperLogoImg}
+          alt="Vesper"
+          className="w-full h-full object-cover"
+        />
       </div>
       <h2 className="text-xl font-bold text-neutral-900 dark:text-white mb-1.5">
         {isLite ? "Vesper Sovereign AI Workstation" : "Start a conversation"}

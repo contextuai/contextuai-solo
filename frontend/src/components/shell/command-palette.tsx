@@ -1,8 +1,9 @@
 /**
  * 2027 Workstation Command Palette (`Ctrl+K` / `Cmd+K`)
  *
- * Keyboard-first quick switcher for jumping to any Vesper Lite or ContextuAI Solo
- * surface, toggling Local/Cloud AI mode, switching theme, or switching editions.
+ * Keyboard-first quick switcher for jumping to Vesper core surfaces,
+ * Advanced Mode surfaces (when enabled), toggling Local/Cloud AI mode,
+ * switching theme, or opening the Local /v1 Server Inspector.
  */
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
@@ -19,18 +20,16 @@ import {
   Users,
   Zap,
   ClipboardCheck,
-  Cable,
   Monitor,
   Cloud,
   Sun,
   Moon,
-  Sparkles,
-  Feather,
   Command,
   ArrowRight,
+  Sliders,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useEdition } from "@/config/edition";
+import { useAdvancedMode } from "@/hooks/use-advanced-mode";
 import { useAiMode } from "@/contexts/ai-mode-context";
 import { useTheme } from "@/components/providers/theme-provider";
 
@@ -56,7 +55,7 @@ export function CommandPalette({
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
-  const { isLite, unlockSolo, switchToLite } = useEdition();
+  const { advancedMode, setAdvancedMode } = useAdvancedMode();
   const { aiMode, setAiMode } = useAiMode();
   const { resolvedTheme, setTheme } = useTheme();
 
@@ -86,24 +85,15 @@ export function CommandPalette({
       {
         id: "nav-chat",
         label: "Go to Chat",
-        subtitle: "Local GGUF & Cloud AI chat with Folder RAG & MCP tools",
+        subtitle: "Local GGUF & Cloud AI chat with Local Docs & MCP tools",
         category: "Navigation",
         icon: MessageSquare,
         keywords: "chat message prompt rag conversation",
         action: () => navigate("/"),
       },
       {
-        id: "nav-models",
-        label: isLite ? "Go to Model Hub" : "Go to Models",
-        subtitle: "Hardware X-Ray, Fit Badges, GGUF Catalog, Benchmark & HF Search",
-        category: "Navigation",
-        icon: Cpu,
-        keywords: "models gguf download huggingface benchmark vram gpu quant",
-        action: () => navigate("/models"),
-      },
-      {
         id: "nav-knowledge",
-        label: isLite ? "Go to Local Docs (Folder RAG)" : "Go to Knowledge Base",
+        label: "Go to Local Docs",
         subtitle: "Index local folders & PDF/DOCX/MD files for private citations",
         category: "Navigation",
         icon: Library,
@@ -111,49 +101,40 @@ export function CommandPalette({
         action: () => navigate("/knowledge"),
       },
       {
-        id: "nav-connectors",
-        label: isLite ? "Go to Connectors & MCP" : "Go to Connectors",
-        subtitle: "Connect MCP servers, PostgreSQL, Snowflake, Web Search & APIs",
+        id: "nav-models",
+        label: "Go to Models",
+        subtitle: "Hardware X-Ray, Fit Badges, GGUF Catalog, Benchmark & HF Search",
         category: "Navigation",
-        icon: Plug,
-        keywords: "mcp connectors tools database postgres web api personas",
-        action: () => navigate("/personas"),
+        icon: Cpu,
+        keywords: "models gguf download huggingface benchmark vram gpu quant",
+        action: () => navigate("/models"),
       },
       {
-        id: "nav-server",
-        label: "Go to Local OpenAI /v1 & MCP Server",
-        subtitle: "Connect Cursor, Continue.dev, Aider, Claude Code & inspect /v1 requests",
+        id: "nav-connectors",
+        label: "Go to Tools & MCP",
+        subtitle: "Connect MCP servers, Web Search, MongoDB & REST APIs",
         category: "Navigation",
-        icon: Server,
-        keywords: "server openai v1 api cursor continue aider fim",
-        action: () => navigate("/server"),
+        icon: Plug,
+        keywords: "mcp connectors tools web api personas",
+        action: () => navigate("/personas"),
       },
       {
         id: "nav-settings",
         label: "Go to Settings",
-        subtitle: "AI Providers, HuggingFace Token, Brand Voice, Appearance & Backup",
+        subtitle: "AI Providers, Security & DLP, Enterprise Policy, Developer & Appearance",
         category: "Navigation",
         icon: Settings,
-        keywords: "settings api keys huggingface token theme export",
+        keywords: "settings api keys dlp audit enterprise developer theme export",
         action: () => navigate("/settings"),
       },
     ];
 
-    if (!isLite) {
+    if (advancedMode) {
       nav.push(
         {
-          id: "nav-memory",
-          label: "Go to Unified Memory",
-          subtitle: "Auto-recalled durable facts, review queue & memory settings",
-          category: "Navigation",
-          icon: Brain,
-          keywords: "memory facts recall preferences",
-          action: () => navigate("/memory"),
-        },
-        {
           id: "nav-agents",
-          label: "Go to Agent Library",
-          subtitle: "Browse and customize 113+ specialist prompt agents",
+          label: "Go to Agents",
+          subtitle: "Browse and customize specialist prompt agents",
           category: "Navigation",
           icon: Bot,
           keywords: "agents library specialist prompt",
@@ -161,7 +142,7 @@ export function CommandPalette({
         },
         {
           id: "nav-crews",
-          label: "Go to Workspace & Crews",
+          label: "Go to Workspace",
           subtitle: "Multi-agent crews, projects, Dry-Run sandbox & execution history",
           category: "Navigation",
           icon: Users,
@@ -178,27 +159,36 @@ export function CommandPalette({
           action: () => navigate("/automations"),
         },
         {
-          id: "nav-approvals",
-          label: "Go to Approvals Queue",
-          subtitle: "Human-in-the-loop review for outbound posts and actions",
+          id: "nav-memory",
+          label: "Go to Memory",
+          subtitle: "Auto-recalled durable facts, review queue & memory settings",
           category: "Navigation",
-          icon: ClipboardCheck,
-          keywords: "approvals review queue outbound",
-          action: () => navigate("/approvals"),
+          icon: Brain,
+          keywords: "memory facts recall preferences",
+          action: () => navigate("/memory"),
         },
         {
-          id: "nav-distributions",
-          label: "Go to Distributions & Channels",
-          subtitle: "Telegram, Discord, Reddit, LinkedIn, X & webhook connections",
+          id: "nav-approvals",
+          label: "Go to Approvals",
+          subtitle: "Human-in-the-loop review for pending actions",
           category: "Navigation",
-          icon: Cable,
-          keywords: "distributions channels telegram reddit discord linkedin twitter",
-          action: () => navigate("/connections"),
+          icon: ClipboardCheck,
+          keywords: "approvals review queue",
+          action: () => navigate("/approvals"),
         }
       );
     }
 
     const actions: CommandItem[] = [
+      {
+        id: "act-server-inspector",
+        label: "Open Local /v1 Server Inspector",
+        subtitle: "Connect Cursor, Continue.dev, Aider & inspect OpenAI-compatible /v1 traffic",
+        category: "Quick Actions",
+        icon: Server,
+        keywords: "server openai v1 api cursor continue aider fim inspector",
+        action: () => navigate("/server"),
+      },
       {
         id: "act-ai-mode",
         label:
@@ -226,33 +216,19 @@ export function CommandPalette({
         keywords: "theme dark light appearance mode",
         action: () => setTheme(resolvedTheme === "dark" ? "light" : "dark"),
       },
-      isLite
-        ? {
-            id: "act-edition",
-            label: "Unlock Full ContextuAI Solo",
-            subtitle: "Seed 113+ Agents, Multi-Agent Crews, Memory & Channels in-place",
-            category: "Quick Actions",
-            icon: Sparkles,
-            keywords: "unlock solo upgrade agents crews edition",
-            action: () => {
-              void unlockSolo();
-            },
-          }
-        : {
-            id: "act-edition",
-            label: "Switch to Vesper Lite Mode",
-            subtitle: "Streamlined 6-tab GGUF & MCP workstation view",
-            category: "Quick Actions",
-            icon: Feather,
-            keywords: "vesper lite edition switch minimal",
-            action: () => {
-              void switchToLite();
-            },
-          },
+      {
+        id: "act-advanced-mode",
+        label: advancedMode ? "Disable Advanced Mode" : "Enable Advanced Mode",
+        subtitle: "Show or hide Agents, Workspace, Automations, Memory & Approvals in sidebar",
+        category: "Quick Actions",
+        icon: Sliders,
+        keywords: "advanced mode agents workspace automations memory approvals sidebar",
+        action: () => setAdvancedMode(!advancedMode),
+      },
     ];
 
     return [...nav, ...actions];
-  }, [isLite, aiMode, resolvedTheme, navigate, setAiMode, setTheme, unlockSolo, switchToLite]);
+  }, [advancedMode, aiMode, resolvedTheme, navigate, setAiMode, setTheme, setAdvancedMode]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -341,7 +317,7 @@ export function CommandPalette({
                     executeItem(filtered[selectedIndex]);
                   }
                 }}
-                placeholder="Jump to surface, search models, toggle Local/Cloud, or switch edition..."
+                placeholder="Jump to surface, open /v1 Server Inspector, or toggle AI mode..."
                 className="flex-1 bg-transparent text-sm text-neutral-900 dark:text-white placeholder:text-neutral-400 focus:outline-none"
               />
               <kbd className="px-1.5 py-0.5 text-[10px] font-mono rounded bg-neutral-100 dark:bg-neutral-800 text-neutral-500">

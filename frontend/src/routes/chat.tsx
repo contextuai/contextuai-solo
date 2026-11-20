@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import type { ChatSession, ChatMessage } from "@/types/chat";
+import type { ChatSession, ChatMessage, ChatMessageMetadata } from "@/types/chat";
 import type { ModelConfig } from "@/lib/api/models-client";
 import type { Persona } from "@/lib/api/personas-client";
 import type { KnowledgeBase } from "@/lib/api/knowledge-base-client";
@@ -16,16 +16,22 @@ import {
   deleteSession,
   archiveSession,
   updateSession,
+  uploadChatFile,
 } from "@/lib/api/chat-client";
 import ChatSidebar from "@/components/chat/chat-sidebar";
 import ChatHeader from "@/components/chat/chat-header";
-import ChatInput from "@/components/chat/chat-input";
+import ChatInput, { type AttachedChatFile } from "@/components/chat/chat-input";
 import MessageList from "@/components/chat/message-list";
+import { MemoryDrawer } from "@/components/chat/memory-drawer";
+import { ToolApprovalModal } from "@/components/chat/tool-approval-modal";
 import { Dialog } from "@/components/ui/dialog";
 import { AlertTriangle } from "lucide-react";
 
 export default function ChatPage() {
   const { aiMode } = useAiMode();
+  const aiModeRef = useRef(aiMode);
+  aiModeRef.current = aiMode;
+  const modelsFetchSeqRef = useRef(0);
 
   // ── Data state ─────────────────────────────────────────────────
   const [models, setModels] = useState<ModelConfig[]>([]);
@@ -46,6 +52,9 @@ export default function ChatPage() {
 
   // ── UI state ───────────────────────────────────────────────────
   const [input, setInput] = useState("");
+  const [attachedFiles, setAttachedFiles] = useState<AttachedChatFile[]>([]);
+  const [uploadingFiles, setUploadingFiles] = useState(false);
+  const [memoryDrawerOpen, setMemoryDrawerOpen] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingContent, setStreamingContent] = useState("");
   const [streamingThinking, setStreamingThinking] = useState("");
@@ -90,7 +99,7 @@ export default function ChatPage() {
 
   // Re-fetch models when AI mode changes
   useEffect(() => {
-    loadModels();
+    loadModels(aiMode);
   }, [aiMode]);
 
   // Keyboard shortcut: Ctrl/Cmd+N or M3 sidebar FAB for new chat
@@ -147,25 +156,27 @@ export default function ChatPage() {
     }
   }, []);
 
-  async function loadModels() {
+  async function loadModels(modeOverride?: typeof aiMode) {
+    const seq = ++modelsFetchSeqRef.current;
+    const targetMode = modeOverride ?? aiModeRef.current;
     try {
-      const data = await getModels(aiMode);
+      const data = await getModels(targetMode);
+      if (seq !== modelsFetchSeqRef.current) return;
       setModels(data);
 
       // Auto-select: if current selection is not in the new list, pick first
-      const currentValid = data.some((m) => m.id === selectedModelId && m.enabled);
-      if (!currentValid) {
+      setSelectedModelId((prevSelected) => {
+        const currentValid = data.some((m) => m.id === prevSelected && m.enabled);
+        if (currentValid) return prevSelected;
         const first = data.find((m) => m.enabled);
-        if (first) {
-          setSelectedModelId(first.id);
-        } else {
-          setSelectedModelId(null);
-        }
-      }
+        return first ? first.id : null;
+      });
     } catch (err) {
       console.warn("Failed to load models:", err);
     } finally {
-      setModelsLoaded(true);
+      if (seq === modelsFetchSeqRef.current) {
+        setModelsLoaded(true);
+      }
     }
   }
 
@@ -208,6 +219,7 @@ export default function ChatPage() {
     setStreamingContent("");
     setStreamingThinking("");
     setInput("");
+    setAttachedFiles([]);
 
     // Find session in list for title/model/persona
     const session = sessions.find(
@@ -238,15 +250,52 @@ export default function ChatPage() {
     setStreamingThinking("");
     setSessionTitle("New Chat");
     setInput("");
+    setAttachedFiles([]);
+  }, []);
+
+  // ── File attachments ───────────────────────────────────────────
+
+  const handleAttachFiles = useCallback(async (files: FileList | File[]) => {
+    const fileArray = Array.from(files);
+    if (fileArray.length === 0) return;
+    setUploadingFiles(true);
+    try {
+      const uploaded = await Promise.all(
+        fileArray.map(async (file) => {
+          const res = await uploadChatFile(file);
+          return {
+            file_id: res.file_id,
+            filename: res.original_filename || file.name,
+            size: res.size ?? file.size,
+          };
+        })
+      );
+      setAttachedFiles((prev) => {
+        const existing = new Set(prev.map((f) => f.file_id));
+        return [...prev, ...uploaded.filter((u) => !existing.has(u.file_id))];
+      });
+    } catch (err) {
+      setErrorModal(
+        err instanceof Error ? err.message : "Failed to upload attached file"
+      );
+    } finally {
+      setUploadingFiles(false);
+    }
+  }, []);
+
+  const handleRemoveFile = useCallback((fileId: string) => {
+    setAttachedFiles((prev) => prev.filter((f) => f.file_id !== fileId));
   }, []);
 
   // ── Sending messages ───────────────────────────────────────────
 
   const handleSend = useCallback(async () => {
     const prompt = input.trim();
-    if (!prompt || isStreaming) return;
+    if (!prompt || isStreaming || uploadingFiles) return;
 
+    const fileIds = attachedFiles.map((f) => f.file_id);
     setInput("");
+    setAttachedFiles([]);
     abortRef.current = false;
 
     let sessionId = activeSessionId;
@@ -297,6 +346,7 @@ export default function ChatPage() {
 
     let fullResponse = "";
     let fullThinking = "";
+    let lastMetadata: ChatMessageMetadata | undefined = undefined;
 
     try {
       for await (const chunk of sendMessageStream(
@@ -305,7 +355,8 @@ export default function ChatPage() {
         selectedModelId || undefined,
         selectedPersonaId || undefined,
         controller.signal,
-        selectedKnowledgeBaseId || undefined
+        selectedKnowledgeBaseId || undefined,
+        fileIds.length > 0 ? fileIds : undefined
       )) {
         if (abortRef.current) break;
 
@@ -315,10 +366,11 @@ export default function ChatPage() {
         } else if (chunk.type === "chunk") {
           fullResponse += chunk.data;
           setStreamingContent(fullResponse);
+        } else if (chunk.type === "metadata" && chunk.metadata) {
+          lastMetadata = { ...(lastMetadata ?? {}), ...chunk.metadata };
         } else if (chunk.type === "error") {
           setErrorModal(chunk.data);
         }
-        // metadata chunks are silently consumed
       }
     } catch (err) {
       // Ignore abort errors — those are intentional stops
@@ -338,6 +390,7 @@ export default function ChatPage() {
         reasoning: fullThinking || undefined,
         message_type: "assistant",
         timestamp: new Date().toISOString(),
+        metadata: lastMetadata,
       };
       setMessages((prev) => [...prev, assistantMsg]);
     }
@@ -348,7 +401,7 @@ export default function ChatPage() {
 
     // Refresh session list to update message counts
     loadSessions();
-  }, [input, isStreaming, activeSessionId, selectedModelId, selectedPersonaId, selectedKnowledgeBaseId]);
+  }, [input, isStreaming, uploadingFiles, attachedFiles, activeSessionId, selectedModelId, selectedPersonaId, selectedKnowledgeBaseId]);
 
   const handleStop = useCallback(() => {
     abortRef.current = true;
@@ -458,6 +511,8 @@ export default function ChatPage() {
           sessionsCount={sessions.length}
           historyOpen={!sidebarCollapsed}
           onToggleHistory={() => setSidebarCollapsed((c) => !c)}
+          memoryOpen={memoryDrawerOpen}
+          onToggleMemory={() => setMemoryDrawerOpen((o) => !o)}
         />
 
         <MessageList
@@ -468,6 +523,8 @@ export default function ChatPage() {
           noModel={modelsLoaded && !models.some((m) => m.enabled)}
           onSelectStarterPrompt={(prompt) => setInput(prompt)}
         />
+
+        <ToolApprovalModal className="mx-4 sm:mx-auto sm:w-full max-w-3xl mb-2" />
 
         <ChatInput
           value={input}
@@ -484,8 +541,17 @@ export default function ChatPage() {
           onSelectModel={setSelectedModelId}
           onSelectPersona={setSelectedPersonaId}
           onSelectKnowledgeBase={setSelectedKnowledgeBaseId}
+          attachedFiles={attachedFiles}
+          onAttachFiles={handleAttachFiles}
+          onRemoveFile={handleRemoveFile}
+          uploadingFiles={uploadingFiles}
         />
       </div>
+
+      <MemoryDrawer
+        open={memoryDrawerOpen}
+        onClose={() => setMemoryDrawerOpen(false)}
+      />
 
       {/* Error modal */}
       <Dialog

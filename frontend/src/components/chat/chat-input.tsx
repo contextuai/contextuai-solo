@@ -1,12 +1,33 @@
-import { useState, useRef, useEffect, KeyboardEvent, ChangeEvent } from "react";
+import { useState, useRef, useEffect, KeyboardEvent, ChangeEvent, DragEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
-import { ArrowUp, Square, ChevronDown, Cpu, Sparkles, Check, Monitor, Cloud, Library, X, Plus } from "lucide-react";
+import {
+  ArrowUp,
+  Square,
+  ChevronDown,
+  Cpu,
+  Sparkles,
+  Check,
+  Monitor,
+  Cloud,
+  Library,
+  X,
+  Plus,
+  Paperclip,
+  FileText,
+  Loader2,
+} from "lucide-react";
 import type { ModelConfig } from "@/lib/api/models-client";
 import { getModels } from "@/lib/api/models-client";
 import type { Persona } from "@/lib/api/personas-client";
 import type { KnowledgeBase } from "@/lib/api/knowledge-base-client";
 import { useAiMode } from "@/contexts/ai-mode-context";
+
+export interface AttachedChatFile {
+  file_id: string;
+  filename: string;
+  size?: number;
+}
 
 interface ChatInputProps {
   value: string;
@@ -24,6 +45,10 @@ interface ChatInputProps {
   onSelectModel: (modelId: string) => void;
   onSelectPersona: (personaId: string | null) => void;
   onSelectKnowledgeBase: (kbId: string | null) => void;
+  attachedFiles?: AttachedChatFile[];
+  onAttachFiles?: (files: FileList | File[]) => void;
+  onRemoveFile?: (fileId: string) => void;
+  uploadingFiles?: boolean;
 }
 
 function MiniDropdown<T extends { id: string; name: string }>({
@@ -177,6 +202,13 @@ function MiniDropdown<T extends { id: string; name: string }>({
   );
 }
 
+function formatBytes(bytes?: number): string {
+  if (!bytes || bytes <= 0) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 export default function ChatInput({
   value,
   onChange,
@@ -193,12 +225,18 @@ export default function ChatInput({
   onSelectModel,
   onSelectPersona,
   onSelectKnowledgeBase,
+  attachedFiles = [],
+  onAttachFiles,
+  onRemoveFile,
+  uploadingFiles = false,
 }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
   const { aiMode } = useAiMode();
   const [showAllModels, setShowAllModels] = useState(false);
   const [allModels, setAllModels] = useState<ModelConfig[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
 
   // When "Show all models" is toggled, fetch unfiltered models
   useEffect(() => {
@@ -224,7 +262,7 @@ export default function ChatInput({
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      if (!isStreaming && value.trim()) {
+      if (!isStreaming && !disabled && !uploadingFiles && value.trim()) {
         onSend();
       }
     }
@@ -234,7 +272,36 @@ export default function ChatInput({
     onChange(e.target.value);
   };
 
-  const canSend = value.trim().length > 0 && !isStreaming && !disabled;
+  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0 && onAttachFiles) {
+      onAttachFiles(e.target.files);
+    }
+    e.target.value = "";
+  };
+
+  const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
+    if (!onAttachFiles || disabled) return;
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: DragEvent<HTMLDivElement>) => {
+    if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+      setIsDragging(false);
+    }
+  };
+
+  const handleDrop = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (!onAttachFiles || disabled) return;
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      onAttachFiles(e.dataTransfer.files);
+    }
+  };
+
+  const canSend =
+    value.trim().length > 0 && !isStreaming && !disabled && !uploadingFiles;
 
   return (
     <div className="px-4 pt-2 pb-3 bg-gradient-to-t from-neutral-50 via-neutral-50/95 to-transparent dark:from-neutral-950 dark:via-neutral-950/95">
@@ -295,21 +362,100 @@ export default function ChatInput({
           </button>
         </div>
 
+        {/* Attached File Chips */}
+        {(attachedFiles.length > 0 || uploadingFiles) && (
+          <div className="flex flex-wrap items-center gap-1.5 mb-2 px-1">
+            {attachedFiles.map((file) => {
+              const sizeStr = formatBytes(file.size);
+              return (
+                <div
+                  key={file.file_id}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium border border-primary-200 dark:border-primary-700/60 bg-primary-50/70 dark:bg-primary-500/10 text-primary-700 dark:text-primary-300 max-w-[240px]"
+                >
+                  <FileText className="w-3 h-3 shrink-0 text-primary-500" />
+                  <span className="truncate">{file.filename}</span>
+                  {sizeStr && (
+                    <span className="text-[10px] opacity-70 shrink-0">
+                      ({sizeStr})
+                    </span>
+                  )}
+                  {onRemoveFile && (
+                    <button
+                      type="button"
+                      onClick={() => onRemoveFile(file.file_id)}
+                      className="p-0.5 rounded hover:bg-primary-200/60 dark:hover:bg-primary-800/60 transition-colors shrink-0"
+                      title={`Remove ${file.filename}`}
+                      aria-label={`Remove ${file.filename}`}
+                    >
+                      <X className="w-2.5 h-2.5" />
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+            {uploadingFiles && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium border border-neutral-200 dark:border-neutral-700 bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300">
+                <Loader2 className="w-3 h-3 animate-spin text-primary-500" />
+                <span>Uploading...</span>
+              </span>
+            )}
+          </div>
+        )}
+
         <div
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
           className={cn(
-            "flex items-end gap-2.5 rounded-3xl border px-4 py-2.5 transition-all duration-150",
+            "flex items-end gap-2 rounded-3xl border px-3.5 py-2.5 transition-all duration-150",
             "bg-white/95 dark:bg-neutral-900/95 backdrop-blur-md",
-            "border-neutral-200/90 dark:border-neutral-800 shadow-sm",
+            isDragging
+              ? "border-primary-500 ring-2 ring-primary-500/30 bg-primary-50/40 dark:bg-primary-950/30"
+              : "border-neutral-200/90 dark:border-neutral-800 shadow-sm",
             "focus-within:border-primary-500/60 dark:focus-within:border-primary-400/60",
             "focus-within:ring-2 focus-within:ring-primary-500/20 focus-within:shadow-md"
           )}
         >
+          {onAttachFiles && (
+            <>
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                className="hidden"
+                onChange={handleFileChange}
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={disabled || isStreaming || uploadingFiles}
+                className={cn(
+                  "flex-shrink-0 flex items-center justify-center w-8 h-8 rounded-full transition-colors",
+                  "text-neutral-500 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-200",
+                  "hover:bg-neutral-100 dark:hover:bg-neutral-800 disabled:opacity-50"
+                )}
+                title="Attach file (or drag & drop)"
+                aria-label="Attach files"
+              >
+                {uploadingFiles ? (
+                  <Loader2 className="w-4 h-4 animate-spin text-primary-500" />
+                ) : (
+                  <Paperclip className="w-4 h-4" />
+                )}
+              </button>
+            </>
+          )}
+
           <textarea
             ref={textareaRef}
             value={value}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
-            placeholder="Ask anything — Shift+Enter for new line..."
+            placeholder={
+              isDragging
+                ? "Drop files to attach..."
+                : "Ask anything — Shift+Enter for new line..."
+            }
             rows={1}
             disabled={disabled}
             className={cn(

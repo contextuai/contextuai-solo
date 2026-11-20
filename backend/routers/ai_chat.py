@@ -195,6 +195,131 @@ async def load_file_contents(file_ids: List[str]) -> tuple[str, List[str]]:
     return "\n".join(file_contents), image_file_paths
 
 
+async def load_file_items(file_ids: List[str]) -> tuple[List[Dict[str, Any]], List[str]]:
+    """Load attached files as structured dicts for smart-context injection.
+
+    Returns:
+        (file_items, image_file_paths) where each item in ``file_items`` has
+        ``{"file_id": ..., "filename": ..., "text": ..., "page": None}``.
+    """
+    if not file_ids:
+        return [], []
+
+    file_items: List[Dict[str, Any]] = []
+    image_file_paths: List[str] = []
+
+    text_extensions = {
+        ".txt", ".md", ".json", ".xml", ".csv", ".yaml", ".yml",
+        ".py", ".js", ".ts", ".jsx", ".tsx", ".html", ".css", ".sql",
+        ".log", ".conf", ".ini", ".env",
+    }
+    pdf_extensions = {".pdf"}
+    docx_extensions = {".docx", ".doc"}
+
+    for file_id in file_ids:
+        try:
+            metadata = file_storage_service.get_file_metadata(file_id)
+            if not metadata:
+                logger.warning(f"File not found: {file_id}")
+                continue
+
+            extension = metadata["extension"].lower()
+            filename = metadata["original_filename"]
+            file_path = metadata["path"]
+
+            if extension in text_extensions:
+                content = await file_storage_service.get_file_content(file_id)
+                if content:
+                    if isinstance(content, bytes):
+                        try:
+                            text = content.decode("utf-8")
+                        except UnicodeDecodeError:
+                            text = content.decode("latin-1", errors="replace")
+                    else:
+                        text = str(content)
+                    if text.strip():
+                        file_items.append({
+                            "file_id": file_id,
+                            "filename": filename,
+                            "text": text,
+                            "page": None,
+                        })
+                        logger.info(f"Loaded text file item: {filename} ({len(text)} chars)")
+
+            elif extension in pdf_extensions:
+                try:
+                    pdf_text = extract_pdf_text_sync(file_path)
+                    if pdf_text and not pdf_text.startswith("[Error"):
+                        file_items.append({
+                            "file_id": file_id,
+                            "filename": filename,
+                            "text": pdf_text,
+                            "page": None,
+                        })
+                    else:
+                        file_items.append({
+                            "file_id": file_id,
+                            "filename": filename,
+                            "text": f"[PDF attached: {filename} - text extraction failed]",
+                            "page": None,
+                        })
+                except Exception as e:
+                    logger.error(f"PDF extraction error for {filename}: {e}")
+                    file_items.append({
+                        "file_id": file_id,
+                        "filename": filename,
+                        "text": f"[PDF attached: {filename} - extraction error]",
+                        "page": None,
+                    })
+
+            elif extension in docx_extensions:
+                try:
+                    docx_text = extract_docx_text_sync(file_path)
+                    if docx_text and not docx_text.startswith("[Error"):
+                        file_items.append({
+                            "file_id": file_id,
+                            "filename": filename,
+                            "text": docx_text,
+                            "page": None,
+                        })
+                    else:
+                        file_items.append({
+                            "file_id": file_id,
+                            "filename": filename,
+                            "text": f"[DOCX attached: {filename} - text extraction failed]",
+                            "page": None,
+                        })
+                except Exception as e:
+                    logger.error(f"DOCX extraction error for {filename}: {e}")
+                    file_items.append({
+                        "file_id": file_id,
+                        "filename": filename,
+                        "text": f"[DOCX attached: {filename} - extraction error]",
+                        "page": None,
+                    })
+
+            elif extension in IMAGE_EXTENSIONS:
+                image_file_paths.append(file_path)
+                file_items.append({
+                    "file_id": file_id,
+                    "filename": filename,
+                    "text": f"[Image attached: {filename}]",
+                    "page": None,
+                })
+
+            else:
+                file_items.append({
+                    "file_id": file_id,
+                    "filename": filename,
+                    "text": f"[Attached file: {filename} ({metadata.get('content_type', 'application/octet-stream')}, {metadata.get('size', 0)} bytes)]",
+                    "page": None,
+                })
+        except Exception as e:
+            logger.error(f"Error loading file item {file_id}: {e}")
+
+    return file_items, image_file_paths
+
+
 # Helper function to store messages
 async def store_message(session_id: str, message_type: str, content: str, metadata: Dict[str, Any] = None) -> str:
     """Store a message in MongoDB and return message_id"""
@@ -275,87 +400,14 @@ async def ai_chat(request: ChatRequest, http_request: Request = None):
 
         logger.info(f"✅ Session ready: {session_id} (first_message: {is_first_message})")
 
-        # ── Knowledge Base (RAG) retrieval ─────────────────────────────
-        # If a KB is attached, retrieve top-k chunks and prepend to the prompt
-        # so both local and Bedrock paths see the same grounded prompt.
-        # Original request.prompt is preserved for storage/title generation.
-        effective_prompt = request.prompt
-        if request.knowledge_base_id:
-            try:
-                from services.rag_service import RAGService
-                from repositories.knowledge_base_repository import KnowledgeBaseRepository
-                from repositories.document_repository import DocumentRepository
-                from repositories.chunk_repository import ChunkRepository
-
-                _kb_db = await get_database()
-                _rag = RAGService(
-                    KnowledgeBaseRepository(_kb_db),
-                    DocumentRepository(_kb_db),
-                    ChunkRepository(_kb_db),
-                )
-                _citations = await _rag.query(request.knowledge_base_id, request.prompt, top_k=5)
-                _kb_context = RAGService.format_context(_citations)
-                if _kb_context:
-                    effective_prompt = f"{_kb_context}\n\nUser question: {request.prompt}"
-                    logger.info(
-                        f"📚 KB retrieval: {len(_citations)} chunks injected (kb={request.knowledge_base_id})"
-                    )
-                else:
-                    logger.info(f"📚 KB {request.knowledge_base_id} returned no matches")
-            except Exception as e:
-                logger.warning(f"⚠️ KB retrieval failed (continuing without): {e}")
-
-        # ── Unified Memory Layer Auto-Recall (SPEC-14 PR-B) ────────────
-        try:
-            from repositories.memory_repository import MemoryRepository
-            from repositories.memory_settings_repository import MemorySettingsRepository
-            from services.memory_service import MemoryService
-
-            _mem_db = await get_database()
-            _mem_svc = MemoryService(
-                MemoryRepository(_mem_db),
-                MemorySettingsRepository(_mem_db),
-            )
-            _mem_block = await _mem_svc.recall_for_prompt(
-                query=request.prompt,
-                surface="chat",
-                scopes=["global"],
-            )
-            if _mem_block:
-                effective_prompt = f"{_mem_block}\n\n{effective_prompt}"
-                logger.info("🧠 Unified Memory recall injected into chat prompt")
-        except Exception as e:
-            logger.warning(f"⚠️ Memory recall failed (continuing without): {e}")
-
-        # Load conversation history for context
-        history_messages = []
-        if not is_first_message:
-            try:
-                db = await get_database()
-                message_repo = MessageRepository(db)
-                context_messages = await message_repo.get_context_messages(session_id, limit=10)
-                for msg in context_messages:
-                    role = msg.get("message_type", "user")
-                    if role in ("user", "assistant") and msg.get("content"):
-                        history_messages.append({
-                            "role": role,
-                            "content": [{"text": msg["content"]}]
-                        })
-                logger.info(f"📜 Loaded {len(history_messages)} history messages for context")
-            except Exception as e:
-                logger.warning(f"⚠️ Failed to load conversation history: {e}")
-
-        # Resolve the actual Bedrock model identifier from model config
-        # The model_id from frontend could be MongoDB ObjectId, Bedrock model ID, or display name
+        # Resolve model config & effective n_ctx before RAG / attached-file injection
+        db = await get_database()
         bedrock_model_id = model_id  # Default to what was passed
+        model_config = None
 
         try:
-            # First, try to get model config by MongoDB _id
-            db = await get_database()
             from repositories import ModelRepository
             model_repo = ModelRepository(db)
-
-            model_config = None
 
             # Try direct _id lookup first (works for local:* IDs and MongoDB ObjectIds)
             try:
@@ -379,12 +431,10 @@ async def ai_chat(request: ChatRequest, http_request: Request = None):
 
             # If still not found, try flexible name matching (contains, with word boundaries)
             if not model_config:
-                # Normalize the search term: replace dashes/underscores with spaces for flexible matching
                 search_term = model_id.replace("-", " ").replace("_", " ")
-                # Try to match any model name that contains similar words
                 model_config = await model_repo.get_one({
                     "name": {"$regex": search_term.replace(" ", ".*"), "$options": "i"},
-                    "enabled": True  # Prefer enabled models
+                    "enabled": True
                 })
                 if model_config:
                     logger.info(f"✅ Found model by flexible name match: {model_id} -> {model_config.get('name')}")
@@ -398,27 +448,23 @@ async def ai_chat(request: ChatRequest, http_request: Request = None):
                     name_lower = m.get("name", "").lower()
                     model_field = m.get("model", "").lower()
 
-                    # Check if search term words appear in name
                     search_words = search_lower.split()
                     if all(word in name_lower for word in search_words):
                         model_config = m
                         logger.info(f"✅ Found model by word matching: {model_id} -> {m.get('name')}")
                         break
 
-                    # Check model field contains search term
                     if search_lower.replace(" ", "-") in model_field or search_lower.replace(" ", ".") in model_field:
                         model_config = m
                         logger.info(f"✅ Found model by model field: {model_id} -> {m.get('model')}")
                         break
 
             if model_config:
-                # Use the actual Bedrock model identifier from the 'model' field
                 resolved_model = model_config.get("model")
                 if resolved_model and resolved_model.strip():
                     bedrock_model_id = resolved_model
                     logger.info(f"✅ Resolved model: {model_id} -> {bedrock_model_id}")
                 else:
-                    # Model field is empty, try bedrock_model_id from metadata
                     metadata_model = model_config.get("model_metadata", {}).get("bedrock_model_id")
                     if metadata_model:
                         bedrock_model_id = metadata_model
@@ -430,13 +476,154 @@ async def ai_chat(request: ChatRequest, http_request: Request = None):
         except Exception as e:
             logger.warning(f"⚠️ Error resolving model config: {e}, using model_id as-is")
 
+        from services.local_model_service import LocalModelService, local_model_service
+        _is_local = (model_config and LocalModelService.is_local_model(model_config)) or \
+            str(model_id).startswith("local:") or str(model_id).startswith("local-")
+        _default_n_ctx = 8192 if _is_local else 32768
+        _cfg_n_ctx = None
+        if isinstance(model_config, dict):
+            _cfg_n_ctx = (
+                model_config.get("context_window")
+                or (model_config.get("model_metadata") or {}).get("context_window")
+            )
+        if _is_local:
+            n_ctx = local_model_service.get_loaded_n_ctx(
+                fallback=int(_cfg_n_ctx) if _cfg_n_ctx else _default_n_ctx
+            )
+        else:
+            n_ctx = int(_cfg_n_ctx) if _cfg_n_ctx else _default_n_ctx
+
+        # ── Knowledge Base (Smart Context + Hybrid RAG) retrieval ──────
+        rag_citations: List[Dict[str, Any]] = []
+        rag_mode: Optional[str] = None
+        rag_context = ""
+        if request.knowledge_base_id:
+            try:
+                from services.rag_service import RAGService
+                from repositories.knowledge_base_repository import KnowledgeBaseRepository
+                from repositories.document_repository import DocumentRepository
+                from repositories.chunk_repository import ChunkRepository
+
+                _rag = RAGService(
+                    KnowledgeBaseRepository(db),
+                    DocumentRepository(db),
+                    ChunkRepository(db),
+                )
+                rag_res = await _rag.smart_retrieve(
+                    request.knowledge_base_id,
+                    request.prompt,
+                    n_ctx=n_ctx,
+                    top_k=5,
+                )
+                rag_citations = list(rag_res.get("citations") or [])
+                rag_context = rag_res.get("context_block") or ""
+                if rag_citations or rag_context:
+                    rag_mode = rag_res.get("mode")
+                    logger.info(
+                        f"📚 KB smart_retrieve ({rag_mode}): {len(rag_citations)} citation(s) (kb={request.knowledge_base_id})"
+                    )
+                else:
+                    logger.info(f"📚 KB {request.knowledge_base_id} returned no matches")
+            except Exception as e:
+                logger.warning(f"⚠️ KB retrieval failed (continuing without): {e}")
+
+        # ── Attached Files (Smart Context / BM25) across ALL paths ─────
+        file_citations: List[Dict[str, Any]] = []
+        file_context = ""
+        image_file_paths: List[str] = []
+        if request.file_ids:
+            try:
+                from services.rag_service import build_attached_files_context
+
+                file_items, image_file_paths = await load_file_items(request.file_ids)
+                if file_items:
+                    files_res = build_attached_files_context(
+                        file_items,
+                        request.prompt,
+                        n_ctx=n_ctx,
+                    )
+                    file_context = files_res.get("context_block") or ""
+                    file_citations = list(files_res.get("citations") or [])
+                    file_mode = files_res.get("mode")
+                    if file_citations or file_context:
+                        if rag_mode is None:
+                            rag_mode = file_mode
+                        elif file_mode and rag_mode != file_mode:
+                            rag_mode = "hybrid_rag"
+                        logger.info(
+                            f"📎 Attached files ({file_mode}): {len(file_citations)} citation(s)"
+                        )
+            except Exception as e:
+                logger.warning(f"⚠️ Attached files context failed (continuing without): {e}")
+
+        merged_citations: List[Dict[str, Any]] = [
+            {**cit, "index": idx}
+            for idx, cit in enumerate([*rag_citations, *file_citations], start=1)
+        ]
+
+        # ── Unified Memory Layer Auto-Recall (SPEC-14 PR-B) ────────────
+        mem_block = ""
+        try:
+            from repositories.memory_repository import MemoryRepository
+            from repositories.memory_settings_repository import MemorySettingsRepository
+            from services.memory_service import MemoryService
+
+            _mem_svc = MemoryService(
+                MemoryRepository(db),
+                MemorySettingsRepository(db),
+            )
+            mem_block = await _mem_svc.recall_for_prompt(
+                query=request.prompt,
+                surface="chat",
+                scopes=["global"],
+            )
+            if mem_block:
+                logger.info("🧠 Unified Memory recall injected into chat prompt")
+        except Exception as e:
+            logger.warning(f"⚠️ Memory recall failed (continuing without): {e}")
+
+        # Build effective prompt for all 4 inference paths (local, Ollama, cloud dispatcher, Bedrock)
+        _context_parts = [p for p in (mem_block, rag_context, file_context) if p]
+        if rag_context or file_context:
+            effective_prompt = "\n\n".join(_context_parts) + f"\n\nUser question: {request.prompt}"
+        elif mem_block:
+            effective_prompt = f"{mem_block}\n\n{request.prompt}"
+        else:
+            effective_prompt = request.prompt
+
+        base_metadata: Dict[str, Any] = {}
+        if merged_citations:
+            base_metadata["citations"] = merged_citations
+        if rag_mode:
+            base_metadata["rag_mode"] = rag_mode
+
+        def _build_response_metadata(dlp_redaction: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+            meta = dict(base_metadata)
+            if dlp_redaction:
+                meta["dlp_redaction"] = dlp_redaction
+            return meta
+
+        # Load conversation history for context
+        history_messages = []
+        if not is_first_message:
+            try:
+                message_repo = MessageRepository(db)
+                context_messages = await message_repo.get_context_messages(session_id, limit=10)
+                for msg in context_messages:
+                    role = msg.get("message_type", "user")
+                    if role in ("user", "assistant") and msg.get("content"):
+                        history_messages.append({
+                            "role": role,
+                            "content": [{"text": msg["content"]}]
+                        })
+                logger.info(f"📜 Loaded {len(history_messages)} history messages for context")
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to load conversation history: {e}")
+
         # ── Local GGUF model intercept ─────────────────────────────────
         # If the resolved model config is a local GGUF model, use
         # LocalModelService (llama-cpp-python) directly.
         # Also detect by model_id prefix when model_config lookup failed.
-        from services.local_model_service import LocalModelService, local_model_service
-        _is_local = (model_config and LocalModelService.is_local_model(model_config)) or \
-            str(model_id).startswith("local:") or str(model_id).startswith("local-")
         if _is_local:
             # If model_config is missing (sync not yet run), build a minimal
             # config from the catalog so LocalModelService can resolve the file.
@@ -524,14 +711,22 @@ async def ai_chat(request: ChatRequest, http_request: Request = None):
                         logger.error(f"❌ Local model streaming error: {e}")
                         yield f"data: {json.dumps({'status': 'error', 'error': True, 'message': str(e)})}\n\n"
 
+                    local_meta = _build_response_metadata()
                     if not disconnected:
+                        if local_meta:
+                            yield f"data: {json.dumps({'is_final': True, 'metadata': local_meta})}\n\n"
                         yield "data: [DONE]\n\n"
 
                     # Always store what we have so far
                     full_response = "".join(collected_response)
                     try:
                         if full_response:
-                            await store_message(session_id, "assistant", full_response)
+                            await store_message(
+                                session_id,
+                                "assistant",
+                                full_response,
+                                metadata=local_meta or None,
+                            )
                         await update_session_stats(session_id)
                         if is_first_message and full_response:
                             await update_session_title_from_first_message(session_id, request.prompt, max_length=20)
@@ -564,7 +759,13 @@ async def ai_chat(request: ChatRequest, http_request: Request = None):
                     model_config=model_config,
                 )
                 response_str = result.get("content", "")
-                await store_message(session_id, "assistant", response_str)
+                ollama_meta = _build_response_metadata()
+                await store_message(
+                    session_id,
+                    "assistant",
+                    response_str,
+                    metadata=ollama_meta or None,
+                )
                 await update_session_stats(session_id)
                 if is_first_message and response_str:
                     try:
@@ -592,6 +793,7 @@ async def ai_chat(request: ChatRequest, http_request: Request = None):
                         "model_id": model_id,
                         "response_time_ms": response_time_ms,
                         "tokens_used": tokens_used,
+                        **ollama_meta,
                     },
                 })
 
@@ -661,10 +863,18 @@ async def ai_chat(request: ChatRequest, http_request: Request = None):
                         logger.error(f"❌ Ollama streaming error: {e}")
                         yield f"data: {json.dumps({'status': 'error', 'error': True, 'message': str(e)})}\n\n"
 
+                    ollama_meta = _build_response_metadata()
+                    if ollama_meta:
+                        yield f"data: {json.dumps({'is_final': True, 'metadata': ollama_meta})}\n\n"
                     yield "data: [DONE]\n\n"
 
                     full_response = "".join(collected_response)
-                    await store_message(session_id, "assistant", full_response)
+                    await store_message(
+                        session_id,
+                        "assistant",
+                        full_response,
+                        metadata=ollama_meta or None,
+                    )
                     await update_session_stats(session_id)
                     if is_first_message and full_response:
                         try:
@@ -695,7 +905,13 @@ async def ai_chat(request: ChatRequest, http_request: Request = None):
                     model_config=model_config,
                 )
                 response_str = result.get("content", "")
-                await store_message(session_id, "assistant", response_str)
+                ollama_meta = _build_response_metadata()
+                await store_message(
+                    session_id,
+                    "assistant",
+                    response_str,
+                    metadata=ollama_meta or None,
+                )
                 await update_session_stats(session_id)
                 if is_first_message and response_str:
                     try:
@@ -723,6 +939,7 @@ async def ai_chat(request: ChatRequest, http_request: Request = None):
                         "model_id": model_id,
                         "response_time_ms": response_time_ms,
                         "tokens_used": tokens_used,
+                        **ollama_meta,
                     },
                 })
         # ── End Ollama intercept ──────────────────────────────────────
@@ -764,12 +981,15 @@ async def ai_chat(request: ChatRequest, http_request: Request = None):
             if request.stream:
                 async def dispatcher_event_generator() -> AsyncGenerator[str, None]:
                     collected: list = []
+                    dlp_redaction: Optional[Dict[str, Any]] = None
                     try:
                         async for evt in _dispatch_stream(
                             model_id, disp_messages, db=db,
                             temperature=request.temperature, max_tokens=request.max_tokens,
                         ):
-                            if evt.get("type") == "delta":
+                            if evt.get("type") == "dlp_redacted":
+                                dlp_redaction = evt.get("summary")
+                            elif evt.get("type") == "delta":
                                 t = evt.get("content", "")
                                 if t:
                                     collected.append(t)
@@ -777,11 +997,20 @@ async def ai_chat(request: ChatRequest, http_request: Request = None):
                     except Exception as e:
                         logger.error(f"❌ Dispatcher streaming error: {e}")
                         yield f"data: {json.dumps({'status': 'error', 'error': True, 'message': str(e)})}\n\n"
+
+                    disp_meta = _build_response_metadata(dlp_redaction)
+                    if disp_meta:
+                        yield f"data: {json.dumps({'is_final': True, 'metadata': disp_meta})}\n\n"
                     yield "data: [DONE]\n\n"
 
                     full_response = "".join(collected)
                     if full_response:
-                        await store_message(session_id, "assistant", full_response)
+                        await store_message(
+                            session_id,
+                            "assistant",
+                            full_response,
+                            metadata=disp_meta or None,
+                        )
                     await update_session_stats(session_id)
                     if is_first_message and full_response:
                         try:
@@ -792,12 +1021,15 @@ async def ai_chat(request: ChatRequest, http_request: Request = None):
                 return StreamingResponse(dispatcher_event_generator(), media_type="text/plain")
             else:
                 parts: list = []
+                dlp_redaction: Optional[Dict[str, Any]] = None
                 try:
                     async for evt in _dispatch_stream(
                         model_id, disp_messages, db=db,
                         temperature=request.temperature, max_tokens=request.max_tokens,
                     ):
-                        if evt.get("type") == "delta":
+                        if evt.get("type") == "dlp_redacted":
+                            dlp_redaction = evt.get("summary")
+                        elif evt.get("type") == "delta":
                             parts.append(evt.get("content", ""))
                 except Exception as e:
                     logger.error(f"❌ Dispatcher error ({_disp_provider}): {e}")
@@ -814,15 +1046,21 @@ async def ai_chat(request: ChatRequest, http_request: Request = None):
                         },
                     )
                 response_str = "".join(parts)
+                disp_meta = _build_response_metadata(dlp_redaction)
                 if response_str:
-                    await store_message(session_id, "assistant", response_str)
+                    await store_message(
+                        session_id,
+                        "assistant",
+                        response_str,
+                        metadata=disp_meta or None,
+                    )
                 await update_session_stats(session_id)
                 return JSONResponse(content={
                     "result": response_str,
                     "session": session_id,
                     "status": "success",
                     "user_message_id": user_message_id,
-                    "metadata": {"model_id": model_id},
+                    "metadata": {"model_id": model_id, **disp_meta},
                 })
 
         bedrock_model = BedrockModel(
@@ -928,47 +1166,66 @@ async def ai_chat(request: ChatRequest, http_request: Request = None):
         # Store user message before processing
         user_message_id = await store_message(session_id, "user", request.prompt)
 
-        # Load file contents if file_ids are provided
-        file_context = ""
-        image_file_paths = []
-        if request.file_ids:
-            file_context, image_file_paths = await load_file_contents(request.file_ids)
-            if file_context:
-                logger.info(f"📎 Loaded {len(request.file_ids)} file(s) for context")
-            if image_file_paths:
-                logger.info(f"🖼️ {len(image_file_paths)} image(s) detected for vision processing")
+        # Auto-add image_reader tool if attached images are present on Bedrock path
+        if image_file_paths:
+            logger.info(f"🖼️ {len(image_file_paths)} image(s) detected for vision processing")
+            if model_supports_tools:
+                image_reader = get_image_reader_tool()
+                if image_reader:
+                    if image_reader not in tools:
+                        tools.append(image_reader)
+                        logger.info("✅ Auto-added image_reader tool for vision processing")
 
-                # Auto-add image_reader tool if images are attached and model supports tools
-                if model_supports_tools:
-                    image_reader = get_image_reader_tool()
-                    if image_reader:
-                        # Check if image_reader is not already in tools list
-                        if image_reader not in tools:
-                            tools.append(image_reader)
-                            logger.info("✅ Auto-added image_reader tool for vision processing")
+                    try:
+                        agent = Agent(
+                            model=bedrock_model,
+                            tools=tools,
+                            messages=history_messages if history_messages else None
+                        )
+                        logger.info(f"✅ Re-initialized Strands Agent with {len(tools)} tools (including image_reader)")
+                    except Exception as e:
+                        logger.warning(f"⚠️ Could not re-initialize agent with image_reader: {e}")
+                else:
+                    logger.warning("⚠️ image_reader tool not available - image analysis may be limited")
 
-                        # Re-initialize agent with updated tools if we added image_reader
-                        try:
-                            agent = Agent(
-                                model=bedrock_model,
-                                tools=tools,
-                                messages=history_messages if history_messages else None
-                            )
-                            logger.info(f"✅ Re-initialized Strands Agent with {len(tools)} tools (including image_reader)")
-                        except Exception as e:
-                            logger.warning(f"⚠️ Could not re-initialize agent with image_reader: {e}")
-                    else:
-                        logger.warning("⚠️ image_reader tool not available - image analysis may be limited")
+        # Build the full prompt (file_context is already included in effective_prompt)
+        full_prompt = effective_prompt
+        if image_file_paths:
+            image_paths_str = ", ".join(image_file_paths)
+            full_prompt += f"\n\n[Image file paths for analysis: {image_paths_str}]"
 
-        # Build the full prompt with file context if available
-        if file_context:
-            full_prompt = f"{effective_prompt}\n\n[Attached Files]\n{file_context}"
-            # If images are present, add hint about image paths for the agent
-            if image_file_paths:
-                image_paths_str = ", ".join(image_file_paths)
-                full_prompt += f"\n\n[Image file paths for analysis: {image_paths_str}]"
-        else:
-            full_prompt = effective_prompt
+        # Local DLP redaction before sending to non-loopback Bedrock cloud
+        bedrock_dlp_redaction: Optional[Dict[str, Any]] = None
+        try:
+            from services import dlp_service
+
+            dlp_settings = dlp_service.get_dlp_settings()
+            if dlp_settings.get("enabled", True):
+                dlp_res = dlp_service.scan_and_redact(full_prompt, policy=dlp_settings)
+                if dlp_res.total_redactions > 0:
+                    full_prompt = dlp_res.redacted_text
+                    bedrock_dlp_redaction = dlp_res.to_summary()
+                    try:
+                        from models.audit_models import AuditAction
+                        from services.audit_service import audit_log
+
+                        await audit_log(
+                            getattr(AuditAction, "DLP_REDACTED", "dlp.redacted"),
+                            resource_type="chat",
+                            resource_id=model_id,
+                            details={
+                                "provider": "bedrock",
+                                "total_redactions": dlp_res.total_redactions,
+                                "categories": dlp_res.categories,
+                                "counts_by_category": dlp_res.counts_by_category,
+                            },
+                        )
+                    except Exception:
+                        pass
+        except Exception as exc:
+            logger.warning("Bedrock DLP check failed (non-fatal): %s", exc)
+
+        bedrock_meta = _build_response_metadata(bedrock_dlp_redaction)
 
         # Handle streaming response
         if request.stream:
@@ -1000,13 +1257,20 @@ async def ai_chat(request: ChatRequest, http_request: Request = None):
                     yield f"data: {json.dumps({'status': 'error', 'error': True, 'message': str(e)})}\n\n"
 
                 if not disconnected:
+                    if bedrock_meta:
+                        yield f"data: {json.dumps({'is_final': True, 'metadata': bedrock_meta})}\n\n"
                     yield "data: [DONE]\n\n"
 
                 # Always store what we have so far
                 full_response = ''.join(collected_response)
                 try:
                     if full_response:
-                        await store_message(session_id, "assistant", full_response)
+                        await store_message(
+                            session_id,
+                            "assistant",
+                            full_response,
+                            metadata=bedrock_meta or None,
+                        )
                     await update_session_stats(session_id)
                     if is_first_message and full_response:
                         await update_session_title_from_first_message(session_id, request.prompt, max_length=20)
@@ -1035,7 +1299,12 @@ async def ai_chat(request: ChatRequest, http_request: Request = None):
             logger.info(f"✅ Model response generated: {response_str[:100]}...")
 
             # Store assistant message
-            assistant_message_id = await store_message(session_id, "assistant", response_str)
+            assistant_message_id = await store_message(
+                session_id,
+                "assistant",
+                response_str,
+                metadata=bedrock_meta or None,
+            )
 
             # Update session stats (message_count += 2 for user + assistant)
             await update_session_stats(session_id)
@@ -1074,7 +1343,8 @@ async def ai_chat(request: ChatRequest, http_request: Request = None):
                 "model_id": model_id,
                 "timestamp": datetime.utcnow().isoformat() + "Z",
                 "user_message_id": user_message_id,
-                "assistant_message_id": assistant_message_id
+                "assistant_message_id": assistant_message_id,
+                "metadata": {"model_id": model_id, **bedrock_meta},
             }
 
             return JSONResponse(content=response_data)

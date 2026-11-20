@@ -9,6 +9,8 @@ middleware when configured).
 
 import json
 import logging
+import os
+from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
@@ -63,6 +65,50 @@ class ImportGGUFRequest(BaseModel):
 class CatalogRefreshRequest(BaseModel):
     remote_url: Optional[str] = None
     cache_path: Optional[str] = None
+
+
+class ServerConfigRequest(BaseModel):
+    enabled: bool
+
+
+_DEFAULT_V1_ENDPOINT_BASE = "http://127.0.0.1:18741/v1"
+
+
+def _developer_settings_path() -> Path:
+    override = (os.environ.get("VESPER_DEVELOPER_SETTINGS_PATH") or "").strip()
+    if override:
+        return Path(override).expanduser()
+    return Path.home() / ".contextuai-solo" / "data" / "developer_settings.json"
+
+
+def is_local_server_enabled() -> bool:
+    """Return whether the OpenAI-compatible /v1 local server is enabled (default True)."""
+    path = _developer_settings_path()
+    try:
+        if path.is_file():
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(data, dict) and "local_server_enabled" in data:
+                return bool(data["local_server_enabled"])
+    except Exception as exc:
+        logger.warning("Failed to read developer settings from %s: %s", path, exc)
+    return True
+
+
+def set_local_server_enabled(enabled: bool) -> bool:
+    """Persist the local_server_enabled toggle to developer_settings.json."""
+    path = _developer_settings_path()
+    payload: dict = {}
+    try:
+        if path.is_file():
+            existing = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(existing, dict):
+                payload = existing
+    except Exception:
+        payload = {}
+    payload["local_server_enabled"] = bool(enabled)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    return bool(enabled)
 
 
 async def _resolve_hf_token() -> Optional[str]:
@@ -360,6 +406,28 @@ async def get_local_server_stats():
     return {
         "loaded_model": local_model_service.get_status(),
         "recent_requests": get_recent_v1_requests(),
+    }
+
+
+@router.get("/server-config")
+async def get_local_server_config():
+    """Return whether the local OpenAI-compatible /v1 server is enabled."""
+    enabled = is_local_server_enabled()
+    return {
+        "enabled": enabled,
+        "server_enabled": enabled,
+        "endpoint_base": _DEFAULT_V1_ENDPOINT_BASE,
+    }
+
+
+@router.post("/server-config")
+async def update_local_server_config(request: ServerConfigRequest):
+    """Enable or disable the local OpenAI-compatible /v1 server."""
+    enabled = set_local_server_enabled(request.enabled)
+    return {
+        "enabled": enabled,
+        "server_enabled": enabled,
+        "endpoint_base": _DEFAULT_V1_ENDPOINT_BASE,
     }
 
 
