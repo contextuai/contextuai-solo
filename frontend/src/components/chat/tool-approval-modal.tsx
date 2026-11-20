@@ -9,6 +9,14 @@ import {
   type Approval,
 } from "@/lib/api/approvals-client";
 
+const RETIRED_SOCIAL_CHANNELS = new Set([
+  "linkedin",
+  "twitter",
+  "instagram",
+  "facebook",
+  "reddit",
+]);
+
 export interface ToolApprovalModalProps {
   open?: boolean;
   onClose?: () => void;
@@ -33,7 +41,11 @@ export function ToolApprovalModal({
     setLoading(true);
     try {
       const items = await listApprovals("pending", 20);
-      setApprovals(items);
+      setApprovals(
+        items.filter(
+          (a) => !RETIRED_SOCIAL_CHANNELS.has((a.channel_type || "").toLowerCase())
+        )
+      );
     } catch {
       // Non-fatal while sidecar is warming up
     } finally {

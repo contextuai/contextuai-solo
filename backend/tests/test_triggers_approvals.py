@@ -356,3 +356,60 @@ class TestApprovalsAPI:
     def test_reject_not_found(self, test_app):
         resp = test_app.post("/api/v1/approvals/nonexistent/reject")
         assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_retired_social_approvals_filtered_and_auto_retired(db_proxy):
+    from services.approval_service import ApprovalService
+
+    svc = ApprovalService(db_proxy)
+    await svc.create_approval(
+        trigger_id="t1",
+        channel_type="linkedin",
+        channel_id="li-1",
+        sender_name="",
+        sender_id="",
+        inbound_text="post",
+        draft_response="AI post",
+        session_id="s1",
+    )
+    await svc.create_approval(
+        trigger_id="t2",
+        channel_type="twitter",
+        channel_id="tw-1",
+        sender_name="",
+        sender_id="",
+        inbound_text="tweet",
+        draft_response="AI tweet",
+        session_id="s2",
+    )
+    tg = await svc.create_approval(
+        trigger_id="t3",
+        channel_type="telegram",
+        channel_id="tg-1",
+        sender_name="Alice",
+        sender_id="a1",
+        inbound_text="hi",
+        draft_response="hello",
+        session_id="s3",
+    )
+
+    pending = await svc.list_pending()
+    assert [p["approval_id"] for p in pending] == [tg["approval_id"]]
+
+    all_pending = await svc.list_all(status="pending")
+    assert [p["approval_id"] for p in all_pending] == [tg["approval_id"]]
+
+    assert await svc.count_pending() == 1
+
+    retired_count = await svc.retire_legacy_social_approvals()
+    assert retired_count == 2
+
+    raw_rows = await db_proxy["approval_queue"].find({}).to_list(length=20)
+    by_ch = {r["channel_type"]: r for r in raw_rows}
+    assert by_ch["linkedin"]["status"] == "rejected"
+    assert by_ch["linkedin"]["reviewed_by"] == "vesper-v1.2-migration"
+    assert by_ch["twitter"]["status"] == "rejected"
+    assert by_ch["twitter"]["reviewed_by"] == "vesper-v1.2-migration"
+    assert by_ch["telegram"]["status"] == "pending"
+

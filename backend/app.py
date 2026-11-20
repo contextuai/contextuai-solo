@@ -642,6 +642,19 @@ async def startup_event():
         except Exception:
             logger.exception("coder_workflow_mode migration failed; continuing startup")
 
+        # Vesper v1.2: retire legacy social distribution approvals left in approval_queue
+        try:
+            from services.approval_service import ApprovalService
+
+            retired_approvals = await ApprovalService(proxy).retire_legacy_social_approvals()
+            if retired_approvals > 0:
+                logger.info(
+                    "Retired %d legacy social distribution approval(s)",
+                    retired_approvals,
+                )
+        except Exception:
+            logger.exception("Failed retiring legacy social approvals; continuing startup")
+
         # Attach Local DLP log redaction filter (checks redact_logs dynamically)
         try:
             from services.dlp_service import DlpLogFilter
