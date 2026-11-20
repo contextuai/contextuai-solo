@@ -25,7 +25,6 @@ import { useAdvancedMode } from "@/hooks/use-advanced-mode";
 import { CommandPalette } from "@/components/shell/command-palette";
 import { PrivacyShield } from "@/components/privacy/privacy-shield";
 import { ThemeQuickPicker } from "@/components/shell/theme-quick-picker";
-import logoImg from "@/assets/logo.png";
 import vesperLogoImg from "@/assets/vesper-logo.png";
 
 interface NavItem {
@@ -112,15 +111,15 @@ export default function DesktopSidebar() {
       <div className="flex items-center h-16 px-4 border-b border-neutral-200 dark:border-neutral-800">
         <div className="flex items-center gap-3 min-w-0">
           <img
-            src={isLite ? vesperLogoImg : logoImg}
+            src={vesperLogoImg}
             alt="Vesper"
-            className="flex-shrink-0 w-8 h-8 rounded-lg object-cover"
+            className="flex-shrink-0 w-8 h-8 rounded-lg object-cover shadow-sm ring-1 ring-primary-500/20"
           />
           {!collapsed && (
             <div className="flex flex-col min-w-0">
               <div className="flex items-center gap-1.5">
                 <span className="text-sm font-bold text-neutral-900 dark:text-white truncate">
-                  {isLite ? "Vesper" : "ContextuAI"}
+                  Vesper
                 </span>
                 {isLite && (
                   <span className="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-primary-500/15 text-primary-600 dark:text-primary-400 uppercase tracking-wider">
@@ -129,7 +128,7 @@ export default function DesktopSidebar() {
                 )}
               </div>
               <span className="text-[10px] font-medium text-primary-500 uppercase tracking-wider truncate">
-                {isLite ? "by ContextuAI · GGUF Engine" : "Vesper Workstation"}
+                {isLite ? "by ContextuAI · GGUF Engine" : "by ContextuAI · Full Solo"}
               </span>
             </div>
           )}

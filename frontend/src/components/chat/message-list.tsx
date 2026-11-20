@@ -21,6 +21,7 @@ import type { ChatCitation, ChatMessage, DlpRedactionSummary } from "@/types/cha
 import { useEdition } from "@/config/edition";
 import { CitationPanel } from "./citation-panel";
 import { DlpIndicator } from "./dlp-indicator";
+import vesperLogoImg from "@/assets/vesper-logo.png";
 
 interface MessageListProps {
   messages: ChatMessage[];
@@ -394,8 +395,12 @@ function EmptyState({
 
   return (
     <div className="flex flex-col items-center justify-center h-full text-center px-6 py-8 overflow-y-auto">
-      <div className="flex items-center justify-center w-14 h-14 rounded-2xl bg-primary-50 dark:bg-primary-500/10 border border-primary-500/20 mb-4">
-        <Bot className="w-7 h-7 text-primary-500" />
+      <div className="relative flex items-center justify-center w-16 h-16 rounded-2xl overflow-hidden shadow-lg shadow-primary-500/15 ring-1 ring-primary-500/30 mb-4">
+        <img
+          src={vesperLogoImg}
+          alt="Vesper"
+          className="w-full h-full object-cover"
+        />
       </div>
       <h2 className="text-xl font-bold text-neutral-900 dark:text-white mb-1.5">
         {isLite ? "Vesper Sovereign AI Workstation" : "Start a conversation"}

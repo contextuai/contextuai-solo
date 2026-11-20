@@ -16,7 +16,7 @@ export function WindowTitle() {
     if (isLite) {
       document.title = "Vesper by ContextuAI";
     } else {
-      document.title = mode === "coder" ? "Solo Coder" : "ContextuAI Solo";
+      document.title = mode === "coder" ? "Vesper Coder" : "Vesper Solo";
     }
   }, [isLite, mode, location.pathname]);
 

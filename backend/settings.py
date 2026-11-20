@@ -75,7 +75,7 @@ class Settings:
     # Edition Configuration ("lite" = Vesper, "solo" = ContextuAI Solo)
     edition: str = field(default_factory=lambda: os.getenv(
         "CONTEXTUAI_EDITION",
-        "solo"
+        "lite"
     ).strip().lower())
 
     # JWT/Auth Configuration (if needed)
@@ -135,7 +135,7 @@ EDITION = settings.edition
 
 def get_active_edition() -> str:
     """Return the active runtime edition ('lite' or 'solo')."""
-    val = (os.getenv("CONTEXTUAI_EDITION", EDITION) or "solo").strip().lower()
+    val = (os.getenv("CONTEXTUAI_EDITION", EDITION) or "lite").strip().lower()
     return "lite" if val == "lite" else "solo"
 
 

@@ -3,9 +3,6 @@ import { cn } from "@/lib/utils";
 import DesktopSidebar from "./desktop-sidebar";
 import DesktopSidebarCoder from "./desktop-sidebar-coder";
 import { ModeToggle } from "@/components/shell/mode-toggle";
-import { CommandPalette } from "@/components/shell/command-palette";
-import { PrivacyShield } from "@/components/privacy/privacy-shield";
-import { ThemeQuickPicker } from "@/components/shell/theme-quick-picker";
 import { useMode } from "@/contexts/mode-context";
 import { useEdition } from "@/config/edition";
 
@@ -27,11 +24,7 @@ export function DesktopLayout() {
         >
           <div className="w-48" />
           <ModeToggle />
-          <div className="w-48 flex items-center justify-end gap-2">
-            <CommandPalette />
-            <ThemeQuickPicker />
-            <PrivacyShield />
-          </div>
+          <div className="w-48" />
         </div>
       )}
 
