@@ -29,6 +29,9 @@ import { AlertTriangle } from "lucide-react";
 
 export default function ChatPage() {
   const { aiMode } = useAiMode();
+  const aiModeRef = useRef(aiMode);
+  aiModeRef.current = aiMode;
+  const modelsFetchSeqRef = useRef(0);
 
   // ── Data state ─────────────────────────────────────────────────
   const [models, setModels] = useState<ModelConfig[]>([]);
@@ -96,7 +99,7 @@ export default function ChatPage() {
 
   // Re-fetch models when AI mode changes
   useEffect(() => {
-    loadModels();
+    loadModels(aiMode);
   }, [aiMode]);
 
   // Keyboard shortcut: Ctrl/Cmd+N or M3 sidebar FAB for new chat
@@ -153,25 +156,27 @@ export default function ChatPage() {
     }
   }, []);
 
-  async function loadModels() {
+  async function loadModels(modeOverride?: typeof aiMode) {
+    const seq = ++modelsFetchSeqRef.current;
+    const targetMode = modeOverride ?? aiModeRef.current;
     try {
-      const data = await getModels(aiMode);
+      const data = await getModels(targetMode);
+      if (seq !== modelsFetchSeqRef.current) return;
       setModels(data);
 
       // Auto-select: if current selection is not in the new list, pick first
-      const currentValid = data.some((m) => m.id === selectedModelId && m.enabled);
-      if (!currentValid) {
+      setSelectedModelId((prevSelected) => {
+        const currentValid = data.some((m) => m.id === prevSelected && m.enabled);
+        if (currentValid) return prevSelected;
         const first = data.find((m) => m.enabled);
-        if (first) {
-          setSelectedModelId(first.id);
-        } else {
-          setSelectedModelId(null);
-        }
-      }
+        return first ? first.id : null;
+      });
     } catch (err) {
       console.warn("Failed to load models:", err);
     } finally {
-      setModelsLoaded(true);
+      if (seq === modelsFetchSeqRef.current) {
+        setModelsLoaded(true);
+      }
     }
   }
 
